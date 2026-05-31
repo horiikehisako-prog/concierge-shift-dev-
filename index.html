@@ -1097,7 +1097,7 @@ function StaffWish({year,month,prefs,sv,uname}){
         </div>
         <div style={{fontSize:12,color:C.muted}}>
           希望日（{myDays.length}日）:&nbsp;
-  const printShift=()=>window.print();
+  
           {myDays.length===0?"なし":myDays.sort((a,b)=>a-b).map(d=>`${d}日(${getWday(year,month,d)})`).join("・")}
         </div>
       </>
