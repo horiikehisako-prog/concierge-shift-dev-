@@ -796,7 +796,7 @@ function normalizeBillingVenue(venueName) {
   if (venueName === "小さな蔵王") return "小さな蔵王";
   if (venueName === "花園") return "花園";
   if (venueName === "多治米") return "多治米";
-  if (venueName === "春日") return "春日";
+  if (venueName === "春日" || venueName === "春日斎場") return "春日";
   if (venueName === "多or蔵") return "多or蔵（未振り分け）";
   return venueName;
 }
@@ -1097,6 +1097,7 @@ function StaffWish({year,month,prefs,sv,uname}){
         </div>
         <div style={{fontSize:12,color:C.muted}}>
           希望日（{myDays.length}日）:&nbsp;
+  const printShift=()=>window.print();
           {myDays.length===0?"なし":myDays.sort((a,b)=>a-b).map(d=>`${d}日(${getWday(year,month,d)})`).join("・")}
         </div>
       </>
@@ -1105,7 +1106,7 @@ function StaffWish({year,month,prefs,sv,uname}){
 }
 
 // ─── 全体シフト（コンシェルジュ・ディレクター・事務 共通）─────────────
-function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
+
   const days=getDays(year,month);
   const {venues}=cfg;
   const today=new Date();
@@ -1113,6 +1114,12 @@ function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
   const isTM=year===today.getFullYear()&&month===today.getMonth()+1;
 
   return <div>
+    <div style={{marginBottom:10}} className="no-print">
+      <button onClick={printShift} style={{...Btn(C.navy),fontSize:13,padding:"8px 18px"}}>🖨️ 印刷する</button>
+    </div>
+    <div style={{marginBottom:10}}>
+      <button onClick={()=>window.print()} style={{...Btn(C.navy),fontSize:13,padding:"8px 18px"}}>🖨️ 印刷する</button>
+    </div>
     <div style={{...GC,padding:"10px 16px",fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap"}}>
       <span>🟢 自分のシフト</span><span>📍 会場確定済</span><span>⏳ 前日確定待ち</span>
     </div>
@@ -1339,7 +1346,23 @@ function VenueConfirm({year,month,shifts,vconf,sv,cfg,flash}){
         </div>;
       })}
     </div>}
-    {pending.length===0&&done.length===0&&
+    {fixedVenues.length>0&&<div style={GC}>
+  <h3 style={{margin:"0 0 12px",fontSize:14,color:C.navy}}>🏛️ 固定会場（春日など）</h3>
+  {Array.from({length:days},(_,i)=>i+1).map(d=>{
+    const entries=fixedVenues.map(v=>({v,s:shifts[d]?.[v.name]})).filter(x=>x.s);
+    if(!entries.length) return null;
+    return <div key={d} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",
+      borderBottom:`1px solid ${C.border}`,padding:"8px 0"}}>
+      <span style={{fontWeight:700,minWidth:60,color:getWdayI(year,month,d)===0?C.sun:getWdayI(year,month,d)===6?C.sat:C.text}}>
+        {month}/{d}({getWday(year,month,d)})
+      </span>
+      {entries.map(({v,s})=><span key={v.name} style={{background:C.blueL,color:C.blue,borderRadius:6,padding:"2px 10px",fontSize:13,fontWeight:700}}>
+        📍 {v.name}：{s}
+      </span>)}
+    </div>;
+  })}
+</div>}
+{pending.length===0&&done.length===0&&
       <div style={{...GC,textAlign:"center",color:C.muted,padding:48}}>
         <div style={{fontSize:36,marginBottom:8}}>✅</div>
         <p style={{margin:0}}>この月の確定作業はありません</p>
@@ -1642,6 +1665,50 @@ const MC_COMPANIES = {
 };
 const MC_ROLES = ["司会","アシスタント","パントリー"];
 const MC_TYPES = ["2日葬","1日葬","通夜のみ"];
+const MC_RATE_KEYS = [
+  {key:"飛鳥通夜司会",label:"飛鳥 通夜司会"},
+  {key:"飛鳥葬儀司会",label:"飛鳥 葬儀司会"},
+  {key:"飛鳥通夜アシ",label:"飛鳥 通夜アシ"},
+  {key:"飛鳥葬儀アシ",label:"飛鳥 葬儀アシ"},
+  {key:"あしべ通夜司会",label:"あしべ 通夜司会"},
+  {key:"あしべ葬儀司会",label:"あしべ 葬儀司会"},
+  {key:"あしべパントリー",label:"あしべ パントリー"},
+  {key:"研修",label:"研修"},
+];
+const getMCRateKey=(company,role,type,training)=>{
+  if(training) return "研修";
+  const isA=company==="あしべの杜";
+  const isTsuya=type==="通夜のみ";
+  if(!isA){
+    if(role==="司会") return isTsuya?"飛鳥通夜司会":"飛鳥葬儀司会";
+    return isTsuya?"飛鳥通夜アシ":"飛鳥葬儀アシ";
+  }else{
+    if(role==="パントリー") return "あしべパントリー";
+    return isTsuya?"あしべ通夜司会":"あしべ葬儀司会";
+  }
+};
+const MC_RATE_KEYS = [
+  {key:"飛鳥通夜司会",label:"飛鳥 通夜司会"},
+  {key:"飛鳥葬儀司会",label:"飛鳥 葬儀司会"},
+  {key:"飛鳥通夜アシ",label:"飛鳥 通夜アシ"},
+  {key:"飛鳥葬儀アシ",label:"飛鳥 葬儀アシ"},
+  {key:"あしべ通夜司会",label:"あしべ 通夜司会"},
+  {key:"あしべ葬儀司会",label:"あしべ 葬儀司会"},
+  {key:"あしべパントリー",label:"あしべ パントリー"},
+  {key:"研修",label:"研修"},
+];
+const getMCRateKey=(company,role,type,training)=>{
+  if(training) return "研修";
+  const isA=company==="あしべの杜";
+  const isTsuya=type==="通夜のみ";
+  if(!isA){
+    if(role==="司会") return isTsuya?"飛鳥通夜司会":"飛鳥葬儀司会";
+    return isTsuya?"飛鳥通夜アシ":"飛鳥葬儀アシ";
+  }else{
+    if(role==="パントリー") return "あしべパントリー";
+    return isTsuya?"あしべ通夜司会":"あしべ葬儀司会";
+  }
+};
 
 const DEFAULT_MC_BILLING = {
   "飛鳥会館": {
