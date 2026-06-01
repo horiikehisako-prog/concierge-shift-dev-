@@ -1343,22 +1343,7 @@ function VenueConfirm({year,month,shifts,vconf,sv,cfg,flash}){
         </div>;
       })}
     </div>}
-    {fixedVenues.length>0&&<div style={GC}>
-  <h3 style={{margin:"0 0 12px",fontSize:14,color:C.navy}}>🏛️ 固定会場（春日など）</h3>
-  {Array.from({length:days},(_,i)=>i+1).map(d=>{
-    const entries=fixedVenues.map(v=>({v,s:shifts[d]?.[v.name]})).filter(x=>x.s);
-    if(!entries.length) return null;
-    return <div key={d} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",
-      borderBottom:`1px solid ${C.border}`,padding:"8px 0"}}>
-      <span style={{fontWeight:700,minWidth:60,color:getWdayI(year,month,d)===0?C.sun:getWdayI(year,month,d)===6?C.sat:C.text}}>
-        {month}/{d}({getWday(year,month,d)})
-      </span>
-      {entries.map(({v,s})=><span key={v.name} style={{background:C.blueL,color:C.blue,borderRadius:6,padding:"2px 10px",fontSize:13,fontWeight:700}}>
-        📍 {v.name}：{s}
-      </span>)}
-    </div>;
-  })}
-</div>}
+    }
 {pending.length===0&&done.length===0&&
       <div style={{...GC,textAlign:"center",color:C.muted,padding:48}}>
         <div style={{fontSize:36,marginBottom:8}}>✅</div>
