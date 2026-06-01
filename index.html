@@ -610,7 +610,7 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
   const saveEdit=()=>{
     if(!ed)return;
     const existing=att[ed.key]||{staff:ed.newStaff||"",submittedAt:new Date().toISOString()};
-    sv.att({...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,verified:false}});
+    sv.att({...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}});
     setEd(null);
   };
   return <div>
@@ -652,7 +652,14 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
             {isEd&&<tr><td colSpan={7} style={{padding:"12px 16px",background:"#f0f7ff",borderBottom:`2px solid ${C.blue}`}}>
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontSize:12,fontWeight:700,color:C.blue}}>✏️ 編集中</span>
-                <label style={{fontSize:12}}>開始</label>
+                <label style={{fontSize:12}}>会場</label>
+<select value={ed.venue||venue} onChange={e=>setEd({...ed,venue:e.target.value})}
+  style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:13}}>
+  {cfg.venues.flatMap(v=>v.options&&v.options.length>0?v.options.map(o=>({name:o})):[v]).map(v=>(
+    <option key={v.name} value={v.name}>{v.name}</option>
+  ))}
+</select>
+<label style={{fontSize:12}}>開始</label>
                 <input type="time" value={ed.s} onChange={e=>setEd({...ed,s:e.target.value})}
                   style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:13}}/>
                 <label style={{fontSize:12}}>終了</label>
