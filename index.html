@@ -1106,6 +1106,7 @@ function StaffWish({year,month,prefs,sv,uname}){
 }
 
 // ─── 全体シフト（コンシェルジュ・ディレクター・事務 共通）─────────────
+function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
 
   const days=getDays(year,month);
   const {venues}=cfg;
@@ -1114,7 +1115,7 @@ function StaffWish({year,month,prefs,sv,uname}){
   const isTM=year===today.getFullYear()&&month===today.getMonth()+1;
 
   return <div>
-    
+ 
     
     <div style={{...GC,padding:"10px 16px",fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap"}}>
       <span>🟢 自分のシフト</span><span>📍 会場確定済</span><span>⏳ 前日確定待ち</span>
