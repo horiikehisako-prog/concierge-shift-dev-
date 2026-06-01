@@ -1115,7 +1115,7 @@ function StaffWish({year,month,prefs,sv,uname}){
 
   return <div>
     <div style={{marginBottom:10}} className="no-print">
-      <button onClick={printShift} style={{...Btn(C.navy),fontSize:13,padding:"8px 18px"}}>🖨️ 印刷する</button>
+      <button onClick={()=>window.print()} style={{...Btn(C.navy),fontSize:13,padding:"8px 18px"}}>🖨️ 印刷する</button>
     </div>
     
     <div style={{...GC,padding:"10px 16px",fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap"}}>
