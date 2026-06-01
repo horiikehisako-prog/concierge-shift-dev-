@@ -1684,28 +1684,6 @@ const getMCRateKey=(company,role,type,training)=>{
     return isTsuya?"あしべ通夜司会":"あしべ葬儀司会";
   }
 };
-const MC_RATE_KEYS = [
-  {key:"飛鳥通夜司会",label:"飛鳥 通夜司会"},
-  {key:"飛鳥葬儀司会",label:"飛鳥 葬儀司会"},
-  {key:"飛鳥通夜アシ",label:"飛鳥 通夜アシ"},
-  {key:"飛鳥葬儀アシ",label:"飛鳥 葬儀アシ"},
-  {key:"あしべ通夜司会",label:"あしべ 通夜司会"},
-  {key:"あしべ葬儀司会",label:"あしべ 葬儀司会"},
-  {key:"あしべパントリー",label:"あしべ パントリー"},
-  {key:"研修",label:"研修"},
-];
-const getMCRateKey=(company,role,type,training)=>{
-  if(training) return "研修";
-  const isA=company==="あしべの杜";
-  const isTsuya=type==="通夜のみ";
-  if(!isA){
-    if(role==="司会") return isTsuya?"飛鳥通夜司会":"飛鳥葬儀司会";
-    return isTsuya?"飛鳥通夜アシ":"飛鳥葬儀アシ";
-  }else{
-    if(role==="パントリー") return "あしべパントリー";
-    return isTsuya?"あしべ通夜司会":"あしべ葬儀司会";
-  }
-};
 
 const DEFAULT_MC_BILLING = {
   "飛鳥会館": {
