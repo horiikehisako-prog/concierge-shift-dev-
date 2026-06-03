@@ -653,7 +653,7 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontSize:12,fontWeight:700,color:C.blue}}>✏️ 編集中</span>
                 <label style={{fontSize:12}}>会場</label>
-<select value={ed.venue||venue} onChange={e=>setEd({...ed,venue:e.target.value})}
+<select value={ed.venue||venue} onChange={e=>{const v=e.target.value;setEd(prev=>({...prev,venue:v}));}}
   style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:13}}>
   {cfg.venues.flatMap(v=>v.options&&v.options.length>0?v.options.map(o=>({name:o})):[v]).map(v=>(
     <option key={v.name} value={v.name}>{v.name}</option>
