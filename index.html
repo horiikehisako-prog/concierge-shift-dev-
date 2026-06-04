@@ -610,7 +610,12 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
   const saveEdit=()=>{
     if(!ed)return;
     const existing=att[ed.key]||{staff:ed.newStaff||"",submittedAt:new Date().toISOString()};
-    sv.att({...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}});
+    const newVenue=ed.venue||existing.venue;
+const newKey=`${existing.d}-${newVenue}`;
+const newAtt={...att};
+delete newAtt[ed.key];
+newAtt[newKey]={...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:newVenue,venueKey:newVenue,verified:false};
+sv.att(newAtt);
     setEd(null);
   };
   return <div>
