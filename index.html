@@ -1114,6 +1114,7 @@ function StaffWish({year,month,prefs,sv,uname}){
 
 // ─── 全体シフト（コンシェルジュ・ディレクター・事務 共通）─────────────
 function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
+  const printShift=()=>window.print();
 
   const days=getDays(year,month);
   const {venues}=cfg;
