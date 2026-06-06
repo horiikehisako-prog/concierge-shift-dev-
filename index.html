@@ -640,11 +640,11 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
               <td style={{...TD,textAlign:"center"}}>
                 {!rec&&<button onClick={e=>{e.stopPropagation();setEd({key,s:"09:00",e:"16:00",b:60,newStaff:sched,venue:venue});}} style={{...Btn(C.amber),fontSize:11,padding:"4px 8px"}}>入力</button>}
                 {rec&&!rec.verified&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60});}} style={{...Btn(C.blue),fontSize:11,padding:"4px 8px"}}>修正</button>
+                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue});}} style={{...Btn(C.blue),fontSize:11,padding:"4px 8px"}}>修正</button>
                   <button onClick={e=>{e.stopPropagation();verify(key);}} style={{...Btn(C.purple),fontSize:11,padding:"4px 8px"}}>承認</button>
                 </div>}
                 {rec?.verified&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60});}} style={{...Btn(C.muted),fontSize:11,padding:"4px 8px"}}>修正</button>
+                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue});}} style={{...Btn(C.muted),fontSize:11,padding:"4px 8px"}}>修正</button>
                   <span style={{color:C.green,fontSize:12,fontWeight:700}}>✅</span>
                 </div>}
               </td>
@@ -2517,6 +2517,7 @@ function MCConfigTab({ cfg, sv }) {
                   )}
                 </tr>
               ))}
+              
             </tbody>
           </table>
         </div>
