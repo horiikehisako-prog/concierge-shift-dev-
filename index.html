@@ -612,6 +612,7 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
   const verify=key=>sv.att({...att,[key]:{...att[key],verified:true,verifiedAt:new Date().toISOString()}});
   const saveEdit=()=>{
     if(!ed)return;
+    alert("key="+ed.key+" venue="+ed.venue+" s="+ed.s+" e="+ed.e);
     const existing=att[ed.key]||{staff:ed.newStaff||"",submittedAt:new Date().toISOString()};
     const newAtt={...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}};
     setLocalAtt(newAtt);
