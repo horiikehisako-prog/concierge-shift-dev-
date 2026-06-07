@@ -76,18 +76,6 @@ const downloadCSV = (filename, rows) => {
 const stLoad=async k=>{try{const snap=await firebase.database().ref('/data/'+k).get();if(!snap.exists())return null;const val=snap.val();if(typeof val==="string"){try{return JSON.parse(val);}catch{return val;}}return val;}catch(e){return null;}};
 const stSave=async(k,v)=>{await firebase.database().ref('/data/'+k).set(JSON.stringify(v));};
 
-
-// キー正規化（春日斎場→春日 など過去データ対応）
-const normalizeAttKey = k => {
-  return k.replace(/-春日斎場$/, '-春日').replace(/-多治米斎場$/, '-多or蔵').replace(/-蔵王斎場$/, '-多or蔵');
-};
-const normalizeAttData = obj => {
-  if(!obj) return obj;
-  const result = {};
-  Object.entries(obj).forEach(([k,v]) => { result[normalizeAttKey(k)] = v; });
-  return result;
-};
-
 // ─── PALETTE & STYLES ─────────────────────────────────────────
 const C={
   bg:"#fdf5f0", white:"#fff", border:"#f5ddd0",
@@ -144,7 +132,7 @@ function App(){
     setBusy(true);
     const [s,sh,pr,at,vc,mcs,asts]=await Promise.all([
       stLoad("settings"),stLoad(`shift-${ym}`),stLoad(`pref-${ym}`),
-      stLoad(`att-${ym}`).then(d=>normalizeAttData(d)),stLoad(`vconf-${ym}`),
+      stLoad(`att-${ym}`),stLoad(`vconf-${ym}`),
       stLoad("mcStaff_str"),stLoad("assistStaff_str"),
     ]);
     setD({
@@ -606,8 +594,11 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
   </div>;
 }
 
-function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
+function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
   const {venues}=cfg,days=getDays(year,month);
+  const [localAtt,setLocalAtt]=useState(attProp);
+  useEffect(()=>{setLocalAtt(attProp);},[attProp]);
+  const att=localAtt;
   const [ed,setEd]=useState(null);
   const actualVenue=(d,vName)=>{
     if(vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
@@ -622,7 +613,9 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
   const saveEdit=()=>{
     if(!ed)return;
     const existing=att[ed.key]||{staff:ed.newStaff||"",submittedAt:new Date().toISOString()};
-    sv.att({...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}});
+    const newAtt={...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}};
+    setLocalAtt(newAtt);
+    sv.att(newAtt);
     setEd(null);
   };
   return <div>
