@@ -600,19 +600,20 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
   useEffect(()=>{setLocalAtt(attProp);},[attProp]);
   const att=localAtt;
   const [ed,setEd]=useState(null);
+  const [venueFilter,setVenueFilter]=useState("all");
   const actualVenue=(d,vName)=>{
     if(vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
     return vName;
   };
-  const rows=[];
+  const allRows=[];
   for(let d=1;d<=days;d++) for(const v of venues){
     const key=`${d}-${v.name}`,rec=att[key],sched=shifts[d]?.[v.name]||"";
-    if(rec||sched)rows.push({d,venue:actualVenue(d,v.name),venueKey:v.name,sched,rec,key});
+    if(rec||sched)allRows.push({d,venue:actualVenue(d,v.name),venueKey:v.name,sched,rec,key});
   }
+  const rows=venueFilter==="all"?allRows:allRows.filter(r=>r.venueKey===venueFilter);
   const verify=key=>sv.att({...att,[key]:{...att[key],verified:true,verifiedAt:new Date().toISOString()}});
   const saveEdit=()=>{
     if(!ed)return;
-    alert("key="+ed.key+" venue="+ed.venue+" s="+ed.s+" e="+ed.e);
     const existing=att[ed.key]||{staff:ed.newStaff||"",submittedAt:new Date().toISOString()};
     const newAtt={...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}};
     setLocalAtt(newAtt);
@@ -620,6 +621,20 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
     setEd(null);
   };
   return <div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <button onClick={()=>setVenueFilter("all")}
+        style={{...Btn(venueFilter==="all"?C.navy:"#fff"),color:venueFilter==="all"?"#fff":C.muted,
+          border:`1px solid ${venueFilter==="all"?C.navy:C.border}`,fontSize:13,padding:"7px 16px"}}>
+        全会場
+      </button>
+      {venues.map(v=>(
+        <button key={v.name} onClick={()=>setVenueFilter(v.name)}
+          style={{...Btn(venueFilter===v.name?C.navy:"#fff"),color:venueFilter===v.name?"#fff":C.muted,
+            border:`1px solid ${venueFilter===v.name?C.navy:C.border}`,fontSize:13,padding:"7px 16px"}}>
+          {v.name}
+        </button>
+      ))}
+    </div>
     <div style={{...GC,display:"flex",gap:20}}>
       {[["入力済",rows.filter(r=>r.rec).length,C.blue],["承認済",rows.filter(r=>r.rec?.verified).length,C.green],
         ["未入力",rows.filter(r=>!r.rec&&r.sched).length,C.amber]].map(([l,v,c])=>(
