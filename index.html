@@ -1,4 +1,4 @@
-concierge-shift-dev <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -405,7 +405,7 @@ function AdminView(P){
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
-    {tab==="shift" & {...P}/>}
+    {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
@@ -631,7 +631,7 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
           const isEd=ed?.key===key;
           return <React.Fragment key={key}>
             <tr style={{background:rec?.verified?"#f0fdf4":"#fff",cursor:rec?"pointer":"default"}}
-              onClick={()=>rec&&!isEd&&setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue})}>
+              onClick={()=>rec&&!isEd&&setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60})}>
               <td style={{...TD,textAlign:"center",fontWeight:700}}>{month}/{d}</td>
               <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
               <td style={TD}>{venue}</td><td style={TD}>{sched||"-"}</td>
