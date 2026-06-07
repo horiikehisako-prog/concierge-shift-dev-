@@ -405,7 +405,7 @@ function AdminView(P){
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
-    {tab==="shift" & {...P}/>}
+    {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
@@ -1354,8 +1354,7 @@ function VenueConfirm({year,month,shifts,vconf,sv,cfg,flash}){
         </div>;
       })}
     </div>}
-    }
-{pending.length===0&&done.length===0&&
+    {pending.length===0&&done.length===0&&
       <div style={{...GC,textAlign:"center",color:C.muted,padding:48}}>
         <div style={{fontSize:36,marginBottom:8}}>✅</div>
         <p style={{margin:0}}>この月の確定作業はありません</p>
@@ -2516,7 +2515,7 @@ function MCConfigTab({ cfg, sv }) {
                     ))
                   )}
                 </tr>
-              ))}
+              ))}h
               
             </tbody>
           </table>
