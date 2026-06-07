@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+concierge-shift-dev <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -405,7 +405,7 @@ function AdminView(P){
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
-    {tab==="shift" &&<AdminShiftView {...P}/>}
+    {tab==="shift" & {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
@@ -631,20 +631,20 @@ function AdminAttView({year,month,att,shifts,vconf,cfg,sv}){
           const isEd=ed?.key===key;
           return <React.Fragment key={key}>
             <tr style={{background:rec?.verified?"#f0fdf4":"#fff",cursor:rec?"pointer":"default"}}
-              onClick={()=>rec&&!isEd&&setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60})}>
+              onClick={()=>rec&&!isEd&&setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue})}>
               <td style={{...TD,textAlign:"center",fontWeight:700}}>{month}/{d}</td>
               <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
               <td style={TD}>{venue}</td><td style={TD}>{sched||"-"}</td>
               <td style={{...TD,fontWeight:600}}>{rec?.staff||<span style={{color:C.muted,fontWeight:400}}>未入力</span>}</td>
               <td style={{...TD,color:C.muted}}>{rec?`${rec.start}〜${rec.end} 休憩${rec.breakMin??60}分（実働${h}h)`:"−"}</td>
               <td style={{...TD,textAlign:"center"}}>
-                {!rec&&<button onClick={e=>{e.stopPropagation();setEd({key,s:"09:00",e:"16:00",b:60,newStaff:sched,venue:venue});}} style={{...Btn(C.amber),fontSize:11,padding:"4px 8px"}}>入力</button>}
+                {!rec&&<button onClick={e=>{e.stopPropagation();setEd({key,s:"09:00",e:"16:00",b:60,newStaff:sched});}} style={{...Btn(C.amber),fontSize:11,padding:"4px 8px"}}>入力</button>}
                 {rec&&!rec.verified&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue});}} style={{...Btn(C.blue),fontSize:11,padding:"4px 8px"}}>修正</button>
+                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60});}} style={{...Btn(C.blue),fontSize:11,padding:"4px 8px"}}>修正</button>
                   <button onClick={e=>{e.stopPropagation();verify(key);}} style={{...Btn(C.purple),fontSize:11,padding:"4px 8px"}}>承認</button>
                 </div>}
                 {rec?.verified&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue});}} style={{...Btn(C.muted),fontSize:11,padding:"4px 8px"}}>修正</button>
+                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60});}} style={{...Btn(C.muted),fontSize:11,padding:"4px 8px"}}>修正</button>
                   <span style={{color:C.green,fontSize:12,fontWeight:700}}>✅</span>
                 </div>}
               </td>
@@ -2516,8 +2516,7 @@ function MCConfigTab({ cfg, sv }) {
                     ))
                   )}
                 </tr>
-              ))}h
-              
+              ))}
             </tbody>
           </table>
         </div>
