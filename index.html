@@ -1,4 +1,4 @@
-concierge-shift-dev <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -405,7 +405,7 @@ function AdminView(P){
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
-    {tab==="shift" & {...P}/>}
+    {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
