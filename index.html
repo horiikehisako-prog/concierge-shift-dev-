@@ -602,7 +602,11 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
   const [ed,setEd]=useState(null);
   const [venueFilter,setVenueFilter]=useState("all");
   const actualVenue=(d,vName)=>{
-    if(vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
+    const isFlexVenue = cfg.venues.find(v=>v.name===vName)?.options?.length>0;
+    if(isFlexVenue && vconf&&vconf[d]){
+      if(typeof vconf[d]==="string") return vconf[d];
+      if(vconf[d][vName]) return vconf[d][vName];
+    }
     return vName;
   };
   const allRows=[];
