@@ -837,7 +837,8 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
   const days=getDays(year,month);
 
   const actualVenue=(d,vName)=>{
-    if(vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
+    const isFlexVenue=cfg.venues.find(v=>v.name===vName)?.options?.length>0;
+    if(isFlexVenue&&vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
     return vName;
   };
 
@@ -1728,7 +1729,8 @@ function AttendanceSummaryView({year,month,att,shifts,vconf,cfg}){
   const [selected,setSelected]=useState(null);
 
   const actualVenue=(d,vName)=>{
-    if(vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
+    const isFlexVenue=cfg.venues.find(v=>v.name===vName)?.options?.length>0;
+    if(isFlexVenue&&vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
     return vName;
   };
 
@@ -1887,7 +1889,8 @@ function PrintableSheet({year,month,shifts,att,vconf,cfg}){
   const days=getDays(year,month);
 
   const actualVenue=(d,vName)=>{
-    if(vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
+    const isFlexVenue=cfg.venues.find(v=>v.name===vName)?.options?.length>0;
+    if(isFlexVenue&&vconf&&vconf[d]){if(typeof vconf[d]==="string") return vconf[d];if(vconf[d][vName]) return vconf[d][vName];}
     if(vName==="多or蔵") return "蔵王・多治米";
     return vName;
   };
