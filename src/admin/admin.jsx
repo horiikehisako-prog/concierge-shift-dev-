@@ -1,6 +1,7 @@
 function AdminView(P){
   const [tab,setTab]=useState("pref");
   const tabs=[
+    {id:"reports",label:"Reports"},
     {id:"pref",  label:"📋 希望一覧"},
     {id:"shift", label:"📅 シフト確定"},
     {id:"att",   label:"🕐 出勤記録"},
@@ -8,6 +9,7 @@ function AdminView(P){
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="reports"&&<AdminReportsView {...P}/>}
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
     {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
@@ -28,7 +30,7 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
   const diffDays=Math.ceil((deadline-today)/(1000*60*60*24));
   const dayInfo=Array.from({length:days},(_,i)=>{
     const d=i+1;
-    const applicants=staff.filter(s=>(prefs[s]||[]).includes(d));
+    const applicants=staff.filter(s=>prefStatus(prefs,s,d)!==PREF_NG);
     const assigned=venues.map(v=>shifts[d]?.[v.name]).filter(Boolean);
     return {d,applicants,assigned};
   });
@@ -61,6 +63,27 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
         <div style={{fontSize:22,fontWeight:800,color:c}}>{v}</div>
         <div style={{fontSize:11,color:C.muted}}>{l}</div>
       </div>)}
+    </div>
+    <div style={{...GC,overflowX:"auto",padding:0}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:Math.max(520,staff.length*72+96)}}>
+        <thead><tr style={{background:"#f8f9fb"}}>
+          <th style={{...TH,width:34}}>日</th><th style={{...TH,width:28}}>曜</th>
+          {staff.map(s=><th key={s} style={TH}>{s}</th>)}
+        </tr></thead>
+        <tbody>{Array.from({length:days},(_,i)=>i+1).map(d=>{
+          const wdi=getWdayI(year,month,d);
+          return <tr key={d} style={{background:wdi===0?"#fff5f5":wdi===6?"#f0f4ff":"#fff"}}>
+            <td style={{...TD,textAlign:"center",fontWeight:700}}>{d}</td>
+            <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
+            {staff.map(s=>{
+              const st=prefStatus(prefs,s,d);
+              const color=st===PREF_OK?C.green:st===PREF_MAYBE?C.amber:C.muted;
+              const bg=st===PREF_OK?C.greenL:st===PREF_MAYBE?C.amberL:"#f8f9fb";
+              return <td key={s} style={{...TD,textAlign:"center",fontWeight:800,color,background:bg}}>{PREF_LABELS[st]}</td>;
+            })}
+          </tr>;
+        })}</tbody>
+      </table>
     </div>
     {over.length>0&&<div style={{...GC,border:`2px solid ${C.red}`}}>
       <h3 style={{margin:"0 0 10px",color:C.red,fontSize:14}}>⚠️ 調整が必要な日（{need}名を超えています）</h3>
@@ -173,7 +196,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
         <tbody>{Array.from({length:days},(_,i)=>i+1).map(d=>{
           const wdi=getWdayI(year,month,d);
           const bg=wdi===0?"#fff5f5":wdi===6?"#f0f4ff":"#fff";
-          const opted=new Set(staff.filter(s=>(prefs[s]||[]).includes(d)));
+          const opted=new Set(staff.filter(s=>prefStatus(prefs,s,d)!==PREF_NG));
           return <tr key={d} style={{background:bg}}>
             <td style={{...TD,textAlign:"center",fontWeight:700}}>{d}</td>
             <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
@@ -186,7 +209,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
                     borderRadius:6,padding:"4px 6px",fontSize:13,background:"#fff"}}>
                   <option value="">-- 未定 --</option>
                   {staff.map(s=><option key={s} value={s} style={{color:opted.has(s)?"inherit":"#aaa"}}>
-                    {s}{opted.has(s)?"":" ※希望外"}</option>)}
+                    {s} {prefLabel(prefs,s,d)}{opted.has(s)?"":" ※希望外"}</option>)}
                 </select>
                 {notOpted&&<div style={{fontSize:10,color:C.amber}}>⚡ 希望外</div>}
               </td>;
@@ -308,6 +331,78 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
         })}</tbody>
       </table>
     </div>
+  </div>;
+}
+
+function AdminReportsView({year,month,shifts,prefs,cfg}){
+  const days=getDays(year,month);
+  const {staff,venues}=cfg;
+  const [view,setView]=useState("store");
+  const storeRows=venues.map(v=>{
+    let assigned=0,open=0;
+    const staffCount={};
+    for(let d=1;d<=days;d++){
+      const sn=shifts[d]?.[v.name]||"";
+      if(sn){assigned++;staffCount[sn]=(staffCount[sn]||0)+1;}
+      else open++;
+    }
+    return {name:v.name,assigned,open,staffCount};
+  });
+  const staffRows=staff.map(name=>{
+    let assigned=0,ok=0,maybe=0,ng=0,maybeAssigned=0;
+    const venueCount={};
+    for(let d=1;d<=days;d++){
+      const st=prefStatus(prefs,name,d);
+      if(st===PREF_OK) ok++; else if(st===PREF_MAYBE) maybe++; else ng++;
+      venues.forEach(v=>{
+        if(shifts[d]?.[v.name]===name){
+          assigned++;
+          if(st===PREF_MAYBE) maybeAssigned++;
+          venueCount[v.name]=(venueCount[v.name]||0)+1;
+        }
+      });
+    }
+    return {name,assigned,ok,maybe,ng,maybeAssigned,venueCount};
+  });
+  const dlStore=()=>downloadCSV(`store_summary_${year}_${p2(month)}.csv`,[
+    ["Store","Assigned","Open","Staff breakdown"],
+    ...storeRows.map(r=>[r.name,r.assigned,r.open,Object.entries(r.staffCount).map(([s,c])=>`${s}:${c}`).join(" / ")])
+  ]);
+  const dlStaff=()=>downloadCSV(`staff_summary_${year}_${p2(month)}.csv`,[
+    ["Staff","Assigned","Available","Prefer not","Not available","Prefer-not assigned","Store breakdown"],
+    ...staffRows.map(r=>[r.name,r.assigned,r.ok,r.maybe,r.ng,r.maybeAssigned,Object.entries(r.venueCount).map(([v,c])=>`${v}:${c}`).join(" / ")])
+  ]);
+  return <div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <button onClick={()=>setView("store")} style={{...Btn(view==="store"?C.navy:"#fff"),color:view==="store"?"#fff":C.muted,border:`1px solid ${view==="store"?C.navy:C.border}`}}>Store summary</button>
+      <button onClick={()=>setView("staff")} style={{...Btn(view==="staff"?C.navy:"#fff"),color:view==="staff"?"#fff":C.muted,border:`1px solid ${view==="staff"?C.navy:C.border}`}}>Staff summary</button>
+      <button onClick={view==="store"?dlStore:dlStaff} style={{...Btn(C.green),marginLeft:"auto"}}>CSV</button>
+    </div>
+    {view==="store"&&<div style={{...GC,overflowX:"auto",padding:0}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:460}}>
+        <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>Store</th><th style={TH}>Assigned</th><th style={TH}>Open</th><th style={TH}>Staff</th></tr></thead>
+        <tbody>{storeRows.map(r=><tr key={r.name}>
+          <td style={{...TD,fontWeight:700}}>{r.name}</td>
+          <td style={{...TD,textAlign:"center",color:C.green,fontWeight:800}}>{r.assigned}</td>
+          <td style={{...TD,textAlign:"center",color:r.open?C.red:C.muted,fontWeight:r.open?800:400}}>{r.open}</td>
+          <td style={TD}>{Object.entries(r.staffCount).map(([s,c])=><span key={s} style={{display:"inline-block",margin:"2px 4px 2px 0",background:C.blueL,color:C.blue,borderRadius:4,padding:"1px 6px",fontSize:12,fontWeight:700}}>{s}: {c}</span>)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+    {view==="staff"&&<div style={{...GC,overflowX:"auto",padding:0}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:560}}>
+        <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>Staff</th><th style={TH}>Assigned</th><th style={TH}>○</th><th style={TH}>△</th><th style={TH}>×</th><th style={TH}>△ assigned</th><th style={TH}>Store</th></tr></thead>
+        <tbody>{staffRows.map(r=><tr key={r.name}>
+          <td style={{...TD,fontWeight:700}}>{r.name}</td>
+          <td style={{...TD,textAlign:"center",fontWeight:800,color:C.navy}}>{r.assigned}</td>
+          <td style={{...TD,textAlign:"center",color:C.green}}>{r.ok}</td>
+          <td style={{...TD,textAlign:"center",color:C.amber}}>{r.maybe}</td>
+          <td style={{...TD,textAlign:"center",color:C.muted}}>{r.ng}</td>
+          <td style={{...TD,textAlign:"center",color:r.maybeAssigned?C.amber:C.muted,fontWeight:r.maybeAssigned?800:400}}>{r.maybeAssigned}</td>
+          <td style={TD}>{Object.entries(r.venueCount).map(([v,c])=><span key={v} style={{display:"inline-block",margin:"2px 4px 2px 0",background:C.greenL,color:C.green,borderRadius:4,padding:"1px 6px",fontSize:12,fontWeight:700}}>{v}: {c}</span>)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
   </div>;
 }
 

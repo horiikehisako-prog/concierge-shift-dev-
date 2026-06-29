@@ -18,7 +18,9 @@ function StaffView(P){
 
 function StaffWish({year,month,prefs,sv,uname}){
   const days=getDays(year,month);
-  const myDays=prefs[uname]||[];
+  const myPrefs=normalizePrefMap(prefs[uname]);
+  const myDays=Array.from({length:days},(_,i)=>i+1).filter(d=>myPrefs[d]===PREF_OK);
+  const maybeDays=Array.from({length:days},(_,i)=>i+1).filter(d=>myPrefs[d]===PREF_MAYBE);
   const firstDow=new Date(year,month-1,1).getDay();
   const today=new Date();
 
@@ -35,8 +37,9 @@ function StaffWish({year,month,prefs,sv,uname}){
 
   const toggle=d=>{
     if(isLocked) return;
-    const cur=prefs[uname]||[];
-    sv.prefs({...prefs,[uname]:cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]});
+    const cur=normalizePrefMap(prefs[uname]);
+    const next=cur[d]===PREF_OK?PREF_MAYBE:cur[d]===PREF_MAYBE?PREF_NG:PREF_OK;
+    sv.prefs({...prefs,[uname]:{...cur,[d]:next}});
   };
 
   return <div style={GC}>
@@ -87,13 +90,17 @@ function StaffWish({year,month,prefs,sv,uname}){
             padding:"4px 0",color:i===0?C.sun:i===6?C.sat:C.muted}}>{w}</div>)}
           {Array.from({length:firstDow},(_,i)=><div key={`e${i}`}/>)}
           {Array.from({length:days},(_,i)=>i+1).map(d=>{
-            const wdi=getWdayI(year,month,d),ok=myDays.includes(d);
+            const wdi=getWdayI(year,month,d),status=myPrefs[d]||PREF_NG;
+            const ok=status===PREF_OK, maybe=status===PREF_MAYBE;
             return <button key={d} onClick={()=>toggle(d)}
-              style={{padding:"10px 4px",border:ok?`2px solid ${C.green}`:`1px solid ${C.border}`,
+              style={{padding:"8px 4px",border:ok?`2px solid ${C.green}`:maybe?`2px solid ${C.amber}`:`1px solid ${C.border}`,
                 borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,
-                background:ok?C.greenL:"#fff",color:ok?C.green:wdi===0?C.sun:wdi===6?C.sat:C.text}}>
-              {d}</button>;
+                background:ok?C.greenL:maybe?C.amberL:"#fff",color:ok?C.green:maybe?C.amber:wdi===0?C.sun:wdi===6?C.sat:C.text}}>
+              <div>{d}</div><div style={{fontSize:12,lineHeight:"14px"}}>{PREF_LABELS[status]}</div></button>;
           })}
+        </div>
+        <div style={{fontSize:12,color:C.muted,marginBottom:4}}>
+          ○ {myDays.length} / △ {maybeDays.length} / × {days-myDays.length-maybeDays.length}
         </div>
         <div style={{fontSize:12,color:C.muted}}>
           希望日（{myDays.length}日）:&nbsp;

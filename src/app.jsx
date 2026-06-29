@@ -1,7 +1,8 @@
 function App(){
   const now=new Date();
-  const [year,setYear]  =useState(now.getFullYear());
-  const [month,setMonth]=useState(now.getMonth()+1);
+  const initialMonthDate=new Date(now.getFullYear(),now.getMonth()+1,1);
+  const [year,setYear]  =useState(initialMonthDate.getFullYear());
+  const [month,setMonth]=useState(initialMonthDate.getMonth()+1);
   const [role,setRole]  =useState(null);
   const [uname,setUname]=useState("");
   const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null,pantryStaff:null});
@@ -78,19 +79,17 @@ function App(){
   const generate=()=>{
     const {staff,venues}=cfg;
     const days=getDays(year,month);
-    const ns={...D.shifts};
+    const ns={};
     // 月全体の勤務カウント
     const totalCnt={}, venueCnt={};
     staff.forEach(s=>{totalCnt[s]=0;venueCnt[s]={};venues.forEach(v=>{venueCnt[s][v.name]=0;});});
-    Object.entries(ns).forEach(([d,dd])=>Object.entries(dd).forEach(([vn,sn])=>{
-      if(totalCnt[sn]!==undefined){totalCnt[sn]++;if(venueCnt[sn]?.[vn]!==undefined)venueCnt[sn][vn]++;}
-    }));
     for(let d=1;d<=days;d++){
-      if(!ns[d])ns[d]={};
+      ns[d]={};
       const used=new Set();
       for(const v of venues){
-        if(ns[d][v.name]){used.add(ns[d][v.name]);continue;}
-        const avail=staff.filter(s=>(D.prefs[s]||[]).includes(d)&&!used.has(s));
+        const ok=staff.filter(s=>prefIsOk(D.prefs,s,d)&&!used.has(s));
+        const maybe=staff.filter(s=>prefIsMaybe(D.prefs,s,d)&&!used.has(s));
+        const avail=ok.length?ok:maybe;
         if(!avail.length){ns[d][v.name]="";continue;}
         // 優先：この会場の勤務が少ない人 → 全体勤務が少ない人
         avail.sort((a,b)=>{

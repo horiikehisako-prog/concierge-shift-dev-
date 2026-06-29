@@ -46,3 +46,28 @@ const downloadCSV = (filename, rows) => {
   URL.revokeObjectURL(url);
 };
 
+const PREF_OK = "ok";
+const PREF_MAYBE = "maybe";
+const PREF_NG = "ng";
+const PREF_LABELS = {[PREF_OK]:"○", [PREF_MAYBE]:"△", [PREF_NG]:"×"};
+
+const normalizePrefMap = value => {
+  const map = {};
+  if(Array.isArray(value)){
+    value.forEach(d => { map[d] = PREF_OK; });
+    return map;
+  }
+  if(value && typeof value === "object"){
+    Object.entries(value).forEach(([d,status]) => {
+      if(status === PREF_OK || status === PREF_MAYBE || status === PREF_NG) map[d] = status;
+      else if(status === true) map[d] = PREF_OK;
+    });
+  }
+  return map;
+};
+
+const prefStatus = (prefs, staffName, day) => normalizePrefMap((prefs||{})[staffName])[day] || PREF_NG;
+const prefIsOk = (prefs, staffName, day) => prefStatus(prefs, staffName, day) === PREF_OK;
+const prefIsMaybe = (prefs, staffName, day) => prefStatus(prefs, staffName, day) === PREF_MAYBE;
+const prefLabel = (prefs, staffName, day) => PREF_LABELS[prefStatus(prefs, staffName, day)] || "×";
+
