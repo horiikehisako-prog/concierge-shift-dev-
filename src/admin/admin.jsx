@@ -219,11 +219,11 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
     if(rec||sched)allRows.push({d,venue:actualVenue(d,v.name),venueKey:v.name,sched,rec,key});
   }
   const rows=venueFilter==="all"?allRows:allRows.filter(r=>r.venueKey===venueFilter);
-  const verify=key=>sv.att({...att,[key]:{...att[key],verified:true,verifiedAt:new Date().toISOString()}});
+  const verify=key=>sv.att({...att,[key]:{...att[key],verified:true,rejected:false}});
   const saveEdit=()=>{
     if(!ed)return;
     const existing=att[ed.key]||{staff:ed.newStaff||"",submittedAt:new Date().toISOString()};
-    const newAtt={...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}};
+    const newAtt={...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false,rejected:false}};
     setLocalAtt(newAtt);
     sv.att(newAtt);
     setEd(null);
@@ -312,22 +312,35 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
 }
 
 function AdminConfig({cfg,sv}){
-  const v1=cfg.venues.find(v=>v.options.length===0)||{name:"春日斎場",options:[]};
-  const v2=cfg.venues.find(v=>v.options.length>0)||{name:"多or蔵",options:["多治米","蔵王"]};
+  const formatClients = clients => normClients(clients).map(c=>[c.name,...c.locations.map(l=>`- ${l}`)].join("\n")).join("\n\n");
+  const parseClients = txt => {
+    const clients=[];
+    txt.split("\n").map(s=>s.trim()).filter(Boolean).forEach(line=>{
+      if(line.startsWith("-")||line.startsWith("・")){
+        if(!clients.length) return;
+        const location=line.replace(/^[-・]\s*/,"").trim();
+        if(location) clients[clients.length-1].locations.push(location);
+      }else{
+        clients.push({name:line,locations:[]});
+      }
+    });
+    return clients.map(c=>({...c,locations:c.locations.length?c.locations:[c.name]}));
+  };
   const [staffTxt,setStaffTxt]=useState(cfg.staff.join("\n"));
   const [mcStaffTxt,setMcStaffTxt]=useState((cfg.mcStaff||DEFAULT_MC_STAFF).join("\n"));
   const [assistStaffTxt,setAssistStaffTxt]=useState((cfg.assistStaff||DEFAULT_ASSIST_STAFF).join("\n"));
-  const [v1n,setV1n]=useState(v1.name);
-  const [v2n,setV2n]=useState(v2.name);
-  const [opts,setOpts]=useState(v2.options.join("\n"));
+  const [pantryStaffTxt,setPantryStaffTxt]=useState((cfg.pantryStaff||DEFAULT_PANTRY_STAFF).join("\n"));
+  const [clientsTxt,setClientsTxt]=useState(formatClients(cfg.clients||DEFAULT_CLIENTS));
   const [newPass,setNewPass]=useState(cfg.officePass||DEFAULT_OFFICE_PASS);
   const [newAdminPass,setNewAdminPass]=useState(cfg.adminPass||DEFAULT_OFFICE_PASS);
   const [newStaffPass,setNewStaffPass]=useState(cfg.staffPass||DEFAULT_STAFF_PASS);
   const [newMcPass,setNewMcPass]=useState(cfg.mcPass||DEFAULT_MC_PASS);
   const [newAssistPass,setNewAssistPass]=useState(cfg.assistPass||DEFAULT_ASSIST_PASS);
+  const [newPantryPass,setNewPantryPass]=useState(cfg.pantryPass||DEFAULT_PANTRY_PASS);
+  const [payRates,setPayRates]=useState({...DEFAULT_PAY_RATES,...(cfg.payRates||{})});
   const [staffRates,setStaffRates]=useState(()=>{
     const r={};
-    (cfg.staff||DEFAULT_STAFF).forEach(n=>{r[n]=cfg.staffRates?.[n]||RATE_STAFF;});
+    (cfg.staff||DEFAULT_STAFF).forEach(n=>{r[n]=cfg.staffRates?.[n]||payRates.conciergeHourly||RATE_STAFF;});
     return r;
   });
   const [saved,setSaved]=useState(false);
@@ -335,17 +348,23 @@ function AdminConfig({cfg,sv}){
   const toList = txt => txt.split("\n").map(s=>s.trim()).filter(Boolean);
   const save=async()=>{
     setErrMsg("");
+    const clients=parseClients(clientsTxt);
     const newSettings={
+      ...cfg,
       staff:toList(staffTxt),
       mcStaff:toList(mcStaffTxt),
       assistStaff:toList(assistStaffTxt),
-      venues:[{name:v1n.trim(),options:[]},{name:v2n.trim(),options:toList(opts)}],
+      pantryStaff:toList(pantryStaffTxt),
+      clients,
+      venues:clientsToVenues(clients),
       staffRates,
+      payRates,
       officePass:newPass.trim()||DEFAULT_OFFICE_PASS,
       adminPass:newAdminPass.trim()||DEFAULT_OFFICE_PASS,
       staffPass:newStaffPass.trim()||DEFAULT_STAFF_PASS,
       mcPass:newMcPass.trim()||DEFAULT_MC_PASS,
       assistPass:newAssistPass.trim()||DEFAULT_ASSIST_PASS,
+      pantryPass:newPantryPass.trim()||DEFAULT_PANTRY_PASS,
     };
     try{
       await stSave("settings", newSettings);
@@ -364,6 +383,7 @@ function AdminConfig({cfg,sv}){
       {label:"👤 コンシェルジュ一覧（1行1名）", val:staffTxt,   set:setStaffTxt,   rows:10},
       {label:"🎤 司会メンバー一覧（1行1名）",   val:mcStaffTxt, set:setMcStaffTxt, rows:6},
       {label:"🤝 アシスタントメンバー一覧（1行1名）", val:assistStaffTxt, set:setAssistStaffTxt, rows:6},
+      {label:"☕ パントリーメンバー一覧（1行1名）", val:pantryStaffTxt, set:setPantryStaffTxt, rows:6},
     ].map(({label,val,set,rows})=>(
       <div key={label} style={{marginBottom:16}}>
         <label style={{display:"block",fontWeight:700,fontSize:13,marginBottom:6}}>{label}</label>
@@ -373,16 +393,9 @@ function AdminConfig({cfg,sv}){
       </div>
     ))}
     <div style={{...GC,background:"#f8f9fb",marginBottom:16}}>
-      <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:10}}>📍 会場設定</div>
-      {[["会場①（固定）",v1n,setV1n],["会場②（前日確定）表示名",v2n,setV2n]].map(([l,v,s])=>(
-        <div key={l} style={{marginBottom:10}}>
-          <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>{l}</label>
-          <input value={v} onChange={e=>s(e.target.value)}
-            style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,boxSizing:"border-box"}}/>
-        </div>
-      ))}
-      <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>確定候補（1行1つ）</label>
-      <textarea value={opts} onChange={e=>setOpts(e.target.value)} rows={3}
+      <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:10}}>📍 クライアント / ロケーション設定</div>
+      <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>クライアント名の下に「- ロケーション名」で入力</label>
+      <textarea value={clientsTxt} onChange={e=>setClientsTxt(e.target.value)} rows={12}
         style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",
           fontSize:13,boxSizing:"border-box",fontFamily:"inherit"}}/>
     </div>
@@ -394,6 +407,7 @@ function AdminConfig({cfg,sv}){
         {label:"👤 コンシェルジュ", val:newStaffPass, set:setNewStaffPass},
         {label:"🎤 司会",      val:newMcPass,    set:setNewMcPass},
         {label:"🤝 アシスタント", val:newAssistPass,set:setNewAssistPass},
+        {label:"☕ パントリー", val:newPantryPass,set:setNewPantryPass},
         {label:"📊 事務",      val:newPass,      set:setNewPass},
       ].map(({label,val,set})=>(
         <div key={label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -405,14 +419,32 @@ function AdminConfig({cfg,sv}){
       ))}
       <p style={{fontSize:11,color:C.muted,margin:"4px 0 0"}}>初期値はすべて「1234」です。「保存する」で反映されます。</p>
     </div>
+    {/* 役割別給与設定 */}
+    <div style={{...GC,background:"#eef6ff",border:`1px solid ${C.blue}`,marginBottom:16}}>
+      <div style={{fontWeight:700,fontSize:13,color:C.blue,marginBottom:12}}>💴 役割別給与設定</div>
+      {[
+        ["Concierge（時給）","conciergeHourly","円/h"],
+        ["MC（日給）","mcDaily","円/日"],
+        ["Assistant（日給）","assistantDaily","円/日"],
+        ["Pantry（日給）","pantryDaily","円/日"],
+      ].map(([label,key,unit])=>(
+        <div key={key} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <span style={{fontSize:13,fontWeight:600,minWidth:130,flex:1}}>{label}</span>
+          <input type="number" value={payRates[key]||0}
+            onChange={e=>setPayRates({...payRates,[key]:Number(e.target.value)||0})}
+            style={{width:100,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:14,textAlign:"right"}}/>
+          <span style={{fontSize:12,color:C.muted}}>{unit}</span>
+        </div>
+      ))}
+    </div>
     {/* 個人別時給 */}
     <div style={{...GC,background:"#f0fdf4",border:`1px solid ${C.green}`,marginBottom:16}}>
-      <div style={{fontWeight:700,fontSize:13,color:C.green,marginBottom:12}}>💴 コンシェルジュ個人別時給（デフォルト{RATE_STAFF}円）</div>
+      <div style={{fontWeight:700,fontSize:13,color:C.green,marginBottom:12}}>💴 コンシェルジュ個人別時給（未設定時は役割別時給）</div>
       {toList(staffTxt).map(name=>(
         <div key={name} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
           <span style={{fontSize:13,fontWeight:600,minWidth:120,flex:1}}>{name}</span>
-          <input type="number" value={staffRates[name]||RATE_STAFF}
-            onChange={e=>setStaffRates({...staffRates,[name]:Number(e.target.value)||RATE_STAFF})}
+          <input type="number" value={staffRates[name]||payRates.conciergeHourly||RATE_STAFF}
+            onChange={e=>setStaffRates({...staffRates,[name]:Number(e.target.value)||payRates.conciergeHourly||RATE_STAFF})}
             style={{width:90,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:14,textAlign:"right"}}/>
           <span style={{fontSize:12,color:C.muted}}>円/h</span>
         </div>

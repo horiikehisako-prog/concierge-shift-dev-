@@ -7,9 +7,10 @@ function RoleSelect({cfg,onSelect}){
   const staffPass  =cfg.staffPass  ||DEFAULT_STAFF_PASS;
   const mcPass     =cfg.mcPass     ||DEFAULT_MC_PASS;
   const assistPass =cfg.assistPass ||DEFAULT_ASSIST_PASS;
+  const pantryPass =cfg.pantryPass ||DEFAULT_PANTRY_PASS;
 
-  const passMap = {admin:adminPass, office:officePass, staff:staffPass, mc:mcPass, assist:assistPass};
-  const nameMap = {admin:"管理者", office:"事務"};
+  const passMap = {admin:adminPass, office:officePass, staff:staffPass, mc:mcPass, assist:assistPass, pantry:pantryPass};
+  const nameMap = {admin:"Administrator", office:"Office"};
 
   const tryLogin=(role)=>{
     const correct=passMap[role];
@@ -34,12 +35,13 @@ function RoleSelect({cfg,onSelect}){
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:300}}>
         {[
-          {r:"admin", i:"⚙️", l:"管理者",       s:"シフト調整・確定",    bg:"#e8784a"},
-          {r:"staff", i:"👤", l:"コンシェルジュ",s:"出勤希望・記録入力",  bg:"#e8a050"},
-          {r:"venue", i:"🏛️", l:"ディレクター",  s:"会場確定・シフト確認",bg:"#d4766a"},
-          {r:"mc",    i:"🎤", l:"司会",          s:"出勤記録・履歴確認",  bg:"#a0785a"},
-          {r:"assist",i:"🤝", l:"アシ・パントリー",  s:"出勤記録・履歴確認",  bg:"#b08060"},
-          {r:"office",i:"📊", l:"事務",          s:"月次計算・CSV出力",   bg:"#c4855a"},
+          {r:"admin", i:"👑", l:"Administrator",s:"設定・シフト調整",    bg:"#e8784a"},
+          {r:"office",i:"📋", l:"Office",       s:"月次計算・CSV出力",   bg:"#c4855a"},
+          {r:"staff", i:"😊", l:"Concierge",    s:"出勤希望・記録入力",  bg:"#e8a050"},
+          {r:"venue", i:"🏛️", l:"Director",     s:"会場確定・出勤承認",  bg:"#d4766a"},
+          {r:"mc",    i:"🎤", l:"MC",           s:"出勤記録・履歴確認",  bg:"#a0785a"},
+          {r:"assist",i:"🤝", l:"Assistant",    s:"出勤記録・履歴確認",  bg:"#b08060"},
+          {r:"pantry",i:"☕", l:"Pantry",       s:"出勤記録・履歴確認",  bg:"#8f7a5a"},
         ].map(({r,i,l,s,bg})=>(
           <button key={r} onClick={()=>setMode(r)}
             style={{background:bg,border:"none",color:"#fff",borderRadius:14,padding:"16px 20px",
@@ -54,10 +56,10 @@ function RoleSelect({cfg,onSelect}){
   );
 
   // パスワード画面（管理者・事務・コンシェルジュ・司会・アシスタント）
-  const needsPw = ["admin","office","staff","mc","assist"];
+  const needsPw = ["admin","office","staff","mc","assist","pantry"];
   const pwTitleMap = {
-    admin:"⚙️ 管理者ログイン", office:"📊 事務ログイン",
-    staff:"👤 コンシェルジュ", mc:"🎤 司会", assist:"🤝 アシスタント"
+    admin:"👑 Administrator ログイン", office:"📋 Office ログイン",
+    staff:"😊 Concierge", mc:"🎤 MC", assist:"🤝 Assistant", pantry:"☕ Pantry"
   };
   if(needsPw.includes(mode)) return (
     <div style={{minHeight:"100vh",background:bgWarm,
@@ -86,13 +88,14 @@ function RoleSelect({cfg,onSelect}){
 
   // 名前選択画面（コンシェルジュ・ディレクター・司会・アシスタント）
   const titleMap={
-    "staff-name":"👤 コンシェルジュを選択","venue":"🏛️ ディレクターを選択",
-    "mc-name":"🎤 司会を選択","assist-name":"🤝 アシスタントを選択"
+    "staff-name":"😊 Concierge を選択","venue":"🏛️ Director を選択",
+    "mc-name":"🎤 MC を選択","assist-name":"🤝 Assistant を選択","pantry-name":"☕ Pantry を選択"
   };
   const baseRole = mode.replace("-name","");
   const nameList=mode==="venue"?cfg.venues.map(v=>v.name):
                  baseRole==="mc"?cfg.mcStaff:
                  baseRole==="assist"?cfg.assistStaff:
+                 baseRole==="pantry"?cfg.pantryStaff:
                  cfg.staff;
   return (
     <div style={{minHeight:"100vh",background:bgWarm,
@@ -125,7 +128,7 @@ function RoleSelect({cfg,onSelect}){
 
 
 function TopBar({role,uname,onBack,year,month}){
-  const lbl={admin:"⚙️ 管理者",staff:`👤 ${uname}`,venue:`🏛️ ${uname}`,office:"📊 事務",mc:`🎤 ${uname}`,assist:`🤝 ${uname}`};
+  const lbl={admin:"👑 Administrator",staff:`😊 ${uname}`,venue:`🏛️ ${uname}`,office:"📋 Office",mc:`🎤 ${uname}`,assist:`🤝 ${uname}`,pantry:`☕ ${uname}`};
   return (
     <div style={{background:"linear-gradient(90deg,#c2613a,#d4785a)",color:"#fff",padding:"12px 20px",display:"flex",alignItems:"center",
       gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(180,80,20,.25)"}}>

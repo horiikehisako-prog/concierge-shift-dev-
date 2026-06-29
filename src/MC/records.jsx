@@ -35,7 +35,8 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
 
   const venues = MC_COMPANIES[form.company] || [];
 
-  const staffRate = (cfg.mcRates||{})[uname]?.[form.company]?.[form.role] || 0;
+  const roleRateKey = form.role==="司会"?"mcDaily":form.role==="パントリー"?"pantryDaily":"assistantDaily";
+  const staffRate = (cfg.mcRates||{})[uname]?.[form.company]?.[form.role] || cfg.payRates?.[roleRateKey] || 0;
 
   return (
     <div>
@@ -148,11 +149,12 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
 
 // MC集計（事務・管理者用）
 function MCAccountingView({ year, month, cfg }) {
-  const { staff } = cfg;
+  const staff = Array.from(new Set([...(cfg.mcStaff||[]),...(cfg.assistStaff||[]),...(cfg.pantryStaff||[]),...(cfg.staff||[])]));
   const [allRecords, setAllRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const billing = cfg.mcBilling || DEFAULT_MC_BILLING;
   const rates   = cfg.mcRates   || {};
+  const payRates= cfg.payRates  || DEFAULT_PAY_RATES;
 
   useEffect(() => {
     Promise.all(
@@ -171,7 +173,8 @@ function MCAccountingView({ year, month, cfg }) {
     let pay = 0;
     recs.forEach(r => {
       const rateKey = r.training ? "研修" : r.role;
-      const rate = rates[name]?.[r.company]?.[rateKey] || 0;
+      const roleRateKey = r.role==="司会"?"mcDaily":r.role==="パントリー"?"pantryDaily":"assistantDaily";
+      const rate = rates[name]?.[r.company]?.[rateKey] || payRates[roleRateKey] || 0;
       pay += rate;
     });
     return { name, count:recs.length, pay, recs };
@@ -199,7 +202,8 @@ function MCAccountingView({ year, month, cfg }) {
       ["スタッフ","日付","会社","会場","役割","種別","支払単価(円)","請求単価(円)","請求額税抜","消費税"],
     ];
     allRecords.sort((a,b)=>a.date>b.date?1:-1).forEach(r=>{
-      const pay = rates[r.staff]?.[r.company]?.[r.role] || 0;
+      const roleRateKey = r.role==="司会"?"mcDaily":r.role==="パントリー"?"pantryDaily":"assistantDaily";
+      const pay = rates[r.staff]?.[r.company]?.[r.role] || payRates[roleRateKey] || 0;
       const t   = r.role==="パントリー"?"2日葬":(r.type||"2日葬");
       const bill= billing[r.company]?.[r.role]?.[t] || 0;
       rows.push([r.staff,r.date,r.company,r.venue,r.role,r.role==="パントリー"?"－":t,

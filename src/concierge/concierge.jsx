@@ -214,7 +214,7 @@ function MyRecord({year,month,shifts,att,sv,uname,cfg}){
   }
   const submit=()=>{
     if(!ed)return;
-    sv.att({...att,[ed.key]:{staff:uname,start:ed.s,end:ed.e,breakMin:ed.b,submittedAt:new Date().toISOString(),verified:false}});
+    sv.att({...att,[ed.key]:{staff:uname,start:ed.s,end:ed.e,breakMin:ed.b,submittedAt:new Date().toISOString(),verified:false,rejected:false}});
     setEd(null);
   };
   return <div style={GC}>

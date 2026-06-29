@@ -1,7 +1,7 @@
 function MCStaffView(P) {
   const { year, month, setYear, setMonth, role, uname, cfg, flash } = P;
   const [tab, setTab] = useState("record");
-  const jobRole = role === "mc" ? "司会" : "アシスタント";
+  const jobRole = role === "mc" ? "司会" : role === "pantry" ? "パントリー" : "アシスタント";
   const tabs = [
     { id:"record", label:"📝 出勤を記録" },
     { id:"history",label:"📋 履歴確認" },
@@ -17,7 +17,7 @@ function MCStaffView(P) {
 }
 
 function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
-  const jobRole = role==="mc"?"司会":"アシスタント";
+  const jobRole = role==="mc"?"司会":role==="pantry"?"パントリー":"アシスタント";
   const today = new Date();
   const [form, setForm] = useState({
     company:"", venue:"", type:"2日葬", assistRole:"アシスタント", training:false,
@@ -29,12 +29,13 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
 
   const rates = cfg.mcRates || {};
   const actualRole = jobRole==="アシスタント" ? form.assistRole : jobRole;
+  const roleRateKey = actualRole==="司会"?"mcDaily":actualRole==="パントリー"?"pantryDaily":"assistantDaily";
   const trainingKey = form.training ? "研修" : null;
   const myRate = trainingKey
     ? (rates[uname]?.[form.company]?.["研修"] || 0)
-    : (rates[uname]?.[form.company]?.[actualRole] || 0);
+    : (rates[uname]?.[form.company]?.[actualRole] || cfg.payRates?.[roleRateKey] || 0);
 
-  const reset = () => { setForm({company:"",venue:"",type:"2日葬",assistRole:"アシスタント",date:`${year}-${p2(month)}-${p2(today.getDate())}`}); };
+  const reset = () => { setForm({company:"",venue:"",type:"2日葬",assistRole:"アシスタント",training:false,date:`${year}-${p2(month)}-${p2(today.getDate())}`}); };
 
   const save = async () => {
     setSaving(true);
@@ -53,7 +54,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
     reset();
   };
 
-  const colors = { "飛鳥会館":"#e8784a", "あしべの杜":"#6b8fb0" };
+  const colors = { "飛鳥会館":"#e8784a", "あしべの杜":"#6b8fb0", "ふかしな葬祭":"#7c8a5a" };
   const canSave = form.venue && (jobRole==="司会" ? !!form.type : true);
 
   return (
@@ -78,7 +79,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
                 borderRadius:12,padding:"14px 8px",cursor:"pointer",fontSize:13,fontWeight:800,
                 background:form.company===company?colors[company]:"#fff",
                 color:form.company===company?"#fff":C.muted}}>
-              {company==="飛鳥会館"?"⛩️":"🌿"}<br/>{company}
+              {company==="飛鳥会館"?"⛩️":company==="あしべの杜"?"🌿":"🏛️"}<br/>{company}
             </button>
           ))}
         </div>
@@ -188,7 +189,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
 }
 
 function MCStaffHistory({ year, month, uname, role, cfg }) {
-  const jobRole = role==="mc"?"司会":"アシスタント";
+  const jobRole = role==="mc"?"司会":role==="pantry"?"パントリー":"アシスタント";
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const rates = cfg.mcRates || {};
@@ -205,7 +206,11 @@ function MCStaffHistory({ year, month, uname, role, cfg }) {
     });
   },[year,month,uname,jobRole]);
 
-  const totalPay = records.reduce((a,r)=>a+(rates[uname]?.[r.company]?.[jobRole]||0),0);
+  const rateFor = r => {
+    const key = r.role==="司会"?"mcDaily":r.role==="パントリー"?"pantryDaily":"assistantDaily";
+    return rates[uname]?.[r.company]?.[r.role] || cfg.payRates?.[key] || 0;
+  };
+  const totalPay = records.reduce((a,r)=>a+rateFor(r),0);
 
   if(loading) return <div style={{padding:40,textAlign:"center",color:C.muted}}>読み込み中…</div>;
 
@@ -218,7 +223,7 @@ function MCStaffHistory({ year, month, uname, role, cfg }) {
       </div>
       {records.length===0&&<p style={{color:C.muted,fontSize:13}}>この月の記録はありません</p>}
       {records.sort((a,b)=>a.date>b.date?1:-1).map(r=>{
-        const pay = rates[uname]?.[r.company]?.[jobRole]||0;
+        const pay = rateFor(r);
         return (
           <div key={r.id} style={{borderBottom:`1px solid ${C.border}`,padding:"12px 0"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -226,7 +231,7 @@ function MCStaffHistory({ year, month, uname, role, cfg }) {
                 <div style={{fontWeight:700,fontSize:14}}>{r.date}</div>
                 <div style={{fontSize:12,color:C.muted,marginTop:3}}>
                   {r.company}　{r.venue}
-                  {jobRole==="司会"&&<span style={{marginLeft:6,color:C.purple,fontWeight:600}}>（{r.type}）</span>}
+                  {r.role==="司会"&&<span style={{marginLeft:6,color:C.purple,fontWeight:600}}>（{r.type}）</span>}
                 </div>
               </div>
               {pay>0&&<span style={{color:C.green,fontWeight:700,fontSize:13}}>{yen(pay)}</span>}

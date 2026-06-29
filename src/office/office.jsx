@@ -8,7 +8,7 @@ function normalizeBillingVenue(venueName) {
   return venueName;
 }
 function AccountingView({year,month,att,shifts,vconf,cfg}){
-  const {staff,venues,staffRates={}}=cfg;
+  const {staff,venues,staffRates={},payRates={}}=cfg;
   const days=getDays(year,month);
 
   const actualVenue=(d,vName)=>{
@@ -22,14 +22,15 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
     for(let d=1;d<=days;d++) for(const v of venues){
       if(shifts[d]?.[v.name]===name){
         const key=`${d}-${v.name}`,rec=att[key];
-        const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
+        if(!rec?.verified) continue;
+        const h=parseHours(rec.start,rec.end,rec.breakMin??60);
         const ot=Math.max(0,Math.round((h-OVERTIME_HOURS)*100)/100);
         totalDays++;totalHours+=h;totalOT+=ot;
       }
     }
     totalHours=Math.round(totalHours*100)/100;
     totalOT=Math.round(totalOT*100)/100;
-    const rate=staffRates[name]||RATE_STAFF;
+    const rate=staffRates[name]||payRates.conciergeHourly||RATE_STAFF;
     const pay=Math.round(totalHours*rate);
     return {name,totalDays,totalHours,totalOT,pay,rate};
   }).filter(r=>r.totalDays>0);
@@ -40,7 +41,8 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
     const aVenue=actualVenue(d,v.name);
     const billingVenue=normalizeBillingVenue(aVenue);
     const key=`${d}-${v.name}`,rec=att[key];
-    const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
+    if(!rec?.verified) continue;
+    const h=parseHours(rec.start,rec.end,rec.breakMin??60);
     if(!venueMap[billingVenue]) venueMap[billingVenue]={name:billingVenue,days:0,hours:0};
     venueMap[billingVenue].days++;venueMap[billingVenue].hours+=h;
   }
@@ -78,9 +80,10 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
     for(let d=1;d<=days;d++) for(const v of venues){
       const sn=shifts[d]?.[v.name];if(!sn)continue;
       const key=`${d}-${v.name}`,rec=att[key];
+      if(!rec?.verified) continue;
       const s=rec?.start||"09:00",e=rec?.end||"16:00",bm=rec?.breakMin??60,h=parseHours(s,e,bm);
       const ot=Math.max(0,Math.round((h-OVERTIME_HOURS)*100)/100);
-      const rate=staffRates[sn]||RATE_STAFF;
+      const rate=staffRates[sn]||payRates.conciergeHourly||RATE_STAFF;
       rows.push([sn,`${year}/${month}/${d}`,getWday(year,month,d),actualVenue(d,v.name),s,e,bm,h,ot,rate,Math.round(h*rate),rec?.verified?"承認済":"未承認"]);
     }
     downloadCSV(`出勤詳細_${year}年${month}月.csv`,rows);
@@ -101,7 +104,7 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
       ))}
     </div>
     <div style={{...GC,background:C.amberL,border:`1px solid ${C.amber}`,padding:"10px 14px",fontSize:12,color:"#92400e"}}>
-      ⚠️ 出勤記録未入力の日はデフォルト{DEFAULT_HOURS}時間。残業は{OVERTIME_HOURS}時間超えを赤表示。
+      ⚠️ 給与・請求への反映はディレクター承認済みの出勤記録のみです。残業は{OVERTIME_HOURS}時間超えを赤表示。
     </div>
     <div style={GC}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>

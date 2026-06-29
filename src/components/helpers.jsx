@@ -4,6 +4,23 @@ const getWdayI = (y,m,d) => new Date(y,m-1,d).getDay();
 const p2   = n => String(n).padStart(2,"0");
 const ymS  = (y,m) => `${y}-${p2(m)}`;
 const normV= vs => vs.map(v => typeof v==="string"?{name:v,options:[]}:v);
+const normClients = clients => ensureArray(clients).map(c => {
+  if(typeof c==="string") return {name:c,locations:[]};
+  return {name:c.name,locations:ensureArray(c.locations)};
+}).filter(c=>c.name);
+const clientsToVenues = clients => normClients(clients).flatMap(client =>
+  client.locations.map(location => ({name:location,client:client.name,options:[]}))
+);
+const venuesToClients = venues => {
+  const map={};
+  normV(ensureArray(venues)).forEach(v=>{
+    const client=v.client||"飛鳥会館";
+    if(!map[client]) map[client]=[];
+    const locations=v.options&&v.options.length?v.options:[v.name];
+    locations.forEach(location=>{ if(location&&!map[client].includes(location)) map[client].push(location); });
+  });
+  return Object.entries(map).map(([name,locations])=>({name,locations}));
+};
 // Firebaseが配列をオブジェクトに変換する問題を防ぐ
 const ensureArray = v => {
   if(!v) return [];

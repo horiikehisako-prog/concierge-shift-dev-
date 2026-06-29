@@ -4,12 +4,12 @@ function App(){
   const [month,setMonth]=useState(now.getMonth()+1);
   const [role,setRole]  =useState(null);
   const [uname,setUname]=useState("");
-  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null});
+  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null,pantryStaff:null});
   const [busy,setBusy]  =useState(false);
   const [toast,setToast]=useState("");
 
   const ym =ymS(year,month);
-  const raw=D.settings||{staff:DEFAULT_STAFF,venues:DEFAULT_VENUES};
+  const raw=D.settings||{staff:DEFAULT_STAFF,clients:DEFAULT_CLIENTS,venues:DEFAULT_VENUES};
   // パイプ区切り文字列から配列に変換、なければsettings内を参照
   const parsePipe = (str,fallback) => {
     if(str && typeof str==="string") return str.split("|").filter(Boolean);
@@ -17,12 +17,17 @@ function App(){
   };
   const mcStaffData   = parsePipe(D.mcStaff,   ensureArray(raw.mcStaff));
   const assistStaffData = parsePipe(D.assistStaff, ensureArray(raw.assistStaff));
+  const pantryStaffData = parsePipe(D.pantryStaff, ensureArray(raw.pantryStaff));
+  const clients=normClients(raw.clients&&ensureArray(raw.clients).length?raw.clients:DEFAULT_CLIENTS);
   const cfg={...raw,
-    venues:normV(ensureArray(raw.venues)),
+    clients,
+    venues:clientsToVenues(clients),
     staff:ensureArray(raw.staff).length>0?ensureArray(raw.staff):DEFAULT_STAFF,
     mcStaff:mcStaffData.length>0?mcStaffData:DEFAULT_MC_STAFF,
     assistStaff:assistStaffData.length>0?assistStaffData:DEFAULT_ASSIST_STAFF,
+    pantryStaff:pantryStaffData.length>0?pantryStaffData:DEFAULT_PANTRY_STAFF,
     staffRates:raw.staffRates||{}, // コンシェルジュ個人別時給
+    payRates:{...DEFAULT_PAY_RATES,...(raw.payRates||{})},
     ashibeRates:raw.ashibeRates||{}, // あしべの杜単価
   };
 
@@ -30,14 +35,14 @@ function App(){
 
   const reload=useCallback(async()=>{
     setBusy(true);
-    const [s,sh,pr,at,vc,mcs,asts]=await Promise.all([
+    const [s,sh,pr,at,vc,mcs,asts,pans]=await Promise.all([
       stLoad("settings"),stLoad(`shift-${ym}`),stLoad(`pref-${ym}`),
       stLoad(`att-${ym}`),stLoad(`vconf-${ym}`),
-      stLoad("mcStaff_str"),stLoad("assistStaff_str"),
+      stLoad("mcStaff_str"),stLoad("assistStaff_str"),stLoad("pantryStaff_str"),
     ]);
     setD({
       settings:s,shifts:sh||{},prefs:pr||{},att:at||{},vconf:vc||{},
-      mcStaff:mcs||null,assistStaff:asts||null,
+      mcStaff:mcs||null,assistStaff:asts||null,pantryStaff:pans||null,
     });
     setBusy(false);
   },[ym]);
@@ -62,6 +67,10 @@ function App(){
     assistStaff: v=>{
       setD(d=>({...d,assistStaff:v.join("|")}));
       stSave("assistStaff_str",v.join("|")); // エラーが出ても止めない
+    },
+    pantryStaff: v=>{
+      setD(d=>({...d,pantryStaff:v.join("|")}));
+      stSave("pantryStaff_str",v.join("|"));
     },
   };
 
@@ -115,7 +124,7 @@ function App(){
         {!busy&&role==="staff"  &&<StaffView  {...P}/>}
         {!busy&&role==="venue"  &&<VenueView  {...P}/>}
         {!busy&&role==="office" &&<OfficeView {...P}/>}
-        {!busy&&(role==="mc"||role==="assist")&&<MCStaffView {...P}/>}
+        {!busy&&(role==="mc"||role==="assist"||role==="pantry")&&<MCStaffView {...P}/>}
       </div>
     </div>
   );

@@ -100,12 +100,14 @@ function VenueAtt({year,month,att,shifts,cfg,sv,flash}){
     if(rec||sched)rows.push({d,venue:v.name,sched,rec,key});
   }
   const [showAll,setShowAll]=useState(false);
-  const display=showAll?rows:rows.filter(r=>r.rec&&!r.rec.verified);
-  const verify=key=>{sv.att({...att,[key]:{...att[key],verified:true,verifiedAt:new Date().toISOString()}});flash("✅ 承認しました");};
+  const display=showAll?rows:rows.filter(r=>r.rec&&!r.rec.verified&&!r.rec.rejected);
+  const approve=key=>{sv.att({...att,[key]:{...att[key],verified:true,rejected:false}});flash("✅ 承認しました");};
+  const reject=key=>{sv.att({...att,[key]:{...att[key],verified:false,rejected:true}});flash("却下しました");};
   return <div>
     <div style={{...GC,display:"flex",gap:20,alignItems:"center"}}>
-      {[["未承認",rows.filter(r=>r.rec&&!r.rec.verified).length,C.red],
-        ["承認済",rows.filter(r=>r.rec?.verified).length,C.green]].map(([l,v,c])=>(
+      {[["未承認",rows.filter(r=>r.rec&&!r.rec.verified&&!r.rec.rejected).length,C.red],
+        ["承認済",rows.filter(r=>r.rec?.verified).length,C.green],
+        ["却下",rows.filter(r=>r.rec?.rejected).length,C.muted]].map(([l,v,c])=>(
         <div key={l} style={{textAlign:"center"}}><div style={{fontSize:24,fontWeight:800,color:c}}>{v}</div>
           <div style={{fontSize:11,color:C.muted}}>{l}</div></div>))}
       <button onClick={()=>setShowAll(x=>!x)} style={{...Btn(C.bg,C.muted),border:`1px solid ${C.border}`,marginLeft:"auto",fontSize:12}}>{showAll?"未承認のみ":"全件表示"}</button>
@@ -127,8 +129,12 @@ function VenueAtt({year,month,att,shifts,cfg,sv,flash}){
             <td style={{...TD,color:C.muted}}>{rec?`${rec.start}〜${rec.end}`:"未入力"}</td>
             <td style={{...TD,textAlign:"center"}}>
               {!rec&&<span style={{color:C.amber,fontSize:12,fontWeight:600}}>未入力</span>}
-              {rec&&!rec.verified&&<button onClick={()=>verify(key)} style={{...Btn(C.purple),fontSize:12,padding:"5px 12px"}}>承認する</button>}
+              {rec&&!rec.verified&&!rec.rejected&&<div style={{display:"flex",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
+                <button onClick={()=>approve(key)} style={{...Btn(C.purple),fontSize:12,padding:"5px 12px"}}>承認</button>
+                <button onClick={()=>reject(key)} style={{...Btn(C.muted),fontSize:12,padding:"5px 12px"}}>却下</button>
+              </div>}
               {rec?.verified&&<span style={{color:C.green,fontSize:12,fontWeight:700}}>✅ 承認済</span>}
+              {rec?.rejected&&<span style={{color:C.muted,fontSize:12,fontWeight:700}}>却下</span>}
             </td>
           </tr>;
         })}</tbody>
