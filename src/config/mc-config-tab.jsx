@@ -1,5 +1,5 @@
 function MCConfigTab({ cfg, sv }) {
-  const { staff } = cfg;
+  const staff = Array.from(new Set([...(cfg.mcStaff||[]),...(cfg.assistStaff||[]),...(cfg.pantryStaff||[]),...(cfg.staff||[])]));
   const [billing, setBilling] = useState(
     JSON.parse(JSON.stringify(cfg.mcBilling || DEFAULT_MC_BILLING))
   );
@@ -76,7 +76,7 @@ function MCConfigTab({ cfg, sv }) {
               {Object.keys(MC_COMPANIES).flatMap(c=>
                 [...MC_ROLES,...(c==="あしべの杜"?["研修"]:[])].map(r=>(
                   <th key={`${c}-${r}`} style={{...TH,fontSize:10,color:r==="研修"?"#92400e":undefined}}>
-                    {c==="飛鳥会館"?"飛鳥":"あしべ"}<br/>{r}
+                    {c==="飛鳥会館"?"飛鳥":c==="あしべの杜"?"あしべ":"ふかしな"}<br/>{r}
                   </th>
                 ))
               )}

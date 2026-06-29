@@ -1,6 +1,7 @@
 function AdminView(P){
   const [tab,setTab]=useState("pref");
   const tabs=[
+    {id:"reports",label:"Reports"},
     {id:"pref",  label:"📋 希望一覧"},
     {id:"shift", label:"📅 シフト確定"},
     {id:"att",   label:"🕐 出勤記録"},
@@ -8,6 +9,7 @@ function AdminView(P){
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="reports"&&<AdminReportsView {...P}/>}
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
     {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
@@ -28,7 +30,7 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
   const diffDays=Math.ceil((deadline-today)/(1000*60*60*24));
   const dayInfo=Array.from({length:days},(_,i)=>{
     const d=i+1;
-    const applicants=staff.filter(s=>(prefs[s]||[]).includes(d));
+    const applicants=staff.filter(s=>prefStatus(prefs,s,d)!==PREF_NG);
     const assigned=venues.map(v=>shifts[d]?.[v.name]).filter(Boolean);
     return {d,applicants,assigned};
   });
@@ -61,6 +63,27 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
         <div style={{fontSize:22,fontWeight:800,color:c}}>{v}</div>
         <div style={{fontSize:11,color:C.muted}}>{l}</div>
       </div>)}
+    </div>
+    <div style={{...GC,overflowX:"auto",padding:0}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:Math.max(520,staff.length*72+96)}}>
+        <thead><tr style={{background:"#f8f9fb"}}>
+          <th style={{...TH,width:34}}>日</th><th style={{...TH,width:28}}>曜</th>
+          {staff.map(s=><th key={s} style={TH}>{s}</th>)}
+        </tr></thead>
+        <tbody>{Array.from({length:days},(_,i)=>i+1).map(d=>{
+          const wdi=getWdayI(year,month,d);
+          return <tr key={d} style={{background:wdi===0?"#fff5f5":wdi===6?"#f0f4ff":"#fff"}}>
+            <td style={{...TD,textAlign:"center",fontWeight:700}}>{d}</td>
+            <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
+            {staff.map(s=>{
+              const st=prefStatus(prefs,s,d);
+              const color=st===PREF_OK?C.green:st===PREF_MAYBE?C.amber:C.muted;
+              const bg=st===PREF_OK?C.greenL:st===PREF_MAYBE?C.amberL:"#f8f9fb";
+              return <td key={s} style={{...TD,textAlign:"center",fontWeight:800,color,background:bg}}>{PREF_LABELS[st]}</td>;
+            })}
+          </tr>;
+        })}</tbody>
+      </table>
     </div>
     {over.length>0&&<div style={{...GC,border:`2px solid ${C.red}`}}>
       <h3 style={{margin:"0 0 10px",color:C.red,fontSize:14}}>⚠️ 調整が必要な日（{need}名を超えています）</h3>
@@ -173,7 +196,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
         <tbody>{Array.from({length:days},(_,i)=>i+1).map(d=>{
           const wdi=getWdayI(year,month,d);
           const bg=wdi===0?"#fff5f5":wdi===6?"#f0f4ff":"#fff";
-          const opted=new Set(staff.filter(s=>(prefs[s]||[]).includes(d)));
+          const opted=new Set(staff.filter(s=>prefStatus(prefs,s,d)!==PREF_NG));
           return <tr key={d} style={{background:bg}}>
             <td style={{...TD,textAlign:"center",fontWeight:700}}>{d}</td>
             <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
@@ -186,7 +209,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
                     borderRadius:6,padding:"4px 6px",fontSize:13,background:"#fff"}}>
                   <option value="">-- 未定 --</option>
                   {staff.map(s=><option key={s} value={s} style={{color:opted.has(s)?"inherit":"#aaa"}}>
-                    {s}{opted.has(s)?"":" ※希望外"}</option>)}
+                    {s} {prefLabel(prefs,s,d)}{opted.has(s)?"":" ※希望外"}</option>)}
                 </select>
                 {notOpted&&<div style={{fontSize:10,color:C.amber}}>⚡ 希望外</div>}
               </td>;
@@ -219,11 +242,11 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
     if(rec||sched)allRows.push({d,venue:actualVenue(d,v.name),venueKey:v.name,sched,rec,key});
   }
   const rows=venueFilter==="all"?allRows:allRows.filter(r=>r.venueKey===venueFilter);
-  const verify=key=>sv.att({...att,[key]:{...att[key],verified:true,verifiedAt:new Date().toISOString()}});
+  const verify=key=>sv.att({...att,[key]:{...att[key],verified:true,rejected:false}});
   const saveEdit=()=>{
     if(!ed)return;
     const existing=att[ed.key]||{staff:ed.newStaff||"",submittedAt:new Date().toISOString()};
-    const newAtt={...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false}};
+    const newAtt={...att,[ed.key]:{...existing,start:ed.s,end:ed.e,breakMin:ed.b,venue:ed.venue||existing.venue,verified:false,rejected:false}};
     setLocalAtt(newAtt);
     sv.att(newAtt);
     setEd(null);
@@ -311,23 +334,108 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
   </div>;
 }
 
+function AdminReportsView({year,month,shifts,prefs,cfg}){
+  const days=getDays(year,month);
+  const {staff,venues}=cfg;
+  const [view,setView]=useState("store");
+  const storeRows=venues.map(v=>{
+    let assigned=0,open=0;
+    const staffCount={};
+    for(let d=1;d<=days;d++){
+      const sn=shifts[d]?.[v.name]||"";
+      if(sn){assigned++;staffCount[sn]=(staffCount[sn]||0)+1;}
+      else open++;
+    }
+    return {name:v.name,assigned,open,staffCount};
+  });
+  const staffRows=staff.map(name=>{
+    let assigned=0,ok=0,maybe=0,ng=0,maybeAssigned=0;
+    const venueCount={};
+    for(let d=1;d<=days;d++){
+      const st=prefStatus(prefs,name,d);
+      if(st===PREF_OK) ok++; else if(st===PREF_MAYBE) maybe++; else ng++;
+      venues.forEach(v=>{
+        if(shifts[d]?.[v.name]===name){
+          assigned++;
+          if(st===PREF_MAYBE) maybeAssigned++;
+          venueCount[v.name]=(venueCount[v.name]||0)+1;
+        }
+      });
+    }
+    return {name,assigned,ok,maybe,ng,maybeAssigned,venueCount};
+  });
+  const dlStore=()=>downloadCSV(`store_summary_${year}_${p2(month)}.csv`,[
+    ["Store","Assigned","Open","Staff breakdown"],
+    ...storeRows.map(r=>[r.name,r.assigned,r.open,Object.entries(r.staffCount).map(([s,c])=>`${s}:${c}`).join(" / ")])
+  ]);
+  const dlStaff=()=>downloadCSV(`staff_summary_${year}_${p2(month)}.csv`,[
+    ["Staff","Assigned","Available","Prefer not","Not available","Prefer-not assigned","Store breakdown"],
+    ...staffRows.map(r=>[r.name,r.assigned,r.ok,r.maybe,r.ng,r.maybeAssigned,Object.entries(r.venueCount).map(([v,c])=>`${v}:${c}`).join(" / ")])
+  ]);
+  return <div>
+    <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <button onClick={()=>setView("store")} style={{...Btn(view==="store"?C.navy:"#fff"),color:view==="store"?"#fff":C.muted,border:`1px solid ${view==="store"?C.navy:C.border}`}}>Store summary</button>
+      <button onClick={()=>setView("staff")} style={{...Btn(view==="staff"?C.navy:"#fff"),color:view==="staff"?"#fff":C.muted,border:`1px solid ${view==="staff"?C.navy:C.border}`}}>Staff summary</button>
+      <button onClick={view==="store"?dlStore:dlStaff} style={{...Btn(C.green),marginLeft:"auto"}}>CSV</button>
+    </div>
+    {view==="store"&&<div style={{...GC,overflowX:"auto",padding:0}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:460}}>
+        <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>Store</th><th style={TH}>Assigned</th><th style={TH}>Open</th><th style={TH}>Staff</th></tr></thead>
+        <tbody>{storeRows.map(r=><tr key={r.name}>
+          <td style={{...TD,fontWeight:700}}>{r.name}</td>
+          <td style={{...TD,textAlign:"center",color:C.green,fontWeight:800}}>{r.assigned}</td>
+          <td style={{...TD,textAlign:"center",color:r.open?C.red:C.muted,fontWeight:r.open?800:400}}>{r.open}</td>
+          <td style={TD}>{Object.entries(r.staffCount).map(([s,c])=><span key={s} style={{display:"inline-block",margin:"2px 4px 2px 0",background:C.blueL,color:C.blue,borderRadius:4,padding:"1px 6px",fontSize:12,fontWeight:700}}>{s}: {c}</span>)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+    {view==="staff"&&<div style={{...GC,overflowX:"auto",padding:0}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:560}}>
+        <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>Staff</th><th style={TH}>Assigned</th><th style={TH}>○</th><th style={TH}>△</th><th style={TH}>×</th><th style={TH}>△ assigned</th><th style={TH}>Store</th></tr></thead>
+        <tbody>{staffRows.map(r=><tr key={r.name}>
+          <td style={{...TD,fontWeight:700}}>{r.name}</td>
+          <td style={{...TD,textAlign:"center",fontWeight:800,color:C.navy}}>{r.assigned}</td>
+          <td style={{...TD,textAlign:"center",color:C.green}}>{r.ok}</td>
+          <td style={{...TD,textAlign:"center",color:C.amber}}>{r.maybe}</td>
+          <td style={{...TD,textAlign:"center",color:C.muted}}>{r.ng}</td>
+          <td style={{...TD,textAlign:"center",color:r.maybeAssigned?C.amber:C.muted,fontWeight:r.maybeAssigned?800:400}}>{r.maybeAssigned}</td>
+          <td style={TD}>{Object.entries(r.venueCount).map(([v,c])=><span key={v} style={{display:"inline-block",margin:"2px 4px 2px 0",background:C.greenL,color:C.green,borderRadius:4,padding:"1px 6px",fontSize:12,fontWeight:700}}>{v}: {c}</span>)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
+  </div>;
+}
+
 function AdminConfig({cfg,sv}){
-  const v1=cfg.venues.find(v=>v.options.length===0)||{name:"春日斎場",options:[]};
-  const v2=cfg.venues.find(v=>v.options.length>0)||{name:"多or蔵",options:["多治米","蔵王"]};
+  const formatClients = clients => normClients(clients).map(c=>[c.name,...c.locations.map(l=>`- ${l}`)].join("\n")).join("\n\n");
+  const parseClients = txt => {
+    const clients=[];
+    txt.split("\n").map(s=>s.trim()).filter(Boolean).forEach(line=>{
+      if(line.startsWith("-")||line.startsWith("・")){
+        if(!clients.length) return;
+        const location=line.replace(/^[-・]\s*/,"").trim();
+        if(location) clients[clients.length-1].locations.push(location);
+      }else{
+        clients.push({name:line,locations:[]});
+      }
+    });
+    return clients.map(c=>({...c,locations:c.locations.length?c.locations:[c.name]}));
+  };
   const [staffTxt,setStaffTxt]=useState(cfg.staff.join("\n"));
   const [mcStaffTxt,setMcStaffTxt]=useState((cfg.mcStaff||DEFAULT_MC_STAFF).join("\n"));
   const [assistStaffTxt,setAssistStaffTxt]=useState((cfg.assistStaff||DEFAULT_ASSIST_STAFF).join("\n"));
-  const [v1n,setV1n]=useState(v1.name);
-  const [v2n,setV2n]=useState(v2.name);
-  const [opts,setOpts]=useState(v2.options.join("\n"));
+  const [pantryStaffTxt,setPantryStaffTxt]=useState((cfg.pantryStaff||DEFAULT_PANTRY_STAFF).join("\n"));
+  const [clientsTxt,setClientsTxt]=useState(formatClients(cfg.clients||DEFAULT_CLIENTS));
   const [newPass,setNewPass]=useState(cfg.officePass||DEFAULT_OFFICE_PASS);
   const [newAdminPass,setNewAdminPass]=useState(cfg.adminPass||DEFAULT_OFFICE_PASS);
   const [newStaffPass,setNewStaffPass]=useState(cfg.staffPass||DEFAULT_STAFF_PASS);
   const [newMcPass,setNewMcPass]=useState(cfg.mcPass||DEFAULT_MC_PASS);
   const [newAssistPass,setNewAssistPass]=useState(cfg.assistPass||DEFAULT_ASSIST_PASS);
+  const [newPantryPass,setNewPantryPass]=useState(cfg.pantryPass||DEFAULT_PANTRY_PASS);
+  const [payRates,setPayRates]=useState({...DEFAULT_PAY_RATES,...(cfg.payRates||{})});
   const [staffRates,setStaffRates]=useState(()=>{
     const r={};
-    (cfg.staff||DEFAULT_STAFF).forEach(n=>{r[n]=cfg.staffRates?.[n]||RATE_STAFF;});
+    (cfg.staff||DEFAULT_STAFF).forEach(n=>{r[n]=cfg.staffRates?.[n]||payRates.conciergeHourly||RATE_STAFF;});
     return r;
   });
   const [saved,setSaved]=useState(false);
@@ -335,17 +443,23 @@ function AdminConfig({cfg,sv}){
   const toList = txt => txt.split("\n").map(s=>s.trim()).filter(Boolean);
   const save=async()=>{
     setErrMsg("");
+    const clients=parseClients(clientsTxt);
     const newSettings={
+      ...cfg,
       staff:toList(staffTxt),
       mcStaff:toList(mcStaffTxt),
       assistStaff:toList(assistStaffTxt),
-      venues:[{name:v1n.trim(),options:[]},{name:v2n.trim(),options:toList(opts)}],
+      pantryStaff:toList(pantryStaffTxt),
+      clients,
+      venues:clientsToVenues(clients),
       staffRates,
+      payRates,
       officePass:newPass.trim()||DEFAULT_OFFICE_PASS,
       adminPass:newAdminPass.trim()||DEFAULT_OFFICE_PASS,
       staffPass:newStaffPass.trim()||DEFAULT_STAFF_PASS,
       mcPass:newMcPass.trim()||DEFAULT_MC_PASS,
       assistPass:newAssistPass.trim()||DEFAULT_ASSIST_PASS,
+      pantryPass:newPantryPass.trim()||DEFAULT_PANTRY_PASS,
     };
     try{
       await stSave("settings", newSettings);
@@ -364,6 +478,7 @@ function AdminConfig({cfg,sv}){
       {label:"👤 コンシェルジュ一覧（1行1名）", val:staffTxt,   set:setStaffTxt,   rows:10},
       {label:"🎤 司会メンバー一覧（1行1名）",   val:mcStaffTxt, set:setMcStaffTxt, rows:6},
       {label:"🤝 アシスタントメンバー一覧（1行1名）", val:assistStaffTxt, set:setAssistStaffTxt, rows:6},
+      {label:"☕ パントリーメンバー一覧（1行1名）", val:pantryStaffTxt, set:setPantryStaffTxt, rows:6},
     ].map(({label,val,set,rows})=>(
       <div key={label} style={{marginBottom:16}}>
         <label style={{display:"block",fontWeight:700,fontSize:13,marginBottom:6}}>{label}</label>
@@ -373,16 +488,9 @@ function AdminConfig({cfg,sv}){
       </div>
     ))}
     <div style={{...GC,background:"#f8f9fb",marginBottom:16}}>
-      <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:10}}>📍 会場設定</div>
-      {[["会場①（固定）",v1n,setV1n],["会場②（前日確定）表示名",v2n,setV2n]].map(([l,v,s])=>(
-        <div key={l} style={{marginBottom:10}}>
-          <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>{l}</label>
-          <input value={v} onChange={e=>s(e.target.value)}
-            style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:13,boxSizing:"border-box"}}/>
-        </div>
-      ))}
-      <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>確定候補（1行1つ）</label>
-      <textarea value={opts} onChange={e=>setOpts(e.target.value)} rows={3}
+      <div style={{fontWeight:700,fontSize:13,color:C.navy,marginBottom:10}}>📍 クライアント / ロケーション設定</div>
+      <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>クライアント名の下に「- ロケーション名」で入力</label>
+      <textarea value={clientsTxt} onChange={e=>setClientsTxt(e.target.value)} rows={12}
         style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",
           fontSize:13,boxSizing:"border-box",fontFamily:"inherit"}}/>
     </div>
@@ -394,6 +502,7 @@ function AdminConfig({cfg,sv}){
         {label:"👤 コンシェルジュ", val:newStaffPass, set:setNewStaffPass},
         {label:"🎤 司会",      val:newMcPass,    set:setNewMcPass},
         {label:"🤝 アシスタント", val:newAssistPass,set:setNewAssistPass},
+        {label:"☕ パントリー", val:newPantryPass,set:setNewPantryPass},
         {label:"📊 事務",      val:newPass,      set:setNewPass},
       ].map(({label,val,set})=>(
         <div key={label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -405,14 +514,32 @@ function AdminConfig({cfg,sv}){
       ))}
       <p style={{fontSize:11,color:C.muted,margin:"4px 0 0"}}>初期値はすべて「1234」です。「保存する」で反映されます。</p>
     </div>
+    {/* 役割別給与設定 */}
+    <div style={{...GC,background:"#eef6ff",border:`1px solid ${C.blue}`,marginBottom:16}}>
+      <div style={{fontWeight:700,fontSize:13,color:C.blue,marginBottom:12}}>💴 役割別給与設定</div>
+      {[
+        ["Concierge（時給）","conciergeHourly","円/h"],
+        ["MC（日給）","mcDaily","円/日"],
+        ["Assistant（日給）","assistantDaily","円/日"],
+        ["Pantry（日給）","pantryDaily","円/日"],
+      ].map(([label,key,unit])=>(
+        <div key={key} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+          <span style={{fontSize:13,fontWeight:600,minWidth:130,flex:1}}>{label}</span>
+          <input type="number" value={payRates[key]||0}
+            onChange={e=>setPayRates({...payRates,[key]:Number(e.target.value)||0})}
+            style={{width:100,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:14,textAlign:"right"}}/>
+          <span style={{fontSize:12,color:C.muted}}>{unit}</span>
+        </div>
+      ))}
+    </div>
     {/* 個人別時給 */}
     <div style={{...GC,background:"#f0fdf4",border:`1px solid ${C.green}`,marginBottom:16}}>
-      <div style={{fontWeight:700,fontSize:13,color:C.green,marginBottom:12}}>💴 コンシェルジュ個人別時給（デフォルト{RATE_STAFF}円）</div>
+      <div style={{fontWeight:700,fontSize:13,color:C.green,marginBottom:12}}>💴 コンシェルジュ個人別時給（未設定時は役割別時給）</div>
       {toList(staffTxt).map(name=>(
         <div key={name} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
           <span style={{fontSize:13,fontWeight:600,minWidth:120,flex:1}}>{name}</span>
-          <input type="number" value={staffRates[name]||RATE_STAFF}
-            onChange={e=>setStaffRates({...staffRates,[name]:Number(e.target.value)||RATE_STAFF})}
+          <input type="number" value={staffRates[name]||payRates.conciergeHourly||RATE_STAFF}
+            onChange={e=>setStaffRates({...staffRates,[name]:Number(e.target.value)||payRates.conciergeHourly||RATE_STAFF})}
             style={{width:90,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:14,textAlign:"right"}}/>
           <span style={{fontSize:12,color:C.muted}}>円/h</span>
         </div>
