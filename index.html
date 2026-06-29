@@ -12,7 +12,7 @@
 <script>
 firebase.initializeApp({apiKey:"AIzaSyAsr14o8ftu-9E-x1ZT89TUFThqK1FKUnc",authDomain:"concierge-shift-9f7ac.firebaseapp.com",databaseURL:"https://concierge-shift-9f7ac-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"concierge-shift-9f7ac",storageBucket:"concierge-shift-9f7ac.firebasestorage.app",messagingSenderId:"681424729912",appId:"1:681424729912:web:82402cc6df374486eab3cd"});
 </script>
-<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Hiragino Kaku Gothic ProN','Yu Gothic UI','Meiryo',sans-serif;}select,input,textarea,button{font-family:inherit;}</style>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Hiragino Kaku Gothic ProN','Yu Gothic UI','Meiryo',sans-serif;}select,input,textarea,button{font-family:inherit;}@media print{body{background:#fff!important;color:#111!important}.no-print{display:none!important}.print-card{box-shadow:none!important;border:1px solid #ddd!important;background:#fff!important;break-inside:avoid}.print-table{font-size:10px!important}.print-table th,.print-table td{padding:4px 5px!important;border-color:#ccc!important}.print-title{font-size:18px!important;color:#111!important}@page{size:A4;margin:12mm}}</style>
 </head>
 <body>
 <div id="root"></div>
@@ -1004,9 +1004,226 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
 }
 
 // ─── OFFICE VIEW ──────────────────────────────────────────────
+function actualMonthlyVenue(cfg, vconf, d, vName){
+  const isFlexVenue=cfg.venues.find(v=>v.name===vName)?.options?.length>0;
+  if(isFlexVenue&&vconf&&vconf[d]){
+    if(typeof vconf[d]==="string") return vconf[d];
+    if(vconf[d][vName]) return vconf[d][vName];
+  }
+  return vName;
+}
+
+function useMonthlyMCRecords(year, month, cfg){
+  const [state,setState]=useState({loading:true,records:[]});
+  useEffect(()=>{
+    const names=[...new Set([...(cfg.staff||[]),...(cfg.mcStaff||[]),...(cfg.assistStaff||[])].filter(Boolean))];
+    let alive=true;
+    setState({loading:true,records:[]});
+    Promise.all(names.map(name=>
+      stLoad(`mc-${year}-${p2(month)}-${name}`).then(d=>(d||[]).map(r=>({...r,staff:r.staff||name})))
+    )).then(all=>{ if(alive) setState({loading:false,records:all.flat()}); });
+    return ()=>{alive=false;};
+  },[year,month,cfg.staff,cfg.mcStaff,cfg.assistStaff]);
+  return state;
+}
+
+function buildConciergeMonthlyRows({year,month,att,shifts,vconf,cfg,approvedOnly=false}){
+  const days=getDays(year,month);
+  const rows=[];
+  for(let d=1;d<=days;d++) for(const v of cfg.venues){
+    const staff=shifts[d]?.[v.name];
+    if(!staff) continue;
+    const key=`${d}-${v.name}`;
+    const rec=att[key];
+    if(approvedOnly && !rec?.verified) continue;
+    const start=rec?.start||"09:00";
+    const end=rec?.end||"16:00";
+    const breakMin=rec?.breakMin??60;
+    const hours=rec?parseHours(start,end,breakMin):DEFAULT_HOURS;
+    const rate=(cfg.staffRates||{})[staff]||RATE_STAFF;
+    rows.push({
+      source:"concierge",date:`${year}/${month}/${d}`,d,staff,role:"Concierge",
+      client:"コンシェルジュ",location:actualMonthlyVenue(cfg,vconf,d,v.name),
+      start,end,breakMin,hours,dailyCount:0,rate,amount:Math.round(hours*rate),
+      status:rec?.verified?"承認済":rec?"未承認":"未入力",approved:!!rec?.verified
+    });
+  }
+  return rows;
+}
+
+function normalizeMonthlyMCRecord(r,cfg){
+  const rateKey=r.training?"遐比ｿｮ":r.role;
+  const rate=(cfg.mcRates||{})[r.staff]?.[r.company]?.[rateKey]||0;
+  const parts=String(r.date||"").split(/[/-]/).map(Number);
+  return {
+    source:"mc",date:r.date||"",d:parts[2]||0,staff:r.staff,role:r.role||"",
+    client:r.company||"",location:r.venue||"",start:"",end:"",breakMin:"",
+    hours:0,dailyCount:1,rate,amount:rate,status:"登録済",approved:true,
+    note:r.training?"研修":(r.type||"")
+  };
+}
+
+function MonthlyPayrollList(P){
+  const {year,month,cfg}=P;
+  const {loading,records}=useMonthlyMCRecords(year,month,cfg);
+  const conciergeRows=buildConciergeMonthlyRows({...P,approvedOnly:true});
+  const mcRows=records.map(r=>normalizeMonthlyMCRecord(r,cfg));
+  const allRows=[...conciergeRows,...mcRows];
+  const summary=Object.values(allRows.reduce((map,r)=>{
+    const key=`${r.staff}__${r.role}__${r.source}`;
+    if(!map[key]) map[key]={staff:r.staff,role:r.role,source:r.source,days:0,hours:0,dailyCount:0,rate:r.rate,amount:0};
+    map[key].days++;
+    map[key].hours+=r.hours||0;
+    map[key].dailyCount+=r.dailyCount||0;
+    map[key].amount+=r.amount||0;
+    return map;
+  },{})).map(r=>({...r,hours:Math.round(r.hours*100)/100}))
+    .sort((a,b)=>String(a.staff).localeCompare(String(b.staff),"ja")||String(a.role).localeCompare(String(b.role),"ja"));
+  const total=summary.reduce((a,r)=>a+r.amount,0);
+
+  const exportCSV=()=>{
+    const rows=[
+      ["支払先","勤務年月","区分","役割","勤務日数","実働時間","日数","単価","支払額","freee用メモ"],
+      ...summary.map(r=>[
+        r.staff,`${year}-${p2(month)}`,r.source==="concierge"?"時給":"日給",r.role,
+        r.days,r.hours,r.dailyCount,r.rate,r.amount,
+        r.source==="concierge"?"承認済み勤怠のみ":"MC/アシスタント/パントリー登録実績"
+      ]),
+      ["合計",`${year}-${p2(month)}`,"","","","","","",total,""]
+    ];
+    downloadCSV(`monthly_payroll_${year}-${p2(month)}.csv`,rows);
+  };
+
+  return <div>
+    <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <div style={{fontSize:12,color:C.muted}}>月は上の年月切替で変更できます。給与は承認済み、または登録済み実績のみ集計します。</div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={exportCSV} style={{...Btn(C.green),fontSize:12,padding:"8px 14px"}}>CSV出力</button>
+        <button onClick={()=>window.print()} style={{...Btn(C.navy),fontSize:12,padding:"8px 14px"}}>印刷</button>
+      </div>
+    </div>
+    <div className="print-card" style={GC}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+        <h3 className="print-title" style={{margin:0,fontSize:16}}>月次給与一覧 {year}年{month}月</h3>
+        <div style={{fontWeight:800,color:C.blue,fontSize:17}}>合計 {yen(total)}</div>
+      </div>
+      {loading&&<p style={{color:C.muted,fontSize:13}}>読み込み中...</p>}
+      {!loading&&summary.length===0&&<p style={{color:C.muted,fontSize:13}}>対象の給与データはありません。</p>}
+      {summary.length>0&&<div style={{overflowX:"auto"}}>
+        <table className="print-table" style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
+          <thead><tr style={{background:"#f8f9fb"}}>
+            <th style={TH}>スタッフ</th><th style={TH}>区分</th><th style={TH}>役割</th><th style={TH}>勤務日数</th>
+            <th style={TH}>実働時間</th><th style={TH}>日数</th><th style={TH}>単価</th><th style={TH}>支払額</th>
+          </tr></thead>
+          <tbody>
+            {summary.map(r=>(
+              <tr key={`${r.staff}-${r.role}-${r.source}`}>
+                <td style={{...TD,fontWeight:700}}>{r.staff}</td>
+                <td style={TD}>{r.source==="concierge"?"時給":"日給"}</td>
+                <td style={TD}>{r.role}</td>
+                <td style={{...TD,textAlign:"center"}}>{r.days}</td>
+                <td style={{...TD,textAlign:"center"}}>{r.hours?r.hours+"h":"-"}</td>
+                <td style={{...TD,textAlign:"center"}}>{r.dailyCount||"-"}</td>
+                <td style={{...TD,textAlign:"right"}}>{yen(r.rate)}</td>
+                <td style={{...TD,textAlign:"right",fontWeight:800,color:C.blue}}>{yen(r.amount)}</td>
+              </tr>
+            ))}
+            <tr style={{background:"#f8f9fb",fontWeight:800}}>
+              <td style={TD}>合計</td><td style={TD}></td><td style={TD}></td>
+              <td style={{...TD,textAlign:"center"}}>{summary.reduce((a,r)=>a+r.days,0)}</td>
+              <td style={{...TD,textAlign:"center"}}>{Math.round(summary.reduce((a,r)=>a+r.hours,0)*100)/100}h</td>
+              <td style={{...TD,textAlign:"center"}}>{summary.reduce((a,r)=>a+r.dailyCount,0)||"-"}</td>
+              <td style={TD}></td><td style={{...TD,textAlign:"right",color:C.blue,fontSize:15}}>{yen(total)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>}
+    </div>
+  </div>;
+}
+
+function MonthlyAttendanceList(P){
+  const {year,month,cfg}=P;
+  const {loading,records}=useMonthlyMCRecords(year,month,cfg);
+  const [filters,setFilters]=useState({client:"",location:"",staff:""});
+  const conciergeRows=buildConciergeMonthlyRows({...P,approvedOnly:false});
+  const allRows=[...conciergeRows,...records.map(r=>normalizeMonthlyMCRecord(r,cfg))]
+    .sort((a,b)=>(a.d-b.d)||String(a.staff).localeCompare(String(b.staff),"ja"));
+  const filtered=allRows.filter(r=>
+    (!filters.client||r.client===filters.client) &&
+    (!filters.location||r.location===filters.location) &&
+    (!filters.staff||r.staff===filters.staff)
+  );
+  const uniq=k=>[...new Set(allRows.map(r=>r[k]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),"ja"));
+  const exportCSV=()=>{
+    const rows=[
+      ["勤務日","曜日","スタッフ","役割","クライアント","場所","開始","終了","休憩分","実働時間","日数","承認状況","支払区分","単価","支払額","備考"],
+      ...filtered.map(r=>[
+        r.date,r.d?getWday(year,month,r.d):"",r.staff,r.role,r.client,r.location,
+        r.start,r.end,r.breakMin,r.hours||"",r.dailyCount||"",r.status,
+        r.source==="concierge"?"時給":"日給",r.rate,r.amount,r.note||""
+      ])
+    ];
+    downloadCSV(`monthly_attendance_${year}-${p2(month)}.csv`,rows);
+  };
+
+  return <div>
+    <div className="no-print" style={{...GC,padding:14}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        {[["client","クライアント"],["location","場所"],["staff","スタッフ"]].map(([key,label])=>(
+          <select key={key} value={filters[key]} onChange={e=>setFilters({...filters,[key]:e.target.value})}
+            style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:13,minWidth:150}}>
+            <option value="">{label}: すべて</option>
+            {uniq(key).map(v=><option key={v} value={v}>{v}</option>)}
+          </select>
+        ))}
+        <button onClick={exportCSV} style={{...Btn(C.green),fontSize:12,padding:"8px 14px",marginLeft:"auto"}}>CSV出力</button>
+        <button onClick={()=>window.print()} style={{...Btn(C.navy),fontSize:12,padding:"8px 14px"}}>印刷</button>
+      </div>
+      <div style={{fontSize:12,color:C.muted,marginTop:8}}>月は上の年月切替で変更できます。</div>
+    </div>
+    <div className="print-card" style={GC}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+        <h3 className="print-title" style={{margin:0,fontSize:16}}>月次勤怠一覧 {year}年{month}月</h3>
+        <div style={{color:C.muted,fontSize:13}}>{filtered.length}件</div>
+      </div>
+      {loading&&<p style={{color:C.muted,fontSize:13}}>読み込み中...</p>}
+      {!loading&&filtered.length===0&&<p style={{color:C.muted,fontSize:13}}>対象の勤怠データはありません。</p>}
+      {filtered.length>0&&<div style={{overflowX:"auto"}}>
+        <table className="print-table" style={{width:"100%",borderCollapse:"collapse",minWidth:920}}>
+          <thead><tr style={{background:"#f8f9fb"}}>
+            <th style={TH}>日付</th><th style={TH}>曜</th><th style={TH}>スタッフ</th><th style={TH}>役割</th>
+            <th style={TH}>クライアント</th><th style={TH}>場所</th><th style={TH}>時間/日数</th><th style={TH}>承認状況</th>
+          </tr></thead>
+          <tbody>
+            {filtered.map((r,i)=>(
+              <tr key={`${r.source}-${r.date}-${r.staff}-${r.location}-${i}`}>
+                <td style={{...TD,fontWeight:700,whiteSpace:"nowrap"}}>{r.date}</td>
+                <td style={{...TD,textAlign:"center"}}>{r.d?getWday(year,month,r.d):""}</td>
+                <td style={{...TD,fontWeight:700}}>{r.staff}</td>
+                <td style={TD}>{r.role}</td>
+                <td style={TD}>{r.client}</td>
+                <td style={TD}>{r.location}</td>
+                <td style={{...TD,textAlign:"center",whiteSpace:"nowrap"}}>
+                  {r.source==="concierge"?`${r.start}-${r.end} / ${r.hours}h`:`${r.dailyCount}日`}
+                </td>
+                <td style={{...TD,textAlign:"center",color:r.status==="承認済"?C.green:r.status==="未承認"?C.amber:C.muted,fontWeight:700}}>
+                  {r.status}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>}
+    </div>
+  </div>;
+}
+
 function OfficeView(P){
   const [tab,setTab]=useState("calc");
   const tabs=[
+    {id:"payroll", label:"月次給与"},
+    {id:"monthly", label:"月次勤怠"},
     {id:"calc",    label:"💴 コンシェル"},
     {id:"attend",  label:"📋 出勤一覧"},
     {id:"mc",      label:"🎤 司会・記録"},
@@ -1020,6 +1237,8 @@ function OfficeView(P){
     </div>
     <MonthSel {...P}/>
     <Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="payroll"&&<MonthlyPayrollList {...P}/>}
+    {tab==="monthly"&&<MonthlyAttendanceList {...P}/>}
     {tab==="calc"   &&<AccountingView {...P}/>}
     {tab==="attend" &&<AttendanceSummaryView {...P}/>}
     {tab==="mc"     &&<MCAccountingView {...P}/>}
