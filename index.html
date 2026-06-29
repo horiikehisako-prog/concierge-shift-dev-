@@ -72,6 +72,61 @@ const downloadCSV = (filename, rows) => {
   URL.revokeObjectURL(url);
 };
 
+const AVAIL_OK = "○";
+const AVAIL_MAYBE = "△";
+const AVAIL_NG = "×";
+const AVAIL_ORDER = ["", AVAIL_OK, AVAIL_MAYBE, AVAIL_NG];
+const prefStatus = (prefs, name, d) => {
+  const p = prefs?.[name];
+  if(Array.isArray(p)) return p.includes(d) ? AVAIL_OK : "";
+  if(p && typeof p === "object") {
+    const v = p[d] ?? p[String(d)];
+    if(v === true) return AVAIL_OK;
+    if(v === AVAIL_OK || v === AVAIL_MAYBE || v === AVAIL_NG) return v;
+  }
+  return "";
+};
+const isAvailableStatus = s => s === AVAIL_OK || s === AVAIL_MAYBE;
+const prefStaff = (prefs, staff, d, status=null) =>
+  staff.filter(name => status ? prefStatus(prefs,name,d) === status : isAvailableStatus(prefStatus(prefs,name,d)));
+const prefLabel = s => s || "未";
+const calcConciergePayroll = ({year,month,att,shifts,vconf,cfg,approvedOnly=false}) => {
+  const days=getDays(year,month), rows=[];
+  for(let d=1;d<=days;d++) for(const v of cfg.venues){
+    const staff=shifts[d]?.[v.name];
+    if(!staff) continue;
+    const key=`${d}-${v.name}`, rec=att[key];
+    if(approvedOnly && !rec?.verified) continue;
+    const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
+    const rate=cfg.staffRates?.[staff]||RATE_STAFF;
+    rows.push({staff,d,venue:v.name,hours:h,amount:Math.round(h*rate),approved:!!rec?.verified,recorded:!!rec});
+  }
+  return rows;
+};
+const buildShortageAlerts = ({year,month,prefs,shifts,cfg}) => {
+  const days=getDays(year,month), alerts=[];
+  for(let d=1;d<=days;d++){
+    const used=new Set();
+    cfg.venues.forEach(v=>{
+      const assigned=shifts[d]?.[v.name]||"";
+      const assignedStatus=assigned?prefStatus(prefs,assigned,d):"";
+      if(assigned && isAvailableStatus(assignedStatus)) used.add(assigned);
+    });
+    cfg.venues.forEach(v=>{
+      const assigned=shifts[d]?.[v.name]||"";
+      const assignedStatus=assigned?prefStatus(prefs,assigned,d):"";
+      if(assigned && isAvailableStatus(assignedStatus)) return;
+      const available=cfg.staff.filter(s=>isAvailableStatus(prefStatus(prefs,s,d))&&!used.has(s));
+      const required=1, availableCount=available.length, shortage=Math.max(0,required-availableCount);
+      if(shortage>0) alerts.push({
+        d,date:`${year}/${p2(month)}/${p2(d)}`,location:v.name,required,available:availableCount,shortage
+      });
+      else if(available[0]) used.add(available[0]);
+    });
+  }
+  return alerts;
+};
+
 // ─── STORAGE ──────────────────────────────────────────────────
 const stLoad=async k=>{try{const snap=await firebase.database().ref('/data/'+k).get();if(!snap.exists())return null;const val=snap.val();if(typeof val==="string"){try{return JSON.parse(val);}catch{return val;}}return val;}catch(e){return null;}};
 const stSave=async(k,v)=>{await firebase.database().ref('/data/'+k).set(JSON.stringify(v));};
@@ -169,8 +224,7 @@ function App(){
   const generate=()=>{
     const {staff,venues}=cfg;
     const days=getDays(year,month);
-    const ns={...D.shifts};
-    // 月全体の勤務カウント
+    const ns={};
     const totalCnt={}, venueCnt={};
     staff.forEach(s=>{totalCnt[s]=0;venueCnt[s]={};venues.forEach(v=>{venueCnt[s][v.name]=0;});});
     Object.entries(ns).forEach(([d,dd])=>Object.entries(dd).forEach(([vn,sn])=>{
@@ -181,22 +235,28 @@ function App(){
       const used=new Set();
       for(const v of venues){
         if(ns[d][v.name]){used.add(ns[d][v.name]);continue;}
-        const avail=staff.filter(s=>(D.prefs[s]||[]).includes(d)&&!used.has(s));
-        if(!avail.length){ns[d][v.name]="";continue;}
-        // 優先：この会場の勤務が少ない人 → 全体勤務が少ない人
-        avail.sort((a,b)=>{
-          const vd=(venueCnt[a]?.[v.name]||0)-(venueCnt[b]?.[v.name]||0);
-          return vd!==0?vd:(totalCnt[a]||0)-(totalCnt[b]||0);
-        });
-        ns[d][v.name]=avail[0];
-        used.add(avail[0]);
-        totalCnt[avail[0]]=(totalCnt[avail[0]]||0)+1;
-        if(venueCnt[avail[0]]?.[v.name]!==undefined)venueCnt[avail[0]][v.name]++;
+        const pick=(status)=>{
+          const avail=staff.filter(s=>prefStatus(D.prefs,s,d)===status&&!used.has(s));
+          if(!avail.length) return "";
+          avail.sort((a,b)=>{
+            const td=(totalCnt[a]||0)-(totalCnt[b]||0);
+            if(td!==0) return td;
+            const vd=(venueCnt[a]?.[v.name]||0)-(venueCnt[b]?.[v.name]||0);
+            if(vd!==0) return vd;
+            return String(a).localeCompare(String(b),"ja");
+          });
+          return avail[0];
+        };
+        const chosen=pick(AVAIL_OK)||pick(AVAIL_MAYBE);
+        if(!chosen){ns[d][v.name]="";continue;}
+        ns[d][v.name]=chosen;
+        used.add(chosen);
+        totalCnt[chosen]=(totalCnt[chosen]||0)+1;
+        if(venueCnt[chosen]?.[v.name]!==undefined)venueCnt[chosen][v.name]++;
       }
     }
     sv.shifts(ns);
   };
-
   if(!role) return <RoleSelect cfg={cfg} onSelect={(r,n)=>{setRole(r);setUname(n);}}/>;
 
   const P={year,month,setYear,setMonth,shifts:D.shifts,prefs:D.prefs,att:D.att,vconf:D.vconf,
@@ -395,8 +455,9 @@ function Tabs({tabs,active,onChange}){
 // ADMIN VIEW
 // ═══════════════════════════════════════════════════════════════
 function AdminView(P){
-  const [tab,setTab]=useState("pref");
+  const [tab,setTab]=useState("dashboard");
   const tabs=[
+    {id:"dashboard", label:"Dashboard"},
     {id:"pref",  label:"📋 希望一覧"},
     {id:"shift", label:"📅 シフト確定"},
     {id:"att",   label:"🕐 出勤記録"},
@@ -404,11 +465,81 @@ function AdminView(P){
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="dashboard"&&<AdminDashboard {...P}/>}
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
     {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
+  </div>;
+}
+
+function AdminDashboard({year,month,prefs,shifts,att,cfg}){
+  const [mcRecords,setMcRecords]=useState([]);
+  const [loadingMc,setLoadingMc]=useState(true);
+  useEffect(()=>{
+    let alive=true;
+    const names=Array.from(new Set([...(cfg.staff||[]),...(cfg.mcStaff||[]),...(cfg.assistStaff||[])]));
+    setLoadingMc(true);
+    Promise.all(names.map(name=>stLoad(`mc-${year}-${p2(month)}-${name}`).then(d=>
+      (d||[]).map(r=>({...r,staff:r.staff||name}))
+    ))).then(all=>{if(alive){setMcRecords(all.flat());setLoadingMc(false);}});
+    return ()=>{alive=false;};
+  },[year,month,cfg.staff,cfg.mcStaff,cfg.assistStaff]);
+
+  const conciergeRows=calcConciergePayroll({year,month,att,shifts,cfg,approvedOnly:false});
+  const totalConciergeShifts=conciergeRows.length;
+  const unapprovedWorkCount=conciergeRows.filter(r=>r.recorded&&!r.approved).length;
+  const conciergePayroll=conciergeRows.reduce((a,r)=>a+r.amount,0);
+  const mcCount=mcRecords.filter(r=>r.role===MC_ROLES[0]).length;
+  const assistantCount=mcRecords.filter(r=>r.role===MC_ROLES[1]).length;
+  const pantryCount=mcRecords.filter(r=>r.role===MC_ROLES[2]).length;
+  const mcPayroll=mcRecords.reduce((sum,r)=>{
+    const key=getMCRateKey(r.company,r.role,r.type,r.training);
+    return sum + ((cfg.mcRates||{})[r.staff]?.[r.company]?.[key] || (cfg.mcRates||{})[r.staff]?.[r.company]?.[r.role] || 0);
+  },0);
+  const shortageAlerts=buildShortageAlerts({year,month,prefs,shifts,cfg});
+  const cards=[
+    {label:"今月のコンシェルジュシフト",value:totalConciergeShifts,color:C.navy},
+    {label:"MC件数",value:mcCount,color:C.purple},
+    {label:"アシスタント件数",value:assistantCount,color:C.blue},
+    {label:"パントリー件数",value:pantryCount,color:C.teal},
+    {label:"未承認勤務",value:unapprovedWorkCount,color:unapprovedWorkCount?C.amber:C.green},
+    {label:"給与合計",value:yen(conciergePayroll+mcPayroll),color:C.green},
+    {label:"人員不足アラート",value:shortageAlerts.length,color:shortageAlerts.length?C.red:C.green},
+  ];
+  return <div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:14}}>
+      {cards.map(c=><div key={c.label} style={{...GC,marginBottom:0,padding:"14px 12px"}}>
+        <div style={{fontSize:12,color:C.muted,marginBottom:6}}>{c.label}</div>
+        <div style={{fontSize:22,fontWeight:800,color:c.color}}>{loadingMc&&["MC件数","アシスタント件数","パントリー件数","給与合計"].includes(c.label)?"読込中":c.value}</div>
+      </div>)}
+    </div>
+    <ShortageAlertPanel alerts={shortageAlerts}/>
+  </div>;
+}
+
+function ShortageAlertPanel({alerts}){
+  return <div style={{...GC,border:`1px solid ${alerts.length?C.red:C.green}`}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:12}}>
+      <h3 style={{margin:0,fontSize:15,color:alerts.length?C.red:C.green}}>人員不足アラート</h3>
+      <span style={{fontSize:12,fontWeight:700,color:alerts.length?C.red:C.green}}>{alerts.length}件</span>
+    </div>
+    {alerts.length===0&&<p style={{fontSize:13,color:C.muted}}>不足はありません。</p>}
+    {alerts.length>0&&<div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:520}}>
+        <thead><tr style={{background:"#f8f9fb"}}>
+          <th style={TH}>日付</th><th style={TH}>場所</th><th style={TH}>必要人数</th><th style={TH}>可能人数</th><th style={TH}>不足</th>
+        </tr></thead>
+        <tbody>{alerts.map(a=><tr key={`${a.d}-${a.location}`}>
+          <td style={{...TD,fontWeight:700,textAlign:"center"}}>{a.date}</td>
+          <td style={TD}>{a.location}</td>
+          <td style={{...TD,textAlign:"center"}}>{a.required}</td>
+          <td style={{...TD,textAlign:"center"}}>{a.available}</td>
+          <td style={{...TD,textAlign:"center",fontWeight:800,color:C.red}}>{a.shortage}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>}
   </div>;
 }
 
@@ -424,7 +555,7 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
   const diffDays=Math.ceil((deadline-today)/(1000*60*60*24));
   const dayInfo=Array.from({length:days},(_,i)=>{
     const d=i+1;
-    const applicants=staff.filter(s=>(prefs[s]||[]).includes(d));
+    const applicants=staff.filter(s=>isAvailableStatus(prefStatus(prefs,s,d)));
     const assigned=venues.map(v=>shifts[d]?.[v.name]).filter(Boolean);
     return {d,applicants,assigned};
   });
@@ -468,8 +599,11 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
             {month}/{d}({getWday(year,month,d)})
           </span>
           <div style={{display:"flex",gap:4,flex:1,flexWrap:"wrap"}}>
-            {applicants.map(s=><span key={s} style={{background:C.redL,color:C.red,borderRadius:5,
-              padding:"2px 8px",fontSize:12,fontWeight:600}}>{s}</span>)}
+            {applicants.map(s=>{
+              const st=prefStatus(prefs,s,d);
+              return <span key={s} style={{background:st===AVAIL_MAYBE?C.amberL:C.redL,color:st===AVAIL_MAYBE?C.amber:C.red,borderRadius:5,
+                padding:"2px 8px",fontSize:12,fontWeight:600}}>{s} {st}</span>;
+            })}
           </div>
           <span style={{fontSize:12,color:C.red,fontWeight:700}}>{applicants.length}名 → {need}名に絞る</span>
         </div>;
@@ -488,8 +622,11 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
             <td style={{...TD,textAlign:"center",fontWeight:700}}>{d}</td>
             <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
             <td style={TD}><div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-              {applicants.map(s=><span key={s} style={{background:assigned.includes(s)?C.greenL:C.blueL,
-                color:assigned.includes(s)?C.green:C.blue,borderRadius:4,padding:"1px 6px",fontSize:12,fontWeight:600}}>{s}</span>)}
+              {applicants.map(s=>{
+                const st=prefStatus(prefs,s,d);
+                return <span key={s} style={{background:assigned.includes(s)?C.greenL:st===AVAIL_MAYBE?C.amberL:C.blueL,
+                  color:assigned.includes(s)?C.green:st===AVAIL_MAYBE?C.amber:C.blue,borderRadius:4,padding:"1px 6px",fontSize:12,fontWeight:600}}>{s} {st}</span>;
+              })}
               {!applicants.length&&<span style={{color:C.muted,fontSize:12}}>なし</span>}
             </div></td>
             <td style={TD}><div style={{display:"flex",flexWrap:"wrap",gap:3}}>
@@ -516,6 +653,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
   const [local,setLocal]=useState(shifts);
   const [dirty,setDirty]=useState(false);
   useEffect(()=>{setLocal(shifts);setDirty(false);},[shifts]);
+  const shortageAlerts=buildShortageAlerts({year,month,prefs,shifts:local||{},cfg});
 
   // 会場別カウント
   const vCnt={};
@@ -541,6 +679,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
       </button>
       {dirty&&<span style={{fontSize:12,color:C.amber,fontWeight:600}}>⚠️ 未保存の変更があります</span>}
     </div>
+    <ShortageAlertPanel alerts={shortageAlerts}/>
     {/* 会場別カウント表 */}
     <div style={{...GC,overflowX:"auto",padding:0}}>
       <table style={{width:"100%",borderCollapse:"collapse"}}>
@@ -569,20 +708,23 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
         <tbody>{Array.from({length:days},(_,i)=>i+1).map(d=>{
           const wdi=getWdayI(year,month,d);
           const bg=wdi===0?"#fff5f5":wdi===6?"#f0f4ff":"#fff";
-          const opted=new Set(staff.filter(s=>(prefs[s]||[]).includes(d)));
           return <tr key={d} style={{background:bg}}>
             <td style={{...TD,textAlign:"center",fontWeight:700}}>{d}</td>
             <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
             {venues.map(v=>{
               const val=local[d]?.[v.name]||"";
-              const notOpted=val&&!opted.has(val);
+              const notOpted=val&&!isAvailableStatus(prefStatus(prefs,val,d));
               return <td key={v.name} style={TD}>
                 <select value={val} onChange={e=>setCell(d,v.name,e.target.value)}
                   style={{width:"100%",border:`1px solid ${notOpted?C.amber:!val?"#fca5a5":C.border}`,
                     borderRadius:6,padding:"4px 6px",fontSize:13,background:"#fff"}}>
                   <option value="">-- 未定 --</option>
-                  {staff.map(s=><option key={s} value={s} style={{color:opted.has(s)?"inherit":"#aaa"}}>
-                    {s}{opted.has(s)?"":" ※希望外"}</option>)}
+                  {staff.map(s=>{
+                    const st=prefStatus(prefs,s,d);
+                    return <option key={s} value={s} style={{color:isAvailableStatus(st)?"inherit":"#aaa"}}>
+                      {s} {prefLabel(st)}
+                    </option>;
+                  })}
                 </select>
                 {notOpted&&<div style={{fontSize:10,color:C.amber}}>⚡ 希望外</div>}
               </td>;
@@ -1270,7 +1412,11 @@ function StaffView(P){
 
 function StaffWish({year,month,prefs,sv,uname}){
   const days=getDays(year,month);
-  const myDays=prefs[uname]||[];
+  const myStatus=d=>prefStatus(prefs,uname,d);
+  const myDays=Array.from({length:days},(_,i)=>i+1).filter(d=>isAvailableStatus(myStatus(d)));
+  const okDays=Array.from({length:days},(_,i)=>i+1).filter(d=>myStatus(d)===AVAIL_OK);
+  const maybeDays=Array.from({length:days},(_,i)=>i+1).filter(d=>myStatus(d)===AVAIL_MAYBE);
+  const ngDays=Array.from({length:days},(_,i)=>i+1).filter(d=>myStatus(d)===AVAIL_NG);
   const firstDow=new Date(year,month-1,1).getDay();
   const today=new Date();
 
@@ -1287,8 +1433,14 @@ function StaffWish({year,month,prefs,sv,uname}){
 
   const toggle=d=>{
     if(isLocked) return;
-    const cur=prefs[uname]||[];
-    sv.prefs({...prefs,[uname]:cur.includes(d)?cur.filter(x=>x!==d):[...cur,d]});
+    const cur=prefs[uname];
+    const next={};
+    if(Array.isArray(cur)) cur.forEach(day=>{next[day]=AVAIL_OK;});
+    else if(cur&&typeof cur==="object") Object.assign(next,cur);
+    const idx=AVAIL_ORDER.indexOf(myStatus(d));
+    const ns=AVAIL_ORDER[(idx+1)%AVAIL_ORDER.length];
+    if(ns) next[d]=ns; else delete next[d];
+    sv.prefs({...prefs,[uname]:next});
   };
 
   return <div style={GC}>
@@ -1319,12 +1471,12 @@ function StaffWish({year,month,prefs,sv,uname}){
         border:`1px dashed ${C.border}`}}>
         <div style={{fontSize:13,color:C.muted,marginBottom:6}}>登録済み希望日（変更不可）</div>
         {myDays.length===0
-          ? <span style={{fontSize:13,color:C.muted}}>希望なし</span>
+          ? <span style={{fontSize:13,color:C.muted}}>勤務可能日の登録なし</span>
           : <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-              {myDays.sort((a,b)=>a-b).map(d=>(
+              {[...okDays,...maybeDays,...ngDays].sort((a,b)=>a-b).map(d=>(
                 <span key={d} style={{background:C.greenL,color:C.green,borderRadius:6,
                   padding:"3px 10px",fontSize:13,fontWeight:600}}>
-                  {d}日({getWday(year,month,d)})
+                  {d}日({getWday(year,month,d)}) {myStatus(d)}
                 </span>
               ))}
             </div>
@@ -1339,18 +1491,22 @@ function StaffWish({year,month,prefs,sv,uname}){
             padding:"4px 0",color:i===0?C.sun:i===6?C.sat:C.muted}}>{w}</div>)}
           {Array.from({length:firstDow},(_,i)=><div key={`e${i}`}/>)}
           {Array.from({length:days},(_,i)=>i+1).map(d=>{
-            const wdi=getWdayI(year,month,d),ok=myDays.includes(d);
+            const wdi=getWdayI(year,month,d),st=myStatus(d);
+            const picked=!!st;
+            const color=st===AVAIL_OK?C.green:st===AVAIL_MAYBE?C.amber:st===AVAIL_NG?C.red:(wdi===0?C.sun:wdi===6?C.sat:C.text);
+            const bg=st===AVAIL_OK?C.greenL:st===AVAIL_MAYBE?C.amberL:st===AVAIL_NG?C.redL:"#fff";
             return <button key={d} onClick={()=>toggle(d)}
-              style={{padding:"10px 4px",border:ok?`2px solid ${C.green}`:`1px solid ${C.border}`,
+              style={{padding:"8px 4px",border:picked?`2px solid ${color}`:`1px solid ${C.border}`,
                 borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,
-                background:ok?C.greenL:"#fff",color:ok?C.green:wdi===0?C.sun:wdi===6?C.sat:C.text}}>
-              {d}</button>;
+                background:bg,color}}>
+              <div>{d}</div>
+              {st&&<div style={{fontSize:11,lineHeight:1,marginTop:2}}>{st}</div>}
+            </button>;
           })}
         </div>
         <div style={{fontSize:12,color:C.muted}}>
-          希望日（{myDays.length}日）:&nbsp;
-  
-          {myDays.length===0?"なし":myDays.sort((a,b)=>a-b).map(d=>`${d}日(${getWday(year,month,d)})`).join("・")}
+          ○ {okDays.length}日　△ {maybeDays.length}日　× {ngDays.length}日
+          <div style={{marginTop:4}}>○を優先して割り当て、必要な場合だけ△を使います。×は割り当てません。</div>
         </div>
       </>
     )}
