@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 7 / Build 20260630-2158";
+const DEV_BUILD_LABEL = "Sprint 7 improvement / Build 20260701-0847";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -222,6 +222,7 @@ function App(){
     staff:ensureArray(raw.staff).length>0?ensureArray(raw.staff):DEFAULT_STAFF,
     mcStaff:mcStaffData.length>0?mcStaffData:DEFAULT_MC_STAFF,
     assistStaff:assistStaffData.length>0?assistStaffData:DEFAULT_ASSIST_STAFF,
+    staffManagement:normalizeStaffManagement(raw),
     staffRates:raw.staffRates||{}, // コンシェルジュ個人別時給
     ashibeRates:raw.ashibeRates||{}, // あしべの杜単価
     itemSettings:normalizeItemSettings(raw.itemSettings),
@@ -919,6 +920,7 @@ function AdminConfig({cfg,sv}){
   const [newMcPass,setNewMcPass]=useState(cfg.mcPass||DEFAULT_MC_PASS);
   const [newAssistPass,setNewAssistPass]=useState(cfg.assistPass||DEFAULT_ASSIST_PASS);
   const [newSupportPass,setNewSupportPass]=useState(cfg.supportPass||DEFAULT_SUPPORT_PASS);
+  const [managedStaff,setManagedStaff]=useState(()=>normalizeStaffManagement(cfg));
   const [staffRates,setStaffRates]=useState(()=>{
     const r={};
     (cfg.staff||DEFAULT_STAFF).forEach(n=>{r[n]=cfg.staffRates?.[n]||RATE_STAFF;});
@@ -929,10 +931,14 @@ function AdminConfig({cfg,sv}){
   const toList = txt => txt.split("\n").map(s=>s.trim()).filter(Boolean);
   const save=async()=>{
     setErrMsg("");
+    const managed=normalizeStaffManagement({staffManagement:managedStaff});
+    const derived=supportListsFromStaff(managed);
     const newSettings={
-      staff:toList(staffTxt),
-      mcStaff:toList(mcStaffTxt),
-      assistStaff:toList(assistStaffTxt),
+      ...cfg,
+      staff:derived.staff.length?derived.staff:toList(staffTxt),
+      mcStaff:derived.mcStaff.length?derived.mcStaff:toList(mcStaffTxt),
+      assistStaff:derived.assistStaff.length?derived.assistStaff:toList(assistStaffTxt),
+      staffManagement:managed,
       venues:normalizeConciergeVenues([{name:v1n.trim()||"春日",options:[]},{name:v2n.trim()||"花園",options:[]}]),
       staffRates,
       officePass:newPass.trim()||DEFAULT_OFFICE_PASS,
@@ -951,7 +957,7 @@ function AdminConfig({cfg,sv}){
       setErrMsg("❌ 保存エラー: "+String(e.message||e));
     }
   };
-  return <div style={{...GC,maxWidth:440}}>
+  return <div style={{...GC,maxWidth:960}}>
     <h3 style={{margin:"0 0 16px",fontSize:15}}>⚙️ システム設定</h3>
 
     {/* メンバー一覧 */}
@@ -980,6 +986,7 @@ function AdminConfig({cfg,sv}){
         現在のコンシェルジュ勤務地は春日・花園のみです。多治米、蔵王、小さな蔵王、小さな多治米は選択肢に表示しません。
       </div>
     </div>
+    <StaffManagementPanel staffList={managedStaff} onChange={setManagedStaff}/>
     {/* パスワード設定 */}
     <div style={{...GC,background:"#fffaf5",border:`1px solid #e8784a`,marginBottom:16}}>
       <div style={{fontWeight:700,fontSize:13,color:"#e8784a",marginBottom:14}}>🔒 ログインパスワード設定</div>
@@ -2599,6 +2606,45 @@ const PS={
 };
 
 // ─── SUPPORT MANAGER / 成長カルテ ──────────────────────────────
+const SUPPORT_WORKPLACES = ["飛鳥","あしべ","ふかしな"];
+const SUPPORT_ROLES = ["コンシェルジュ","アシスタント","司会"];
+const supportId=()=>`staff-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+const supportNormalizeRole=role=>SUPPORT_ROLES.includes(role)?role:"コンシェルジュ";
+const supportDefaultWorkplace=role=>role==="コンシェルジュ"?"飛鳥":"飛鳥";
+const normalizeStaffManagement=cfg=>{
+  const hasManaged=ensureArray(cfg.staffManagement).length>0;
+  const existing=ensureArray(cfg.staffManagement).filter(Boolean).map((s,i)=>({
+    id:s.id||supportId(),
+    name:String(s.name||"").trim(),
+    role:supportNormalizeRole(s.role),
+    workplace:s.workplace||supportDefaultWorkplace(s.role),
+    location:s.location||s.workplace||supportDefaultWorkplace(s.role),
+    trainingTarget:!!s.trainingTarget,
+    trainer:!!s.trainer,
+  })).filter(s=>s.name);
+  const byName=new Map(existing.map(s=>[s.name,s]));
+  const addLegacy=(names,role)=>ensureArray(names).forEach(name=>{
+    const clean=String(name||"").trim();
+    if(clean&&!byName.has(clean)) byName.set(clean,{
+      id:supportId(),name:clean,role,workplace:supportDefaultWorkplace(role),location:supportDefaultWorkplace(role),
+      trainingTarget:false,trainer:false,
+    });
+  });
+  addLegacy(cfg.staff||(!hasManaged?DEFAULT_STAFF:[]),"コンシェルジュ");
+  addLegacy(cfg.assistStaff||(!hasManaged?DEFAULT_ASSIST_STAFF:[]),"アシスタント");
+  addLegacy(cfg.mcStaff||(!hasManaged?DEFAULT_MC_STAFF:[]),"司会");
+  return [...byName.values()];
+};
+const supportListsFromStaff=staffList=>{
+  const list=normalizeStaffManagement({staffManagement:staffList});
+  return {
+    staff:list.filter(s=>s.role==="コンシェルジュ").map(s=>s.name),
+    assistStaff:list.filter(s=>s.role==="アシスタント").map(s=>s.name),
+    mcStaff:list.filter(s=>s.role==="司会").map(s=>s.name),
+  };
+};
+const supportGroupLabel=staff=>`${staff.workplace||"未設定"}${staff.role||""}`;
+const supportTrainers=staffList=>normalizeStaffManagement({staffManagement:staffList}).filter(s=>s.trainer);
 const supportAllSkillKeys=()=>SUPPORT_SKILL_GROUPS.flatMap(g=>g.items.map(item=>`${g.id}:${item}`));
 const supportRatingScore=mark=>SUPPORT_RATINGS.find(r=>r.mark===mark)?.score ?? 0;
 const supportProgress=card=>{
@@ -2609,60 +2655,94 @@ const supportProgress=card=>{
 };
 const supportProgressColor=p=>p>=80?C.green:p>=60?C.amber:C.red;
 const supportStatus=card=>{
-  if(card.status) return card.status;
   const p=supportProgress(card);
   if(p>=85) return "ベテラン";
   if(p>=75) return "独り立ちOK";
   if(p<60) return "要フォロー";
   return "研修中";
 };
-const supportDefaultCard=(name,index,role="コンシェルジュ")=>{
-  const pattern=index%4;
-  const seed=["×","△","○","◎"];
+const supportDefaultCard=(staff,index)=>{
   const skills={};
-  supportAllSkillKeys().forEach((k,i)=>{skills[k]=seed[Math.min(3,Math.max(0,(i+pattern)%4))];});
-  return {id:name,name,role,status:["研修中","要フォロー","独り立ちOK","ベテラン"][pattern],
-    strengths:"丁寧な声かけ、確認を怠らない姿勢",weaknesses:"慌ただしい場面での優先順位づけ",
-    nextGoal:"電話対応と出棺前案内を安定させる",memo:"次回研修で現場ごとの判断ポイントを一緒に確認。",
-    debutMonth:pattern===0,trainingThisWeek:pattern<2,updatedAt:new Date().toISOString(),skills,
-    history:[{id:1,date:"2026/06/30",comment:"電話対応が安定してきた"},{id:2,date:"2026/07/05",comment:"出棺前案内は次回も確認"}]};
+  supportAllSkillKeys().forEach(k=>{skills[k]="×";});
+  return {id:staff.id,name:staff.name,role:staff.role,workplace:staff.workplace,location:staff.location,trainerId:"",
+    strengths:"",weaknesses:"",nextGoal:"",memo:"",debutMonth:false,trainingThisWeek:false,
+    updatedAt:new Date().toISOString(),skills,history:[]};
 };
 const supportMergeCards=(cards,cfg)=>{
-  const baseNames=Array.from(new Set([...(cfg.staff||[]),...(cfg.assistStaff||[]),...(cfg.mcStaff||[])]));
+  const targets=normalizeStaffManagement(cfg).filter(s=>s.trainingTarget);
   const existing=Array.isArray(cards)?cards:[];
-  const byName={}; existing.forEach(c=>{if(c?.name) byName[c.name]=c;});
-  return baseNames.map((name,i)=>{
-    const role=(cfg.assistStaff||[]).includes(name)?"アシスタント":((cfg.mcStaff||[]).includes(name)?"司会":"コンシェルジュ");
-    return byName[name]||supportDefaultCard(name,i,role);
+  const byId={}; const byName={};
+  existing.forEach(c=>{if(c?.id) byId[c.id]=c;if(c?.name) byName[c.name]=c;});
+  return targets.map((staff,i)=>{
+    const base=byId[staff.id]||byName[staff.name]||supportDefaultCard(staff,i);
+    return {...base,id:staff.id,name:staff.name,role:staff.role,workplace:staff.workplace,location:staff.location};
   });
 };
+function StaffManagementPanel({staffList,onChange}){
+  const update=(id,patch)=>onChange(staffList.map(s=>s.id===id?{...s,...patch}:s));
+  const add=()=>onChange([...staffList,{id:supportId(),name:"新しいスタッフ",role:"アシスタント",workplace:"飛鳥",location:"飛鳥",trainingTarget:true,trainer:false}]);
+  const del=id=>onChange(staffList.filter(s=>s.id!==id));
+  return <div style={{...GC,background:"#f8fffb",border:`1px solid ${C.green}`,marginBottom:16}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:12}}>
+      <h3 style={{margin:0,fontSize:15,color:"#14532d"}}>スタッフ管理</h3>
+      <button onClick={add} style={{...Btn(C.green),padding:"8px 12px"}}>追加</button>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {staffList.map(s=><div key={s.id} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,alignItems:"center",border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
+        <input value={s.name} onChange={e=>update(s.id,{name:e.target.value})} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13,minWidth:0}}/>
+        <select value={s.role} onChange={e=>update(s.id,{role:e.target.value})} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}>
+          {SUPPORT_ROLES.map(r=><option key={r} value={r}>{r}</option>)}
+        </select>
+        <select value={s.workplace||"飛鳥"} onChange={e=>update(s.id,{workplace:e.target.value,location:e.target.value})} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}>
+          {SUPPORT_WORKPLACES.map(w=><option key={w} value={w}>{w}</option>)}
+        </select>
+        <input value={s.location||""} onChange={e=>update(s.id,{location:e.target.value})} placeholder="勤務場所" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13,minWidth:0}}/>
+        <label style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><input type="checkbox" checked={!!s.trainingTarget} onChange={e=>update(s.id,{trainingTarget:e.target.checked})}/>研修対象</label>
+        <label style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><input type="checkbox" checked={!!s.trainer} onChange={e=>update(s.id,{trainer:e.target.checked})}/>Trainer</label>
+        <button onClick={()=>del(s.id)} style={{...Btn(C.red),padding:"7px 10px"}}>削除</button>
+      </div>)}
+    </div>
+  </div>;
+}
 function SupportBadge(){
   return <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#fffbeb",border:"1px solid #f59e0b",color:"#92400e",
     borderRadius:999,padding:"5px 10px",fontSize:12,fontWeight:800}}>DEV {DEV_BUILD_LABEL}</div>;
 }
-function SupportManagerView({cfg,flash}){
+function SupportManagerView({cfg,sv,flash}){
   const [cards,setCards]=useState([]);
   const [selected,setSelected]=useState(null);
   const [loading,setLoading]=useState(true);
+  const [managedStaff,setManagedStaff]=useState(()=>normalizeStaffManagement(cfg));
   useEffect(()=>{
     let alive=true;
     stLoad("support-growth-cards").then(d=>{
       if(!alive) return;
       const merged=supportMergeCards(d,cfg);
       setCards(merged);
-      setSelected(s=>s||merged[0]?.id||null);
+      setManagedStaff(normalizeStaffManagement(cfg));
+      setSelected(s=>merged.some(c=>c.id===s)?s:(merged[0]?.id||null));
       setLoading(false);
     });
     return()=>{alive=false;};
   },[cfg.staff,cfg.assistStaff,cfg.mcStaff]);
   const saveCards=async next=>{setCards(next);await stSave("support-growth-cards",next);flash?.("成長カルテを保存しました");};
   const updateCard=(id,patch)=>saveCards(cards.map(c=>c.id===id?{...c,...patch,updatedAt:new Date().toISOString()}:c));
+  const saveStaffManagement=async next=>{
+    const managed=normalizeStaffManagement({staffManagement:next});
+    const derived=supportListsFromStaff(managed);
+    setManagedStaff(managed);
+    await sv.sets({...cfg,...derived,staffManagement:managed});
+    const merged=supportMergeCards(cards,{...cfg,...derived,staffManagement:managed});
+    setCards(merged);
+    setSelected(s=>merged.some(c=>c.id===s)?s:(merged[0]?.id||null));
+  };
   const selectedCard=cards.find(c=>c.id===selected)||cards[0];
   const followCount=cards.filter(c=>supportStatus(c)==="要フォロー"||supportProgress(c)<60).length;
   const rookieCount=cards.filter(c=>supportStatus(c)==="研修中").length;
   const debutCount=cards.filter(c=>c.debutMonth||supportStatus(c)==="独り立ちOK").length;
   const trainingCount=cards.filter(c=>c.trainingThisWeek).length;
   const recent=[...cards].sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||""))).slice(0,3);
+  const trainers=supportTrainers(managedStaff);
   if(loading) return <div style={GC}>読み込み中...</div>;
   return <div>
     <div style={{...GC,background:"linear-gradient(135deg,#f0fdf4,#ffffff)",border:"1px solid #bbf7d0"}}>
@@ -2678,21 +2758,29 @@ function SupportManagerView({cfg,flash}){
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{recent.map(c=><button key={c.id} onClick={()=>setSelected(c.id)} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"9px 12px"}}>{c.name} <span style={{color:supportProgressColor(supportProgress(c)),fontWeight:900}}>{supportProgress(c)}%</span></button>)}</div>
       </div>
     </div>
+    <StaffManagementPanel staffList={managedStaff} onChange={saveStaffManagement}/>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14,alignItems:"start"}}>
       <SupportStaffList cards={cards} selected={selectedCard?.id} onSelect={setSelected}/>
-      {selectedCard&&<SupportGrowthChart card={selectedCard} onChange={patch=>updateCard(selectedCard.id,patch)}/>}
+      {selectedCard&&<SupportGrowthChart card={selectedCard} trainers={trainers} onChange={patch=>updateCard(selectedCard.id,patch)}/>}
     </div>
   </div>;
 }
 function SupportStaffList({cards,selected,onSelect}){
   return <div style={GC}><h3 style={{margin:"0 0 12px",fontSize:16}}>スタッフ一覧</h3><div style={{display:"flex",flexDirection:"column",gap:8}}>
-    {cards.map(c=>{const p=supportProgress(c),color=supportProgressColor(p),active=selected===c.id;return <button key={c.id} onClick={()=>onSelect(c.id)} style={{textAlign:"left",background:active?"#f0fdf4":"#fff",border:`2px solid ${active?C.green:C.border}`,borderRadius:8,padding:12,cursor:"pointer"}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div style={{fontWeight:900,fontSize:15}}>{c.name}</div><span style={{fontSize:12,fontWeight:900,color,whiteSpace:"nowrap"}}>{p}%</span></div>
-      <div style={{fontSize:12,color:C.muted,marginTop:4}}>{c.role}</div><div style={{height:8,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"8px 0"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div><span style={{fontSize:12,fontWeight:800,color}}>{supportStatus(c)}</span>
-    </button>;})}
+    {Object.entries(cards.reduce((acc,c)=>{const key=supportGroupLabel(c);(acc[key]||(acc[key]=[])).push(c);return acc;},{})).map(([group,items])=>
+      <div key={group}>
+        <div style={{fontSize:13,fontWeight:900,color:C.green,margin:"6px 0"}}>{group}</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {items.map(c=>{const p=supportProgress(c),color=supportProgressColor(p),active=selected===c.id;return <button key={c.id} onClick={()=>onSelect(c.id)} style={{textAlign:"left",background:active?"#f0fdf4":"#fff",border:`2px solid ${active?C.green:C.border}`,borderRadius:8,padding:12,cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div style={{fontWeight:900,fontSize:15}}>{c.name}</div><span style={{fontSize:12,fontWeight:900,color,whiteSpace:"nowrap"}}>{p}%</span></div>
+            <div style={{fontSize:12,color:C.muted,marginTop:4}}>{c.location||c.workplace} / {c.role}</div><div style={{height:8,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"8px 0"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div><span style={{fontSize:12,fontWeight:800,color}}>{supportStatus(c)}</span>
+          </button>;})}
+        </div>
+      </div>)}
+    {cards.length===0&&<div style={{color:C.muted,fontSize:13}}>研修対象にチェックされたスタッフはいません。</div>}
   </div></div>;
 }
-function SupportGrowthChart({card,onChange}){
+function SupportGrowthChart({card,trainers,onChange}){
   const [historyDate,setHistoryDate]=useState(new Date().toISOString().slice(0,10));
   const [historyComment,setHistoryComment]=useState("");
   const p=supportProgress(card),color=supportProgressColor(p);
@@ -2701,7 +2789,12 @@ function SupportGrowthChart({card,onChange}){
   return <div style={GC}>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}><div><h3 style={{margin:"0 0 4px",fontSize:20}}>{card.name} さんのスキルカルテ</h3><div style={{fontSize:13,color:C.muted}}>{card.role} / {supportStatus(card)}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color}}>{p}%</div><div style={{fontSize:11,color:C.muted,fontWeight:700}}>総合進捗</div></div></div>
     <div style={{height:12,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"14px 0 18px"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>{["研修中","独り立ちOK","要フォロー","ベテラン"].map(s=><button key={s} onClick={()=>onChange({status:s})} style={{...Btn(card.status===s?C.green:"#fff",card.status===s?"#fff":C.text),border:`1px solid ${card.status===s?C.green:C.border}`,padding:"10px 12px"}}>{s}</button>)}</div>
+    <label style={{display:"block",fontSize:12,color:C.muted,fontWeight:800,marginBottom:16}}>Trainer
+      <select value={card.trainerId||""} onChange={e=>onChange({trainerId:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}>
+        <option value="">未設定</option>
+        {trainers.map(t=><option key={t.id} value={t.id}>{t.name}（{t.workplace}{t.role}）</option>)}
+      </select>
+    </label>
     {SUPPORT_SKILL_GROUPS.map(group=><div key={group.id} style={{marginBottom:18}}><h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4><div style={{display:"flex",flexDirection:"column",gap:8}}>
       {group.items.map(item=>{const key=`${group.id}:${item}`,current=card.skills?.[key]||"×";return <div key={key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontWeight:800,fontSize:13,marginBottom:8}}>{item}</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
         {SUPPORT_RATINGS.map(r=><button key={r.mark} onClick={()=>setSkill(key,r.mark)} title={r.label} style={{border:`2px solid ${current===r.mark?C.green:C.border}`,borderRadius:8,padding:"9px 4px",background:current===r.mark?C.greenL:"#fff",color:current===r.mark?C.green:C.text,fontSize:16,fontWeight:900,cursor:"pointer"}}>{r.mark}<div style={{fontSize:10,fontWeight:700,marginTop:2}}>{r.label}</div></button>)}
@@ -3374,6 +3467,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 7 / Build 20260630-2158</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 7 improvement / Build 20260701-0847</div>
 </body>
 </html>
