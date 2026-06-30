@@ -1461,8 +1461,15 @@ function MCStaffView(P) {
 function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
   const jobRole = role==="mc"?"司会":"アシスタント";
   const today = new Date();
+  const clients=getClients(cfg);
   const ceremonyTypes=getCeremonyTypes(cfg).map(t=>t.label);
+  const roleMasters=getRoles(cfg);
+  const roles=roleMasters.map(r=>r.label);
   const defaultType=ceremonyTypes[0]||"2日葬";
+  const clientVenues=company=>{
+    const client=clients.find(c=>c.label===company);
+    return client?.venues?.length?client.venues:(company?[company]:[]);
+  };
   const [form, setForm] = useState({
     company:"", venue:"", type:defaultType, assistRole:"アシスタント", training:false,
     date:`${year}-${p2(month)}-${p2(today.getDate())}`,
@@ -1494,7 +1501,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
     reset();
   };
 
-  const colors = { "飛鳥会館":"#e8784a", "あしべの杜":"#6b8fb0" };
+  const colors = { [clients[0]?.label||""]:"#e8784a", [clients[1]?.label||""]:"#6b8fb0" };
   const canSave = form.venue && (actualRole==="パントリー" ? true : !!form.type);
 
   return (
@@ -1513,13 +1520,13 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
       <div style={{marginBottom:16}}>
         <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:8}}>🏢 STEP 1　会社</label>
         <div style={{display:"flex",gap:10}}>
-          {Object.keys(MC_COMPANIES).map(company=>(
-            <button key={company} onClick={()=>setForm({...form,company,venue:MC_COMPANIES[company][0]})}
-              style={{flex:1,border:`2px solid ${form.company===company?colors[company]:C.border}`,
+          {clients.map(client=>(
+            <button key={client.id} onClick={()=>setForm({...form,company:client.label,venue:client.venues[0]||client.label})}
+              style={{flex:1,border:`2px solid ${form.company===client.label?(colors[client.label]||C.blue):C.border}`,
                 borderRadius:12,padding:"14px 8px",cursor:"pointer",fontSize:13,fontWeight:800,
-                background:form.company===company?colors[company]:"#fff",
-                color:form.company===company?"#fff":C.muted}}>
-              {company==="飛鳥会館"?"⛩️":"🌿"}<br/>{company}
+                background:form.company===client.label?colors[client.label]||C.blue:"#fff",
+                color:form.company===client.label?"#fff":C.muted}}>
+              🏢<br/>{client.label}
             </button>
           ))}
         </div>
@@ -1530,12 +1537,12 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
         <div style={{marginBottom:16}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:8}}>📍 STEP 2　会場</label>
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-            {MC_COMPANIES[form.company].map(venue=>(
+            {clientVenues(form.company).map(venue=>(
               <button key={venue} onClick={()=>setForm({...form,venue})}
-                style={{border:`2px solid ${form.venue===venue?colors[form.company]:C.border}`,
+                style={{border:`2px solid ${form.venue===venue?(colors[form.company]||C.blue):C.border}`,
                   borderRadius:10,padding:"10px 14px",cursor:"pointer",fontSize:13,fontWeight:700,
-                  background:form.venue===venue?colors[form.company]+"22":"#fff",
-                  color:form.venue===venue?colors[form.company]:C.text}}>
+                  background:form.venue===venue?(colors[form.company]||C.blue)+"22":"#fff",
+                  color:form.venue===venue?(colors[form.company]||C.blue):C.text}}>
                 {venue}
               </button>
             ))}
@@ -1543,8 +1550,8 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
         </div>
       )}
 
-      {/* 研修トグル（あしべの杜のみ） */}
-      {form.venue && form.company==="あしべの杜" && (
+      {/* 研修トグル */}
+      {form.venue && getRoles(cfg).some(r=>r.training) && (
         <div style={{marginBottom:16}}>
           <button onClick={()=>setForm({...form,training:!form.training})}
             style={{width:"100%",border:`2px solid ${form.training?"#f59e0b":C.border}`,
@@ -1566,7 +1573,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
         <div style={{marginBottom:16}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:8}}>🎭 STEP 3　役割</label>
           <div style={{display:"flex",gap:8}}>
-            {["アシスタント","パントリー"].map(r=>(
+            {roleMasters.filter(r=>r.label!=="司会"&&!r.training).map(r=>r.label).map(r=>(
               <button key={r} onClick={()=>setForm({...form,assistRole:r})}
                 style={{flex:1,border:`2px solid ${form.assistRole===r?C.blue:C.border}`,
                   borderRadius:10,padding:"12px 8px",cursor:"pointer",fontSize:13,fontWeight:700,
@@ -1724,42 +1731,84 @@ const DEFAULT_MC_BILLING = {
 
 const makeId = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 const DEFAULT_ITEM_SETTINGS = {
+  clients:[
+    {id:"asuka",label:"飛鳥会館",shortLabel:"飛鳥",venues:["小さな多治米","小さな蔵王","春日","花園","多治米"]},
+    {id:"ashibe",label:"あしべの杜",shortLabel:"あしべ",venues:["あしべの杜","追憶の杜","別邸","府中"]},
+  ],
   ceremonyTypes:[
     {id:"type-2days",label:"2日葬"},
     {id:"type-1day",label:"1日葬"},
     {id:"type-wake",label:"通夜のみ"},
   ],
-  payColumns:[
-    {id:"asuka-wake-mc",label:"飛鳥 通夜司会",company:"飛鳥会館",role:"司会",type:"通夜のみ"},
-    {id:"asuka-funeral-mc",label:"飛鳥 葬儀司会",company:"飛鳥会館",role:"司会",type:"2日葬"},
-    {id:"asuka-wake-assist",label:"飛鳥 通夜アシ",company:"飛鳥会館",role:"アシスタント",type:"通夜のみ"},
-    {id:"asuka-funeral-assist",label:"飛鳥 葬儀アシ",company:"飛鳥会館",role:"アシスタント",type:"2日葬"},
-    {id:"ashibe-wake-mc",label:"あしべ 通夜司会",company:"あしべの杜",role:"司会",type:"通夜のみ"},
-    {id:"ashibe-funeral-mc",label:"あしべ 葬儀司会",company:"あしべの杜",role:"司会",type:"2日葬"},
-    {id:"ashibe-pantry",label:"あしべ パントリー",company:"あしべの杜",role:"パントリー",type:"2日葬"},
-    {id:"training",label:"研修",company:"あしべの杜",role:"研修",type:"2日葬",training:true},
+  roles:[
+    {id:"mc",label:"司会",usesCeremony:true},
+    {id:"assist",label:"アシスタント",usesCeremony:true},
+    {id:"pantry",label:"パントリー",usesCeremony:false},
+    {id:"training",label:"研修",usesCeremony:false,training:true},
   ],
 };
 const clone = v => JSON.parse(JSON.stringify(v));
+const makeSlug = s => String(s||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || Math.random().toString(36).slice(2,7);
 function normalizeItemSettings(settings){
   const base=clone(DEFAULT_ITEM_SETTINGS);
   const src=settings||{};
+  const clients=ensureArray(src.clients).map((c,i)=>
+    typeof c==="string"?{id:`client-${i}-${makeSlug(c)}`,label:c,shortLabel:c,venues:MC_COMPANIES[c]||[]}:{
+      id:c.id||`client-${i}-${makeSlug(c.label||c.name)}`,label:c.label||c.name||"",
+      shortLabel:c.shortLabel||c.shortName||c.label||c.name||"",
+      venues:ensureArray(c.venues||c.options).filter(Boolean)
+    }
+  ).filter(c=>c.label);
   const ceremonyTypes=ensureArray(src.ceremonyTypes).map((t,i)=>
     typeof t==="string"?{id:`type-${i}-${t}`,label:t}:{id:t.id||makeId("type"),label:t.label||t.name||""}
   ).filter(t=>t.label);
-  const payColumns=ensureArray(src.payColumns).map((c,i)=>
-    typeof c==="string"?{id:`pay-${i}-${c}`,label:c,company:"飛鳥会館",role:"司会",type:"2日葬"}:{
-      id:c.id||makeId("pay"),label:c.label||c.name||"",company:c.company||"飛鳥会館",
-      role:c.role||"司会",type:c.type||c.ceremonyType||"2日葬",training:!!c.training
+  const roles=ensureArray(src.roles).map((r,i)=>
+    typeof r==="string"?{id:`role-${i}-${makeSlug(r)}`,label:r,usesCeremony:r!=="パントリー"&&r!=="研修",training:r==="研修"}:{
+      id:r.id||`role-${i}-${makeSlug(r.label||r.name)}`,label:r.label||r.name||"",
+      usesCeremony:r.usesCeremony!==undefined?!!r.usesCeremony:!(r.training||r.label==="パントリー"||r.label==="研修"),
+      training:!!r.training
     }
-  ).filter(c=>c.label);
+  ).filter(r=>r.label);
+  const legacyColumns=ensureArray(src.payColumns);
+  const legacyClients=clients.length?clients:ensureArray([...new Set(legacyColumns.map(c=>c.company).filter(Boolean))]).map((name,i)=>({
+    id:`client-${i}-${makeSlug(name)}`,label:name,shortLabel:name,venues:MC_COMPANIES[name]||[]
+  }));
+  const legacyRoles=roles.length?roles:ensureArray([...new Set(legacyColumns.map(c=>c.role).filter(Boolean))]).map((name,i)=>({
+    id:`role-${i}-${makeSlug(name)}`,label:name,usesCeremony:name!=="パントリー"&&name!=="研修",training:name==="研修"
+  }));
   return {
+    clients:(legacyClients.length?legacyClients:base.clients).map(c=>({...c,venues:ensureArray(c.venues)})),
     ceremonyTypes:ceremonyTypes.length?ceremonyTypes:base.ceremonyTypes,
-    payColumns:payColumns.length?payColumns:base.payColumns,
+    roles:legacyRoles.length?legacyRoles:base.roles,
   };
 }
+const legacyPayColumnId = (client,type,role) => {
+  if(role.training||role.label==="研修") return "training";
+  if(client.label==="飛鳥会館"&&role.label==="司会"&&type?.label==="通夜のみ") return "asuka-wake-mc";
+  if(client.label==="飛鳥会館"&&role.label==="司会") return "asuka-funeral-mc";
+  if(client.label==="飛鳥会館"&&role.label==="アシスタント"&&type?.label==="通夜のみ") return "asuka-wake-assist";
+  if(client.label==="飛鳥会館"&&role.label==="アシスタント") return "asuka-funeral-assist";
+  if(client.label==="あしべの杜"&&role.label==="司会"&&type?.label==="通夜のみ") return "ashibe-wake-mc";
+  if(client.label==="あしべの杜"&&role.label==="司会") return "ashibe-funeral-mc";
+  if(client.label==="あしべの杜"&&role.label==="パントリー") return "ashibe-pantry";
+  return null;
+};
 const getCeremonyTypes = cfg => normalizeItemSettings(cfg.itemSettings).ceremonyTypes;
-const getPayColumns = cfg => normalizeItemSettings(cfg.itemSettings).payColumns;
+const getClients = cfg => normalizeItemSettings(cfg.itemSettings).clients;
+const getRoles = cfg => normalizeItemSettings(cfg.itemSettings).roles;
+const getPayColumns = cfg => {
+  const s=normalizeItemSettings(cfg.itemSettings);
+  return s.clients.flatMap(client=>s.roles.flatMap(role=>{
+    const types=role.usesCeremony?s.ceremonyTypes:[s.ceremonyTypes[0]||{id:"type-default",label:""}];
+    return types.map(type=>{
+      const id=legacyPayColumnId(client,type,role)||`pay-${client.id}-${role.id}-${role.usesCeremony?type.id:"fixed"}`;
+      return {
+        id,label:`${client.shortLabel||client.label} ${role.usesCeremony?type.label+" ":""}${role.label}`,
+        company:client.label,role:role.label,type:type.label,training:!!role.training
+      };
+    });
+  }));
+};
 function findPayColumn(cfg, rec){
   const cols=getPayColumns(cfg);
   if(rec.training) return cols.find(c=>c.training)||cols.find(c=>c.role==="研修");
@@ -2191,12 +2240,16 @@ function StudySessionView({year,month}){
 
 // MC記録タブ（スタッフ画面に追加）
 function MCRecordTab({ year, month, cfg, uname, flash }) {
+  const clients=getClients(cfg);
   const ceremonyTypes=getCeremonyTypes(cfg).map(t=>t.label);
+  const roles=getRoles(cfg).filter(r=>!r.training).map(r=>r.label);
   const defaultType=ceremonyTypes[0]||"2日葬";
+  const defaultClient=clients[0]||{label:"",venues:[]};
+  const defaultRole=roles[0]||"司会";
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
-    company:"飛鳥会館", venue:"春日", role:"司会", type:defaultType,
+    company:defaultClient.label, venue:defaultClient.venues[0]||defaultClient.label, role:defaultRole, type:defaultType,
     date:`${year}/${p2(month)}/${p2(new Date().getDate())}`,
   });
   const [saving, setSaving] = useState(false);
@@ -2227,7 +2280,8 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
     flash("削除しました");
   };
 
-  const venues = MC_COMPANIES[form.company] || [];
+  const selectedClient=clients.find(c=>c.label===form.company);
+  const venues = selectedClient?.venues?.length ? selectedClient.venues : (form.company?[form.company]:[]);
 
   const staffRate = getStaffPayRate(cfg,uname,form);
 
@@ -2247,13 +2301,13 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
           <div>
             <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>会社</label>
             <div style={{display:"flex",gap:8}}>
-              {Object.keys(MC_COMPANIES).map(c=>(
-                <button key={c} onClick={()=>setForm({...form,company:c,venue:MC_COMPANIES[c][0]})}
-                  style={{flex:1,border:`2px solid ${form.company===c?"#e8784a":C.border}`,
+              {clients.map(c=>(
+                <button key={c.id} onClick={()=>setForm({...form,company:c.label,venue:c.venues[0]||c.label})}
+                  style={{flex:1,border:`2px solid ${form.company===c.label?"#e8784a":C.border}`,
                     borderRadius:8,padding:"8px 4px",cursor:"pointer",fontSize:12,fontWeight:700,
-                    background:form.company===c?"#fff8f0":"#fff",
-                    color:form.company===c?"#e8784a":C.muted}}>
-                  {c}
+                    background:form.company===c.label?"#fff8f0":"#fff",
+                    color:form.company===c.label?"#e8784a":C.muted}}>
+                  {c.label}
                 </button>
               ))}
             </div>
@@ -2270,7 +2324,7 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
           <div>
             <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>役割</label>
             <div style={{display:"flex",gap:6}}>
-              {MC_ROLES.map(r=>(
+              {roles.map(r=>(
                 <button key={r} onClick={()=>setForm({...form,role:r})}
                   style={{flex:1,border:`2px solid ${form.role===r?C.blue:C.border}`,
                     borderRadius:8,padding:"8px 4px",cursor:"pointer",fontSize:12,fontWeight:700,
@@ -2343,6 +2397,7 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
 // MC集計（事務・管理者用）
 function MCAccountingView({ year, month, cfg }) {
   const { staff } = cfg;
+  const clients=getClients(cfg);
   const [allRecords, setAllRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const billing = cfg.mcBilling || DEFAULT_MC_BILLING;
@@ -2371,7 +2426,8 @@ function MCAccountingView({ year, month, cfg }) {
 
   // 葬儀場別請求集計
   const billByCompany = {};
-  Object.keys(MC_COMPANIES).forEach(company => {
+  clients.forEach(client => {
+    const company=client.label;
     let total=0, tax=0;
     allRecords.filter(r=>r.company===company).forEach(r => {
       const t = r.role==="パントリー"?(getCeremonyTypes(cfg)[0]?.label||"2日葬"):(r.type||"2日葬");
@@ -2511,21 +2567,11 @@ function ItemSettingsTab({ cfg, sv }) {
   const [settings,setSettings]=useState(()=>clone(normalizeItemSettings(cfg.itemSettings)));
   const [drag,setDrag]=useState(null);
   const [saved,setSaved]=useState(false);
-  const ceremonyTypes=settings.ceremonyTypes;
-  const companies=Object.keys(MC_COMPANIES);
-  const roles=["司会","アシスタント","パントリー","研修"];
-  const updateType=(id,label)=>setSettings(s=>({
-    ...s,
-    ceremonyTypes:s.ceremonyTypes.map(t=>t.id===id?{...t,label}:t),
-    payColumns:s.payColumns.map(c=>c.type===ceremonyTypes.find(t=>t.id===id)?.label?{...c,type:label}:c),
-  }));
+  const updateMaster=(kind,id,patch)=>setSettings(s=>({...s,[kind]:s[kind].map(item=>item.id===id?{...item,...patch}:item)}));
+  const addClient=()=>setSettings(s=>({...s,clients:[...s.clients,{id:makeId("client"),label:"新しいクライアント",shortLabel:"新規",venues:[]}]}));
   const addType=()=>setSettings(s=>({...s,ceremonyTypes:[...s.ceremonyTypes,{id:makeId("type"),label:"新しい種別"}]}));
-  const delType=id=>setSettings(s=>({...s,ceremonyTypes:s.ceremonyTypes.filter(t=>t.id!==id)}));
-  const updateCol=(id,patch)=>setSettings(s=>({...s,payColumns:s.payColumns.map(c=>c.id===id?{...c,...patch}:c)}));
-  const addCol=()=>setSettings(s=>({...s,payColumns:[...s.payColumns,{
-    id:makeId("pay"),label:"新しい支払い列",company:companies[0]||"飛鳥会館",role:"司会",type:ceremonyTypes[0]?.label||"2日葬"
-  }]}));
-  const delCol=id=>setSettings(s=>({...s,payColumns:s.payColumns.filter(c=>c.id!==id)}));
+  const addRole=()=>setSettings(s=>({...s,roles:[...s.roles,{id:makeId("role"),label:"新しい役割",usesCeremony:true,training:false}]}));
+  const delMaster=(kind,id)=>setSettings(s=>({...s,[kind]:s[kind].filter(item=>item.id!==id)}));
   const reorder=(kind,from,to)=>setSettings(s=>({...s,[kind]:moveItem(s[kind],from,to)}));
   const dropOn=(kind,to)=>{
     if(!drag||drag.kind!==kind) return;
@@ -2534,70 +2580,111 @@ function ItemSettingsTab({ cfg, sv }) {
   };
   const save=()=>{
     const clean={
-      ceremonyTypes:settings.ceremonyTypes.map(t=>({id:t.id,label:t.label.trim()})).filter(t=>t.label),
-      payColumns:settings.payColumns.map(c=>({
-        id:c.id,label:c.label.trim(),company:c.company,role:c.role,type:c.type,training:c.role==="研修"||!!c.training
+      clients:settings.clients.map(c=>({
+        id:c.id,label:c.label.trim(),shortLabel:(c.shortLabel||c.label).trim(),
+        venues:ensureArray(c.venues).map(v=>String(v).trim()).filter(Boolean)
       })).filter(c=>c.label),
+      ceremonyTypes:settings.ceremonyTypes.map(t=>({id:t.id,label:t.label.trim()})).filter(t=>t.label),
+      roles:settings.roles.map(r=>({
+        id:r.id,label:r.label.trim(),usesCeremony:!!r.usesCeremony,training:!!r.training
+      })).filter(r=>r.label),
     };
     sv.sets({...cfg,itemSettings:clean});
     setSaved(true);
     setTimeout(()=>setSaved(false),2000);
   };
   const rowStyle={display:"grid",gridTemplateColumns:"32px 1fr auto auto auto",gap:8,alignItems:"center",marginBottom:8};
+  const MasterButtons=({kind,i,id})=>(
+    <React.Fragment>
+      <button onClick={()=>reorder(kind,i,i-1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↑</button>
+      <button onClick={()=>reorder(kind,i,i+1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↓</button>
+      <button onClick={()=>delMaster(kind,id)} style={{...Btn(C.red),padding:"7px 9px"}}>削除</button>
+    </React.Fragment>
+  );
   return (
     <div>
       <div style={{...GC,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}>
-          <h3 style={{margin:0,fontSize:15,color:C.navy}}>🧩 式種別</h3>
-          <button onClick={addType} style={{...Btn(C.green),fontSize:12,padding:"7px 12px"}}>＋ 追加</button>
+          <h3 style={{margin:0,fontSize:15,color:C.navy}}>🏢 クライアント</h3>
+          <button onClick={addClient} style={{...Btn(C.green),fontSize:12,padding:"7px 12px"}}>＋ 追加</button>
         </div>
-        {ceremonyTypes.map((t,i)=>(
-          <div key={t.id} draggable onDragStart={()=>setDrag({kind:"ceremonyTypes",index:i})}
-            onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn("ceremonyTypes",i)}
-            style={rowStyle}>
-            <span style={{cursor:"grab",color:C.muted,fontWeight:800}}>☰</span>
-            <input value={t.label} onChange={e=>updateType(t.id,e.target.value)}
-              style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,minWidth:0}}/>
-            <button onClick={()=>reorder("ceremonyTypes",i,i-1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↑</button>
-            <button onClick={()=>reorder("ceremonyTypes",i,i+1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↓</button>
-            <button onClick={()=>delType(t.id)} style={{...Btn(C.red),padding:"7px 9px"}}>削除</button>
+        {settings.clients.map((client,i)=>(
+          <div key={client.id} draggable onDragStart={()=>setDrag({kind:"clients",index:i})}
+            onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn("clients",i)}
+            style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:10,background:"#fff"}}>
+            <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto auto auto",gap:8,alignItems:"center",marginBottom:8}}>
+              <span style={{cursor:"grab",color:C.muted,fontWeight:800}}>☰</span>
+              <input value={client.label} onChange={e=>updateMaster("clients",client.id,{label:e.target.value})}
+                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,minWidth:0}}/>
+              <MasterButtons kind="clients" i={i} id={client.id}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"minmax(120px,1fr) minmax(180px,2fr)",gap:8}}>
+              <input value={client.shortLabel||""} onChange={e=>updateMaster("clients",client.id,{shortLabel:e.target.value})}
+                placeholder="短縮名"
+                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:13,minWidth:0}}/>
+              <textarea value={ensureArray(client.venues).join("\n")} onChange={e=>updateMaster("clients",client.id,{venues:e.target.value.split("\n")})}
+                rows={2} placeholder="会場名を1行ずつ"
+                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:13,minWidth:0,fontFamily:"inherit"}}/>
+            </div>
           </div>
         ))}
       </div>
 
       <div style={{...GC,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}>
-          <h3 style={{margin:0,fontSize:15,color:C.navy}}>💴 スタッフ支払い列</h3>
-          <button onClick={addCol} style={{...Btn(C.green),fontSize:12,padding:"7px 12px"}}>＋ 追加</button>
+          <h3 style={{margin:0,fontSize:15,color:C.navy}}>🧩 式種別</h3>
+          <button onClick={addType} style={{...Btn(C.green),fontSize:12,padding:"7px 12px"}}>＋ 追加</button>
         </div>
-        {settings.payColumns.map((c,i)=>(
-          <div key={c.id} draggable onDragStart={()=>setDrag({kind:"payColumns",index:i})}
-            onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn("payColumns",i)}
+        {settings.ceremonyTypes.map((t,i)=>(
+          <div key={t.id} draggable onDragStart={()=>setDrag({kind:"ceremonyTypes",index:i})}
+            onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn("ceremonyTypes",i)}
+            style={rowStyle}>
+            <span style={{cursor:"grab",color:C.muted,fontWeight:800}}>☰</span>
+            <input value={t.label} onChange={e=>updateMaster("ceremonyTypes",t.id,{label:e.target.value})}
+              style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,minWidth:0}}/>
+            <MasterButtons kind="ceremonyTypes" i={i} id={t.id}/>
+          </div>
+        ))}
+      </div>
+
+      <div style={{...GC,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}>
+          <h3 style={{margin:0,fontSize:15,color:C.navy}}>🎭 役割</h3>
+          <button onClick={addRole} style={{...Btn(C.green),fontSize:12,padding:"7px 12px"}}>＋ 追加</button>
+        </div>
+        {settings.roles.map((r,i)=>(
+          <div key={r.id} draggable onDragStart={()=>setDrag({kind:"roles",index:i})}
+            onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn("roles",i)}
             style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:10,background:"#fff"}}>
             <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto auto auto",gap:8,alignItems:"center",marginBottom:8}}>
               <span style={{cursor:"grab",color:C.muted,fontWeight:800}}>☰</span>
-              <input value={c.label} onChange={e=>updateCol(c.id,{label:e.target.value})}
+              <input value={r.label} onChange={e=>updateMaster("roles",r.id,{label:e.target.value})}
                 style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,minWidth:0}}/>
-              <button onClick={()=>reorder("payColumns",i,i-1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↑</button>
-              <button onClick={()=>reorder("payColumns",i,i+1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↓</button>
-              <button onClick={()=>delCol(c.id)} style={{...Btn(C.red),padding:"7px 9px"}}>削除</button>
+              <MasterButtons kind="roles" i={i} id={r.id}/>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
-              <select value={c.company} onChange={e=>updateCol(c.id,{company:e.target.value})}
-                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:13}}>
-                {companies.map(v=><option key={v} value={v}>{v}</option>)}
-              </select>
-              <select value={c.role} onChange={e=>updateCol(c.id,{role:e.target.value,training:e.target.value==="研修"})}
-                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:13}}>
-                {roles.map(v=><option key={v} value={v}>{v}</option>)}
-              </select>
-              <select value={c.type} onChange={e=>updateCol(c.id,{type:e.target.value})}
-                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:13}}>
-                {ceremonyTypes.map(t=><option key={t.id} value={t.label}>{t.label}</option>)}
-              </select>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <label style={{fontSize:12,color:C.text,display:"flex",gap:6,alignItems:"center"}}>
+                <input type="checkbox" checked={!!r.usesCeremony} onChange={e=>updateMaster("roles",r.id,{usesCeremony:e.target.checked})}/>
+                式種別ごとに列を作る
+              </label>
+              <label style={{fontSize:12,color:C.text,display:"flex",gap:6,alignItems:"center"}}>
+                <input type="checkbox" checked={!!r.training} onChange={e=>updateMaster("roles",r.id,{training:e.target.checked,usesCeremony:e.target.checked?false:r.usesCeremony})}/>
+                研修単価
+              </label>
             </div>
           </div>
         ))}
+      </div>
+
+      <div style={{...GC,background:"#f8f9fb",marginBottom:14}}>
+        <h3 style={{margin:"0 0 10px",fontSize:14,color:C.navy}}>自動生成される支払い列</h3>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {getPayColumns({itemSettings:settings}).map(col=>(
+            <span key={col.id} style={{border:`1px solid ${C.border}`,borderRadius:999,padding:"5px 9px",fontSize:12,background:"#fff"}}>
+              {col.label}
+            </span>
+          ))}
+        </div>
       </div>
 
       <button style={{...Btn(saved?C.green:C.navy),width:"100%",padding:"12px"}} onClick={save}>
@@ -2610,8 +2697,10 @@ function ItemSettingsTab({ cfg, sv }) {
 // MC設定（管理者設定画面に追加）
 function MCConfigTab({ cfg, sv }) {
   const { staff } = cfg;
+  const clients=getClients(cfg);
   const ceremonyTypes=getCeremonyTypes(cfg).map(t=>t.label);
   const pantryBillingType=ceremonyTypes[0]||"2日葬";
+  const billingRoles=getRoles(cfg).filter(r=>!r.training).map(r=>r.label);
   const payColumns=getPayColumns(cfg);
   const [billing, setBilling] = useState(
     JSON.parse(JSON.stringify(cfg.mcBilling || DEFAULT_MC_BILLING))
@@ -2645,9 +2734,9 @@ function MCConfigTab({ cfg, sv }) {
   return (
     <div>
       {/* 葬儀場への請求単価 */}
-      {Object.keys(MC_COMPANIES).map(company=>(
-        <div key={company} style={GC}>
-          <h3 style={{margin:"0 0 14px",fontSize:14,color:C.navy}}>🏛️ {company}　葬儀場への請求単価（税抜）</h3>
+      {clients.map(client=>(
+        <div key={client.id} style={GC}>
+          <h3 style={{margin:"0 0 14px",fontSize:14,color:C.navy}}>🏛️ {client.label}　葬儀場への請求単価（税抜）</h3>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",minWidth:360}}>
               <thead><tr style={{background:"#f8f9fb"}}>
@@ -2655,15 +2744,15 @@ function MCConfigTab({ cfg, sv }) {
                 {ceremonyTypes.map(t=><th key={t} style={TH}>{t}</th>)}
               </tr></thead>
               <tbody>
-                {MC_ROLES.map(role=>(
+                {billingRoles.map(role=>(
                   <tr key={role}>
                     <td style={{...TD,fontWeight:700}}>{role}</td>
                     {ceremonyTypes.map(type=>(
                       <td key={type} style={TD}>
                         {role==="パントリー"&&type!==pantryBillingType
                           ? <span style={{color:C.muted,fontSize:12}}>－</span>
-                          : <input type="number" value={billing[company]?.[role]?.[type]||0}
-                              onChange={e=>setBill(company,role,type,e.target.value)}
+                          : <input type="number" value={billing[client.label]?.[role]?.[type]||0}
+                              onChange={e=>setBill(client.label,role,type,e.target.value)}
                               style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,
                                 padding:"5px 8px",fontSize:13,boxSizing:"border-box"}}/>
                         }
