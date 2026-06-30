@@ -124,6 +124,8 @@ function App(){
     assistStaff:assistStaffData.length>0?assistStaffData:DEFAULT_ASSIST_STAFF,
     staffRates:raw.staffRates||{}, // コンシェルジュ個人別時給
     ashibeRates:raw.ashibeRates||{}, // あしべの杜単価
+    itemSettings:normalizeItemSettings(raw.itemSettings),
+    mcRatesV2:raw.mcRatesV2||{},
   };
 
   const flash=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
@@ -400,6 +402,7 @@ function AdminView(P){
     {id:"pref",  label:"📋 希望一覧"},
     {id:"shift", label:"📅 シフト確定"},
     {id:"att",   label:"🕐 出勤記録"},
+    {id:"items", label:"🧩 項目設定"},
     {id:"mc",    label:"🎤 司会設定"},
     {id:"config",label:"⚙️ 設定"},
   ];
@@ -407,6 +410,7 @@ function AdminView(P){
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
     {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
+    {tab==="items" &&<ItemSettingsTab {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
@@ -1457,8 +1461,10 @@ function MCStaffView(P) {
 function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
   const jobRole = role==="mc"?"司会":"アシスタント";
   const today = new Date();
+  const ceremonyTypes=getCeremonyTypes(cfg).map(t=>t.label);
+  const defaultType=ceremonyTypes[0]||"2日葬";
   const [form, setForm] = useState({
-    company:"", venue:"", type:"2日葬", assistRole:"アシスタント", training:false,
+    company:"", venue:"", type:defaultType, assistRole:"アシスタント", training:false,
     date:`${year}-${p2(month)}-${p2(today.getDate())}`,
   });
   const [saving, setSaving] = useState(false);
@@ -1467,12 +1473,9 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
 
   const rates = cfg.mcRates || {};
   const actualRole = jobRole==="アシスタント" ? form.assistRole : jobRole;
-  const trainingKey = form.training ? "研修" : null;
-  const myRate = trainingKey
-    ? (rates[uname]?.[form.company]?.["研修"] || 0)
-    : (rates[uname]?.[form.company]?.[actualRole] || 0);
+  const myRate = getStaffPayRate(cfg,uname,{company:form.company,role:actualRole,type:form.type,training:form.training});
 
-  const reset = () => { setForm({company:"",venue:"",type:"2日葬",assistRole:"アシスタント",date:`${year}-${p2(month)}-${p2(today.getDate())}`}); };
+  const reset = () => { setForm({company:"",venue:"",type:defaultType,assistRole:"アシスタント",training:false,date:`${year}-${p2(month)}-${p2(today.getDate())}`}); };
 
   const save = async () => {
     setSaving(true);
@@ -1480,7 +1483,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
     const newRec = {
       id: Date.now(), staff: uname, role: actualRole,
       company: form.company, venue: form.venue,
-      type: (actualRole==="パントリー"||actualRole==="アシスタント")?"－":form.type,
+      type: actualRole==="パントリー"?"－":form.type,
       date: form.date.replace(/-/g,"/"),
       training: form.training,
       createdAt: new Date().toISOString(),
@@ -1492,7 +1495,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
   };
 
   const colors = { "飛鳥会館":"#e8784a", "あしべの杜":"#6b8fb0" };
-  const canSave = form.venue && (jobRole==="司会" ? !!form.type : true);
+  const canSave = form.venue && (actualRole==="パントリー" ? true : !!form.type);
 
   return (
     <div style={GC}>
@@ -1576,12 +1579,12 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
         </div>
       )}
 
-      {/* STEP 3: 種別選択（司会のみ） */}
-      {form.venue && jobRole==="司会" && (
+      {/* STEP 3: 種別選択 */}
+      {form.venue && actualRole!=="パントリー" && (
         <div style={{marginBottom:16}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:8}}>📋 STEP 3　種別</label>
           <div style={{display:"flex",gap:8}}>
-            {MC_TYPES.map(t=>(
+            {ceremonyTypes.map(t=>(
               <button key={t} onClick={()=>setForm({...form,type:t})}
                 style={{flex:1,border:`2px solid ${form.type===t?C.purple:C.border}`,
                   borderRadius:10,padding:"10px 6px",cursor:"pointer",fontSize:12,fontWeight:700,
@@ -1603,7 +1606,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
             ["会社",form.company],
             ["会場",form.venue],
             ["役割",actualRole],
-            ...(jobRole==="司会"?[["種別",form.type]]:[]),
+            ...(actualRole!=="パントリー"?[["種別",form.type]]:[]),
             ...(form.training?[["研修","🎓 研修単価適用"]]:
                myRate>0?[["支払い単価",yen(myRate)]]:[[" ","（単価は管理者が設定します）"]]),
           ].map(([k,v])=>(
@@ -1643,7 +1646,7 @@ function MCStaffHistory({ year, month, uname, role, cfg }) {
     });
   },[year,month,uname,jobRole]);
 
-  const totalPay = records.reduce((a,r)=>a+(rates[uname]?.[r.company]?.[jobRole]||0),0);
+  const totalPay = records.reduce((a,r)=>a+getStaffPayRate(cfg,uname,r),0);
 
   if(loading) return <div style={{padding:40,textAlign:"center",color:C.muted}}>読み込み中…</div>;
 
@@ -1656,7 +1659,7 @@ function MCStaffHistory({ year, month, uname, role, cfg }) {
       </div>
       {records.length===0&&<p style={{color:C.muted,fontSize:13}}>この月の記録はありません</p>}
       {records.sort((a,b)=>a.date>b.date?1:-1).map(r=>{
-        const pay = rates[uname]?.[r.company]?.[jobRole]||0;
+        const pay = getStaffPayRate(cfg,uname,r);
         return (
           <div key={r.id} style={{borderBottom:`1px solid ${C.border}`,padding:"12px 0"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -1718,6 +1721,69 @@ const DEFAULT_MC_BILLING = {
     "パントリー":   { "2日葬":0, "1日葬":0, "通夜のみ":0 },
   },
 };
+
+const makeId = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+const DEFAULT_ITEM_SETTINGS = {
+  ceremonyTypes:[
+    {id:"type-2days",label:"2日葬"},
+    {id:"type-1day",label:"1日葬"},
+    {id:"type-wake",label:"通夜のみ"},
+  ],
+  payColumns:[
+    {id:"asuka-wake-mc",label:"飛鳥 通夜司会",company:"飛鳥会館",role:"司会",type:"通夜のみ"},
+    {id:"asuka-funeral-mc",label:"飛鳥 葬儀司会",company:"飛鳥会館",role:"司会",type:"2日葬"},
+    {id:"asuka-wake-assist",label:"飛鳥 通夜アシ",company:"飛鳥会館",role:"アシスタント",type:"通夜のみ"},
+    {id:"asuka-funeral-assist",label:"飛鳥 葬儀アシ",company:"飛鳥会館",role:"アシスタント",type:"2日葬"},
+    {id:"ashibe-wake-mc",label:"あしべ 通夜司会",company:"あしべの杜",role:"司会",type:"通夜のみ"},
+    {id:"ashibe-funeral-mc",label:"あしべ 葬儀司会",company:"あしべの杜",role:"司会",type:"2日葬"},
+    {id:"ashibe-pantry",label:"あしべ パントリー",company:"あしべの杜",role:"パントリー",type:"2日葬"},
+    {id:"training",label:"研修",company:"あしべの杜",role:"研修",type:"2日葬",training:true},
+  ],
+};
+const clone = v => JSON.parse(JSON.stringify(v));
+function normalizeItemSettings(settings){
+  const base=clone(DEFAULT_ITEM_SETTINGS);
+  const src=settings||{};
+  const ceremonyTypes=ensureArray(src.ceremonyTypes).map((t,i)=>
+    typeof t==="string"?{id:`type-${i}-${t}`,label:t}:{id:t.id||makeId("type"),label:t.label||t.name||""}
+  ).filter(t=>t.label);
+  const payColumns=ensureArray(src.payColumns).map((c,i)=>
+    typeof c==="string"?{id:`pay-${i}-${c}`,label:c,company:"飛鳥会館",role:"司会",type:"2日葬"}:{
+      id:c.id||makeId("pay"),label:c.label||c.name||"",company:c.company||"飛鳥会館",
+      role:c.role||"司会",type:c.type||c.ceremonyType||"2日葬",training:!!c.training
+    }
+  ).filter(c=>c.label);
+  return {
+    ceremonyTypes:ceremonyTypes.length?ceremonyTypes:base.ceremonyTypes,
+    payColumns:payColumns.length?payColumns:base.payColumns,
+  };
+}
+const getCeremonyTypes = cfg => normalizeItemSettings(cfg.itemSettings).ceremonyTypes;
+const getPayColumns = cfg => normalizeItemSettings(cfg.itemSettings).payColumns;
+function findPayColumn(cfg, rec){
+  const cols=getPayColumns(cfg);
+  if(rec.training) return cols.find(c=>c.training)||cols.find(c=>c.role==="研修");
+  return cols.find(c=>!c.training&&c.company===rec.company&&c.role===rec.role&&c.type===rec.type)
+    || cols.find(c=>!c.training&&c.company===rec.company&&c.role===rec.role&&c.type==="2日葬")
+    || cols.find(c=>!c.training&&c.company===rec.company&&c.role===rec.role)
+    || null;
+}
+function getStaffPayRate(cfg, staffName, rec){
+  const col=findPayColumn(cfg,rec);
+  if(col && cfg.mcRatesV2?.[staffName]?.[col.id]!==undefined) return cfg.mcRatesV2[staffName][col.id]||0;
+  const legacyKey = rec.training ? "研修" : rec.role;
+  if(cfg.mcRates?.[staffName]?.[rec.company]?.[legacyKey]!==undefined) return cfg.mcRates[staffName][rec.company][legacyKey]||0;
+  const legacyDerived = getMCRateKey(rec.company,rec.role,rec.type,rec.training);
+  const legacyCol = MC_RATE_KEYS.find(k=>k.key===legacyDerived);
+  return legacyCol ? 0 : 0;
+}
+function moveItem(list,from,to){
+  if(to<0||to>=list.length) return list;
+  const n=[...list];
+  const [item]=n.splice(from,1);
+  n.splice(to,0,item);
+  return n;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 出勤一覧（スタッフ別・会場別）
@@ -2125,10 +2191,12 @@ function StudySessionView({year,month}){
 
 // MC記録タブ（スタッフ画面に追加）
 function MCRecordTab({ year, month, cfg, uname, flash }) {
+  const ceremonyTypes=getCeremonyTypes(cfg).map(t=>t.label);
+  const defaultType=ceremonyTypes[0]||"2日葬";
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
-    company:"飛鳥会館", venue:"春日", role:"司会", type:"2日葬",
+    company:"飛鳥会館", venue:"春日", role:"司会", type:defaultType,
     date:`${year}/${p2(month)}/${p2(new Date().getDate())}`,
   });
   const [saving, setSaving] = useState(false);
@@ -2161,7 +2229,7 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
 
   const venues = MC_COMPANIES[form.company] || [];
 
-  const staffRate = (cfg.mcRates||{})[uname]?.[form.company]?.[form.role] || 0;
+  const staffRate = getStaffPayRate(cfg,uname,form);
 
   return (
     <div>
@@ -2218,7 +2286,7 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
             <div>
               <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>種別</label>
               <div style={{display:"flex",gap:6}}>
-                {MC_TYPES.map(t=>(
+                {ceremonyTypes.map(t=>(
                   <button key={t} onClick={()=>setForm({...form,type:t})}
                     style={{flex:1,border:`2px solid ${form.type===t?C.purple:C.border}`,
                       borderRadius:8,padding:"8px 4px",cursor:"pointer",fontSize:11,fontWeight:700,
@@ -2278,7 +2346,6 @@ function MCAccountingView({ year, month, cfg }) {
   const [allRecords, setAllRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const billing = cfg.mcBilling || DEFAULT_MC_BILLING;
-  const rates   = cfg.mcRates   || {};
 
   useEffect(() => {
     Promise.all(
@@ -2296,8 +2363,7 @@ function MCAccountingView({ year, month, cfg }) {
     const recs = allRecords.filter(r=>r.staff===name);
     let pay = 0;
     recs.forEach(r => {
-      const rateKey = r.training ? "研修" : r.role;
-      const rate = rates[name]?.[r.company]?.[rateKey] || 0;
+      const rate = getStaffPayRate(cfg,name,r);
       pay += rate;
     });
     return { name, count:recs.length, pay, recs };
@@ -2308,7 +2374,7 @@ function MCAccountingView({ year, month, cfg }) {
   Object.keys(MC_COMPANIES).forEach(company => {
     let total=0, tax=0;
     allRecords.filter(r=>r.company===company).forEach(r => {
-      const t = r.role==="パントリー"?"2日葬":(r.type||"2日葬");
+      const t = r.role==="パントリー"?(getCeremonyTypes(cfg)[0]?.label||"2日葬"):(r.type||"2日葬");
       const amt = billing[company]?.[r.role]?.[t] || 0;
       total += amt;
       tax   += Math.round(amt * TAX_RATE);
@@ -2325,8 +2391,8 @@ function MCAccountingView({ year, month, cfg }) {
       ["スタッフ","日付","会社","会場","役割","種別","支払単価(円)","請求単価(円)","請求額税抜","消費税"],
     ];
     allRecords.sort((a,b)=>a.date>b.date?1:-1).forEach(r=>{
-      const pay = rates[r.staff]?.[r.company]?.[r.role] || 0;
-      const t   = r.role==="パントリー"?"2日葬":(r.type||"2日葬");
+      const pay = getStaffPayRate(cfg,r.staff,r);
+      const t   = r.role==="パントリー"?(getCeremonyTypes(cfg)[0]?.label||"2日葬"):(r.type||"2日葬");
       const bill= billing[r.company]?.[r.role]?.[t] || 0;
       rows.push([r.staff,r.date,r.company,r.venue,r.role,r.role==="パントリー"?"－":t,
         pay,bill,bill,Math.round(bill*TAX_RATE)]);
@@ -2441,22 +2507,124 @@ function MCAccountingView({ year, month, cfg }) {
   );
 }
 
+function ItemSettingsTab({ cfg, sv }) {
+  const [settings,setSettings]=useState(()=>clone(normalizeItemSettings(cfg.itemSettings)));
+  const [drag,setDrag]=useState(null);
+  const [saved,setSaved]=useState(false);
+  const ceremonyTypes=settings.ceremonyTypes;
+  const companies=Object.keys(MC_COMPANIES);
+  const roles=["司会","アシスタント","パントリー","研修"];
+  const updateType=(id,label)=>setSettings(s=>({
+    ...s,
+    ceremonyTypes:s.ceremonyTypes.map(t=>t.id===id?{...t,label}:t),
+    payColumns:s.payColumns.map(c=>c.type===ceremonyTypes.find(t=>t.id===id)?.label?{...c,type:label}:c),
+  }));
+  const addType=()=>setSettings(s=>({...s,ceremonyTypes:[...s.ceremonyTypes,{id:makeId("type"),label:"新しい種別"}]}));
+  const delType=id=>setSettings(s=>({...s,ceremonyTypes:s.ceremonyTypes.filter(t=>t.id!==id)}));
+  const updateCol=(id,patch)=>setSettings(s=>({...s,payColumns:s.payColumns.map(c=>c.id===id?{...c,...patch}:c)}));
+  const addCol=()=>setSettings(s=>({...s,payColumns:[...s.payColumns,{
+    id:makeId("pay"),label:"新しい支払い列",company:companies[0]||"飛鳥会館",role:"司会",type:ceremonyTypes[0]?.label||"2日葬"
+  }]}));
+  const delCol=id=>setSettings(s=>({...s,payColumns:s.payColumns.filter(c=>c.id!==id)}));
+  const reorder=(kind,from,to)=>setSettings(s=>({...s,[kind]:moveItem(s[kind],from,to)}));
+  const dropOn=(kind,to)=>{
+    if(!drag||drag.kind!==kind) return;
+    reorder(kind,drag.index,to);
+    setDrag(null);
+  };
+  const save=()=>{
+    const clean={
+      ceremonyTypes:settings.ceremonyTypes.map(t=>({id:t.id,label:t.label.trim()})).filter(t=>t.label),
+      payColumns:settings.payColumns.map(c=>({
+        id:c.id,label:c.label.trim(),company:c.company,role:c.role,type:c.type,training:c.role==="研修"||!!c.training
+      })).filter(c=>c.label),
+    };
+    sv.sets({...cfg,itemSettings:clean});
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  };
+  const rowStyle={display:"grid",gridTemplateColumns:"32px 1fr auto auto auto",gap:8,alignItems:"center",marginBottom:8};
+  return (
+    <div>
+      <div style={{...GC,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}>
+          <h3 style={{margin:0,fontSize:15,color:C.navy}}>🧩 式種別</h3>
+          <button onClick={addType} style={{...Btn(C.green),fontSize:12,padding:"7px 12px"}}>＋ 追加</button>
+        </div>
+        {ceremonyTypes.map((t,i)=>(
+          <div key={t.id} draggable onDragStart={()=>setDrag({kind:"ceremonyTypes",index:i})}
+            onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn("ceremonyTypes",i)}
+            style={rowStyle}>
+            <span style={{cursor:"grab",color:C.muted,fontWeight:800}}>☰</span>
+            <input value={t.label} onChange={e=>updateType(t.id,e.target.value)}
+              style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,minWidth:0}}/>
+            <button onClick={()=>reorder("ceremonyTypes",i,i-1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↑</button>
+            <button onClick={()=>reorder("ceremonyTypes",i,i+1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↓</button>
+            <button onClick={()=>delType(t.id)} style={{...Btn(C.red),padding:"7px 9px"}}>削除</button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{...GC,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:12}}>
+          <h3 style={{margin:0,fontSize:15,color:C.navy}}>💴 スタッフ支払い列</h3>
+          <button onClick={addCol} style={{...Btn(C.green),fontSize:12,padding:"7px 12px"}}>＋ 追加</button>
+        </div>
+        {settings.payColumns.map((c,i)=>(
+          <div key={c.id} draggable onDragStart={()=>setDrag({kind:"payColumns",index:i})}
+            onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn("payColumns",i)}
+            style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:10,background:"#fff"}}>
+            <div style={{display:"grid",gridTemplateColumns:"28px 1fr auto auto auto",gap:8,alignItems:"center",marginBottom:8}}>
+              <span style={{cursor:"grab",color:C.muted,fontWeight:800}}>☰</span>
+              <input value={c.label} onChange={e=>updateCol(c.id,{label:e.target.value})}
+                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,minWidth:0}}/>
+              <button onClick={()=>reorder("payColumns",i,i-1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↑</button>
+              <button onClick={()=>reorder("payColumns",i,i+1)} style={{...Btn(C.white,C.text),border:`1px solid ${C.border}`,padding:"7px 9px"}}>↓</button>
+              <button onClick={()=>delCol(c.id)} style={{...Btn(C.red),padding:"7px 9px"}}>削除</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8}}>
+              <select value={c.company} onChange={e=>updateCol(c.id,{company:e.target.value})}
+                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:13}}>
+                {companies.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+              <select value={c.role} onChange={e=>updateCol(c.id,{role:e.target.value,training:e.target.value==="研修"})}
+                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:13}}>
+                {roles.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+              <select value={c.type} onChange={e=>updateCol(c.id,{type:e.target.value})}
+                style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px",fontSize:13}}>
+                {ceremonyTypes.map(t=><option key={t.id} value={t.label}>{t.label}</option>)}
+              </select>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button style={{...Btn(saved?C.green:C.navy),width:"100%",padding:"12px"}} onClick={save}>
+        {saved?"✅ 保存しました":"保存する"}
+      </button>
+    </div>
+  );
+}
+
 // MC設定（管理者設定画面に追加）
 function MCConfigTab({ cfg, sv }) {
   const { staff } = cfg;
+  const ceremonyTypes=getCeremonyTypes(cfg).map(t=>t.label);
+  const pantryBillingType=ceremonyTypes[0]||"2日葬";
+  const payColumns=getPayColumns(cfg);
   const [billing, setBilling] = useState(
     JSON.parse(JSON.stringify(cfg.mcBilling || DEFAULT_MC_BILLING))
   );
   const [rates, setRates] = useState(
-    JSON.parse(JSON.stringify(cfg.mcRates || {}))
+    JSON.parse(JSON.stringify(cfg.mcRatesV2 || {}))
   );
   const [saved, setSaved] = useState(false);
 
-  const setRate = (name, company, role, val) => {
+  const setRate = (name, columnId, val) => {
     const n = {...rates};
     if(!n[name]) n[name]={};
-    if(!n[name][company]) n[name][company]={};
-    n[name][company][role] = Number(val)||0;
+    n[name][columnId] = Number(val)||0;
     setRates(n);
   };
 
@@ -2469,7 +2637,7 @@ function MCConfigTab({ cfg, sv }) {
   };
 
   const save = () => {
-    sv.sets({...cfg, mcBilling:billing, mcRates:rates});
+    sv.sets({...cfg, mcBilling:billing, mcRatesV2:rates});
     setSaved(true);
     setTimeout(()=>setSaved(false),2000);
   };
@@ -2484,15 +2652,15 @@ function MCConfigTab({ cfg, sv }) {
             <table style={{width:"100%",borderCollapse:"collapse",minWidth:360}}>
               <thead><tr style={{background:"#f8f9fb"}}>
                 <th style={TH}>役割</th>
-                {MC_TYPES.map(t=><th key={t} style={TH}>{t}</th>)}
+                {ceremonyTypes.map(t=><th key={t} style={TH}>{t}</th>)}
               </tr></thead>
               <tbody>
                 {MC_ROLES.map(role=>(
                   <tr key={role}>
                     <td style={{...TD,fontWeight:700}}>{role}</td>
-                    {MC_TYPES.map(type=>(
+                    {ceremonyTypes.map(type=>(
                       <td key={type} style={TD}>
-                        {role==="パントリー"&&type!=="2日葬"
+                        {role==="パントリー"&&type!==pantryBillingType
                           ? <span style={{color:C.muted,fontSize:12}}>－</span>
                           : <input type="number" value={billing[company]?.[role]?.[type]||0}
                               onChange={e=>setBill(company,role,type,e.target.value)}
@@ -2512,36 +2680,31 @@ function MCConfigTab({ cfg, sv }) {
       {/* スタッフ個人単価 */}
       <div style={GC}>
         <h3 style={{margin:"0 0 14px",fontSize:14,color:C.navy}}>👤 スタッフへの支払い単価（1回あたり）</h3>
-        <p style={{fontSize:12,color:C.muted,marginBottom:12}}>🎓「研修」列はあしべの杜の研修期間中の単価です</p>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:500}}>
             <thead><tr style={{background:"#f8f9fb"}}>
               <th style={{...TH,fontSize:11}}>スタッフ</th>
-              {Object.keys(MC_COMPANIES).flatMap(c=>
-                [...MC_ROLES,...(c==="あしべの杜"?["研修"]:[])].map(r=>(
-                  <th key={`${c}-${r}`} style={{...TH,fontSize:10,color:r==="研修"?"#92400e":undefined}}>
-                    {c==="飛鳥会館"?"飛鳥":"あしべ"}<br/>{r}
-                  </th>
-                ))
-              )}
+              {payColumns.map(c=>(
+                <th key={c.id} style={{...TH,fontSize:10,color:c.training?"#92400e":undefined}}>
+                  {c.label}
+                </th>
+              ))}
             </tr></thead>
             <tbody>
               {staff.map(name=>(
                 <tr key={name}>
                   <td style={{...TD,fontWeight:700,whiteSpace:"nowrap",fontSize:12}}>{name}</td>
-                  {Object.keys(MC_COMPANIES).flatMap(company=>
-                    [...MC_ROLES,...(company==="あしべの杜"?["研修"]:[])].map(role=>(
-                      <td key={`${company}-${role}`} style={TD}>
-                        <input type="number"
-                          value={rates[name]?.[company]?.[role]||""}
-                          onChange={e=>setRate(name,company,role,e.target.value)}
-                          placeholder="0"
-                          style={{width:"100%",minWidth:55,border:`1px solid ${role==="研修"?"#f59e0b":C.border}`,
-                            borderRadius:6,padding:"4px 6px",fontSize:12,boxSizing:"border-box",
-                            background:role==="研修"?"#fffbeb":"#fff"}}/>
-                      </td>
-                    ))
-                  )}
+                  {payColumns.map(col=>(
+                    <td key={col.id} style={TD}>
+                      <input type="number"
+                        value={(rates[name]?.[col.id] ?? getStaffPayRate(cfg,name,{company:col.company,role:col.role,type:col.type,training:col.training})) || ""}
+                        onChange={e=>setRate(name,col.id,e.target.value)}
+                        placeholder="0"
+                        style={{width:"100%",minWidth:55,border:`1px solid ${col.training?"#f59e0b":C.border}`,
+                          borderRadius:6,padding:"4px 6px",fontSize:12,boxSizing:"border-box",
+                          background:col.training?"#fffbeb":"#fff"}}/>
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
