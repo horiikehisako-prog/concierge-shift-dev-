@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 8 Build 20260701.2";
+const DEV_BUILD_LABEL = "Sprint 9 Build 20260701.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -52,11 +52,17 @@ const SUPPORT_SKILL_GROUPS = [
   ]}
 ];
 const SUPPORT_RATINGS = [
-  {mark:"×", label:"まだ難しい", score:0},
-  {mark:"△", label:"要フォロー", score:1},
-  {mark:"○", label:"できる", score:2},
-  {mark:"◎", label:"安心して任せられる", score:3},
+  {mark:"\u898b\u5b66", label:"\u898b\u5b66", score:0},
+  {mark:"\u4e00\u7dd2\u306b\u5b9f\u65bd", label:"\u4e00\u7dd2\u306b\u5b9f\u65bd", score:1},
+  {mark:"\u4e00\u4eba\u3067\u5b9f\u65bd", label:"\u4e00\u4eba\u3067\u5b9f\u65bd", score:2},
+  {mark:"\u5408\u683c", label:"\u5408\u683c", score:3},
 ];
+const TRAINING_STAGES = SUPPORT_RATINGS;
+const TRAINING_LEGACY_STAGE_SCORE = {"ﾃ・":0,"笆ｳ":1,"笳・":2};
+const emptyTrainingMaterial=()=>({manual:"",importantPoints:"",commonMistakes:"",tips:"",memo:""});
+const emptyTrainingMedia=()=>({pdf:[],images:[],video:[],audio:[]});
+const normalizeTrainingMaterial=m=>({...emptyTrainingMaterial(),...(m||{})});
+const normalizeTrainingMedia=m=>({...emptyTrainingMedia(),...(m||{})});
 const DEFAULT_TRAINING_TEMPLATES = [
   {id:"tpl-asuka-assistant",workplace:"飛鳥",role:"アシスタント",title:"飛鳥会館 × アシスタント",categories:[
     {id:"cat-reception",title:"受付・案内",items:[
@@ -1524,6 +1530,7 @@ function StaffView(P){
     {id:"mine", label:"👤 マイシフト"},
     {id:"rec",  label:"🕐 出勤記録"},
     {id:"mc",   label:"🎤 司会・記録"},
+    {id:"learn",label:"Training"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="wish" &&<StaffWish  {...P}/>}
@@ -1531,9 +1538,57 @@ function StaffView(P){
     {tab==="mine" &&<MyShift    {...P}/>}
     {tab==="rec"  &&<MyRecord   {...P}/>}
     {tab==="mc"   &&<MCRecordTab {...P}/>}
+    {tab==="learn"&&<StaffLearningView {...P}/>}
   </div>;
 }
 
+function StaffLearningView({uname}){
+  const [cards,setCards]=useState([]);
+  const [templates,setTemplates]=useState([]);
+  const [loading,setLoading]=useState(true);
+  useEffect(()=>{
+    let alive=true;
+    Promise.all([stLoad("support-growth-cards"),stLoad("support-training-templates")]).then(([c,t])=>{
+      if(!alive) return;
+      setCards(Array.isArray(c)?c:[]);
+      setTemplates(normalizeTrainingTemplates(t));
+      setLoading(false);
+    });
+    return()=>{alive=false;};
+  },[uname]);
+  if(loading) return <div style={GC}>Loading...</div>;
+  const card=cards.find(c=>c.name===uname);
+  if(!card) return <div style={GC}>Training data is not available yet.</div>;
+  const template=supportFindTemplate(templates,card);
+  const groups=supportTemplateSkillGroups(template);
+  const p=supportProgress(card,templates);
+  return <div style={GC}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap",marginBottom:12}}>
+      <div><h3 style={{margin:"0 0 4px",fontSize:20}}>Training Item</h3><div style={{fontSize:13,color:C.muted}}>{template?.title||card.role}</div></div>
+      <div style={{fontSize:28,fontWeight:900,color:supportProgressColor(p)}}>{p}%</div>
+    </div>
+    <div style={{height:10,background:"#f3f4f6",borderRadius:99,overflow:"hidden",marginBottom:14}}><div style={{height:"100%",width:p+"%",background:supportProgressColor(p)}}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
+      <div style={{fontSize:12,color:C.muted}}>Last training date<br/><strong style={{fontSize:14,color:C.text}}>{card.lastTrainingDate||"-"}</strong></div>
+      <div style={{fontSize:12,color:C.muted}}>Trainer<br/><strong style={{fontSize:14,color:C.text}}>{card.trainerId||"-"}</strong></div>
+      <div style={{fontSize:12,color:C.muted}}>Next target<br/><strong style={{fontSize:14,color:C.text}}>{card.nextTarget||card.nextGoal||"-"}</strong></div>
+      <div style={{fontSize:12,color:C.muted}}>Training completed date<br/><strong style={{fontSize:14,color:C.text}}>{card.completedDate||"-"}</strong></div>
+    </div>
+    {groups.map(group=><div key={group.id} style={{marginBottom:18}}>
+      <h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4>
+      {group.items.map(item=>{const current=card.skills?.[item.key]||TRAINING_STAGES[0].mark;return <div key={item.key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginBottom:10,background:"#fff"}}>
+        <div style={{fontWeight:900,fontSize:15,marginBottom:8}}>{item.label}</div>
+        <TrainingMaterialView item={item} compact/>
+        <div style={{fontSize:12,color:C.muted,fontWeight:900,marginTop:8}}>Evaluation</div>
+        <div style={{fontSize:14,fontWeight:900,color:C.green,marginTop:3}}>{current}</div>
+      </div>;})}
+    </div>)}
+    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}>
+      <h4 style={{margin:"0 0 10px",fontSize:15}}>Comments</h4>
+      {[["Good points",card.goodPoints||card.strengths],["Needs improvement",card.needsImprovement||card.weaknesses],["Next practice",card.nextPractice||card.nextGoal]].map(([label,value])=><div key={label} style={{marginBottom:10}}><div style={{fontSize:12,color:C.green,fontWeight:900}}>{label}</div><div style={{fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{value||"-"}</div></div>)}
+    </div>
+  </div>;
+}
 function StaffWish({year,month,prefs,sv,uname}){
   const days=getDays(year,month);
   const myStatus=d=>prefStatus(prefs,uname,d);
@@ -2710,8 +2765,8 @@ const normalizeTrainingTemplates=templates=>{
       title:c.title||`カテゴリ${ci+1}`,
       items:ensureArray(c.items).map((it,ii)=>(
         typeof it==="string"
-          ? {id:`item-${ci}-${ii}-${String(it).slice(0,12)}`,label:it}
-          : {id:it.id||supportMakeId("item"),label:it.label||it.title||`チェック項目${ii+1}`}
+          ? {id:`item-${ci}-${ii}-${String(it).slice(0,12)}`,label:it,material:emptyTrainingMaterial(),media:emptyTrainingMedia()}
+          : {id:it.id||supportMakeId("item"),label:it.label||it.title||`チェック項目${ii+1}`,material:normalizeTrainingMaterial(it.material),media:normalizeTrainingMedia(it.media)}
       )).filter(it=>String(it.label||"").trim())
     })).filter(c=>c.items.length)
   })).filter(t=>t.categories.length);
@@ -2728,16 +2783,16 @@ const supportTemplateSkillGroups=template=>{
   return template.categories.map(cat=>({
     id:cat.id,
     title:cat.title,
-    items:cat.items.map(item=>({key:`tmpl:${template.id}:${cat.id}:${item.id}`,label:item.label}))
+    items:cat.items.map(item=>({key:`tmpl:${template.id}:${cat.id}:${item.id}`,label:item.label,material:normalizeTrainingMaterial(item.material),media:normalizeTrainingMedia(item.media)}))
   }));
 };
 const supportAllSkillKeys=(template=null)=>supportTemplateSkillGroups(template).flatMap(g=>g.items.map(item=>item.key));
-const supportRatingScore=mark=>SUPPORT_RATINGS.find(r=>r.mark===mark)?.score ?? 0;
+const supportRatingScore=mark=>TRAINING_STAGES.find(r=>r.mark===mark)?.score ?? TRAINING_LEGACY_STAGE_SCORE[mark] ?? 0;
 const supportProgress=(card,templates=null)=>{
   const template=templates?supportFindTemplate(templates,card):null;
   const keys=supportAllSkillKeys(template);
   const total=keys.length*3;
-  const got=keys.reduce((sum,k)=>sum+supportRatingScore(card.skills?.[k]||"×"),0);
+  const got=keys.reduce((sum,k)=>sum+supportRatingScore(card.skills?.[k]||TRAINING_STAGES[0].mark),0);
   return total?Math.round(got/total*100):0;
 };
 const supportProgressColor=p=>p>=80?C.green:p>=60?C.amber:C.red;
@@ -2751,9 +2806,9 @@ const supportStatus=(card,templates=null)=>{
 const supportDefaultCard=(staff,index,templates=null)=>{
   const template=templates?supportFindTemplate(templates,staff):null;
   const skills={};
-  supportAllSkillKeys(template).forEach(k=>{skills[k]="×";});
+  supportAllSkillKeys(template).forEach(k=>{skills[k]=TRAINING_STAGES[0].mark;});
   return {id:staff.id,name:staff.name,role:staff.role,workplace:staff.workplace,location:staff.location,trainerId:"",
-    strengths:"",weaknesses:"",nextGoal:"",memo:"",debutMonth:false,trainingThisWeek:false,
+    strengths:"",weaknesses:"",nextGoal:"",memo:"",debutMonth:false,trainingThisWeek:false,lastTrainingDate:"",nextTarget:"",completedDate:"",goodPoints:"",needsImprovement:"",nextPractice:"",
     templateId:template?.id||"",updatedAt:new Date().toISOString(),skills,history:[]};
 };
 const supportMergeCards=(cards,cfg,templates=null)=>{
@@ -2765,8 +2820,8 @@ const supportMergeCards=(cards,cfg,templates=null)=>{
     const template=templates?supportFindTemplate(templates,staff):null;
     const base=byId[staff.id]||byName[staff.name]||supportDefaultCard(staff,i,templates);
     const nextSkills={...(base.skills||{})};
-    supportAllSkillKeys(template).forEach(k=>{if(nextSkills[k]===undefined) nextSkills[k]="×";});
-    return {...base,id:staff.id,name:staff.name,role:staff.role,workplace:staff.workplace,location:staff.location,templateId:template?.id||base.templateId||"",skills:nextSkills};
+    supportAllSkillKeys(template).forEach(k=>{if(nextSkills[k]===undefined) nextSkills[k]=TRAINING_STAGES[0].mark;});
+    return {...base,id:staff.id,name:staff.name,role:staff.role,workplace:staff.workplace,location:staff.location,lastTrainingDate:base.lastTrainingDate||"",nextTarget:base.nextTarget||"",completedDate:base.completedDate||"",goodPoints:base.goodPoints||base.strengths||"",needsImprovement:base.needsImprovement||base.weaknesses||"",nextPractice:base.nextPractice||base.nextGoal||"",templateId:template?.id||base.templateId||"",skills:nextSkills};
   });
 };
 function StaffManagementPanel({staffList,onChange}){
@@ -2888,7 +2943,7 @@ function TrainingTemplateManager({templates,staffList,onSave}){
   const createTemplate=()=>{
     const first=normalizeStaffManagement({staffManagement:staffList})[0]||{workplace:"飛鳥",role:"アシスタント"};
     const tpl={id:supportMakeId("tpl"),workplace:first.workplace||"飛鳥",role:first.role||"アシスタント",title:`${first.workplace||"飛鳥"} × ${first.role||"アシスタント"}`,categories:[
-      {id:supportMakeId("cat"),title:"新しいカテゴリ",items:[{id:supportMakeId("item"),label:"新しいチェック項目"}]}
+      {id:supportMakeId("cat"),title:"新しいカテゴリ",items:[{id:supportMakeId("item"),label:"新しいチェック項目",material:emptyTrainingMaterial(),media:emptyTrainingMedia()}]}
     ]};
     setDraft([...draft,tpl]);
     setSelectedId(tpl.id);
@@ -2904,7 +2959,7 @@ function TrainingTemplateManager({templates,staffList,onSave}){
     setSelectedId(next[0]?.id||"");
   };
   const updateCategory=(catId,patch)=>updateTemplate(selected.id,{categories:selected.categories.map(c=>c.id===catId?{...c,...patch}:c)});
-  const addCategory=()=>updateTemplate(selected.id,{categories:[...selected.categories,{id:supportMakeId("cat"),title:"新しいカテゴリ",items:[{id:supportMakeId("item"),label:"新しいチェック項目"}]}]});
+  const addCategory=()=>updateTemplate(selected.id,{categories:[...selected.categories,{id:supportMakeId("cat"),title:"新しいカテゴリ",items:[{id:supportMakeId("item"),label:"新しいチェック項目",material:emptyTrainingMaterial(),media:emptyTrainingMedia()}]}]});
   const deleteCategory=catId=>updateTemplate(selected.id,{categories:selected.categories.filter(c=>c.id!==catId)});
   const moveCategory=(catId,dir)=>{
     const cats=[...selected.categories],i=cats.findIndex(c=>c.id===catId),j=i+dir;
@@ -2913,7 +2968,12 @@ function TrainingTemplateManager({templates,staffList,onSave}){
     updateTemplate(selected.id,{categories:cats});
   };
   const updateItem=(catId,itemId,label)=>updateCategory(catId,{items:selected.categories.find(c=>c.id===catId).items.map(it=>it.id===itemId?{...it,label}:it)});
-  const addItem=catId=>updateCategory(catId,{items:[...selected.categories.find(c=>c.id===catId).items,{id:supportMakeId("item"),label:"新しいチェック項目"}]});
+  const updateItemPatch=(catId,itemId,patch)=>updateCategory(catId,{items:selected.categories.find(c=>c.id===catId).items.map(it=>it.id===itemId?{...it,...patch}:it)});
+  const updateItemMaterial=(catId,itemId,key,value)=>{
+    const item=selected.categories.find(c=>c.id===catId).items.find(it=>it.id===itemId);
+    updateItemPatch(catId,itemId,{material:{...emptyTrainingMaterial(),...(item?.material||{}),[key]:value},media:normalizeTrainingMedia(item?.media)});
+  };
+  const addItem=catId=>updateCategory(catId,{items:[...selected.categories.find(c=>c.id===catId).items,{id:supportMakeId("item"),label:"新しいチェック項目",material:emptyTrainingMaterial(),media:emptyTrainingMedia()}]});
   const deleteItem=(catId,itemId)=>updateCategory(catId,{items:selected.categories.find(c=>c.id===catId).items.filter(it=>it.id!==itemId)});
   const moveItem=(catId,itemId,dir)=>{
     const cat=selected.categories.find(c=>c.id===catId);
@@ -2981,7 +3041,11 @@ function TrainingTemplateManager({templates,staffList,onSave}){
                 <button onClick={()=>moveItem(cat.id,item.id,-1)} disabled={ii===0} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"10px 12px"}}>↑</button>
                 <button onClick={()=>moveItem(cat.id,item.id,1)} disabled={ii===cat.items.length-1} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"10px 12px"}}>↓</button>
                 <button onClick={()=>deleteItem(cat.id,item.id)} style={{...Btn(C.red),padding:"10px 12px"}}>削除</button>
-              </div>)}
+              <div style={{gridColumn:"1 / -1",background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+                  <div style={{fontSize:12,fontWeight:900,color:C.green,marginBottom:8}}>Training Material</div>
+                  {[["Manual","manual"],["Important Points","importantPoints"],["Common Mistakes","commonMistakes"],["Tips","tips"],["Memo","memo"]].map(([label,key])=><label key={key} style={{display:"block",fontSize:11,color:C.muted,fontWeight:800,marginBottom:8}}>{label}<textarea value={normalizeTrainingMaterial(item.material)[key]} onChange={e=>updateItemMaterial(cat.id,item.id,key,e.target.value)} rows={key==="manual"?4:2} style={{width:"100%",marginTop:4,border:`1px solid ${C.border}`,borderRadius:8,padding:8,fontSize:13,boxSizing:"border-box"}}/></label>)}
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>{[["PDF","pdf"],["Images","images"],["Video","video"],["Audio","audio"]].map(([label,key])=><span key={key} style={{fontSize:11,color:C.muted,border:`1px dashed ${C.border}`,borderRadius:999,padding:"3px 8px"}}>{label}: {ensureArray(normalizeTrainingMedia(item.media)[key]).length}</span>)}</div>
+                </div>              </div>)}
             </div>
             <button onClick={()=>addItem(cat.id)} style={{...Btn(C.green),marginTop:8,padding:"10px 14px"}}>チェック項目追加</button>
           </div>)}
@@ -3005,7 +3069,21 @@ function SupportStaffList({cards,templates,selected,onSelect}){
     {cards.length===0&&<div style={{color:C.muted,fontSize:13}}>研修対象にチェックされたスタッフはいません。</div>}
   </div></div>;
 }
-function SupportGrowthChart({card,templates,trainers,onChange}){
+function TrainingMaterialView({item,compact=false}){
+  const material=normalizeTrainingMaterial(item.material);
+  const fields=[["Manual",material.manual],["Important Points",material.importantPoints],["Common Mistakes",material.commonMistakes],["Tips",material.tips],["Memo",material.memo]].filter(([,v])=>String(v||"").trim());
+  const media=normalizeTrainingMedia(item.media);
+  const mediaCounts=[["PDF",media.pdf],["Images",media.images],["Video",media.video],["Audio",media.audio]];
+  return <div style={{background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,padding:compact?10:12,margin:"8px 0"}}>
+    {fields.length===0?<div style={{fontSize:12,color:C.muted}}>Training Material is not entered yet.</div>:<div style={{display:"flex",flexDirection:"column",gap:8}}>{fields.map(([label,value])=><div key={label}><div style={{fontSize:11,color:C.green,fontWeight:900,marginBottom:2}}>{label}</div><div style={{fontSize:compact?12:13,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{value}</div></div>)}</div>}
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>{mediaCounts.map(([label,list])=><span key={label} style={{fontSize:11,color:C.muted,border:`1px dashed ${C.border}`,borderRadius:999,padding:"3px 8px"}}>{label}: {ensureArray(list).length}</span>)}</div>
+  </div>;
+}
+const trainingCategoryProgress=(card,group)=>{
+  const total=group.items.length*3;
+  const got=group.items.reduce((sum,item)=>sum+supportRatingScore(card.skills?.[item.key]||TRAINING_STAGES[0].mark),0);
+  return total?Math.round(got/total*100):0;
+};function SupportGrowthChart({card,templates,trainers,onChange}){
   const [historyDate,setHistoryDate]=useState(new Date().toISOString().slice(0,10));
   const [historyComment,setHistoryComment]=useState("");
   const template=supportFindTemplate(templates,card);
@@ -3022,13 +3100,18 @@ function SupportGrowthChart({card,templates,trainers,onChange}){
         {trainers.map(t=><option key={t.id} value={t.id}>{t.name}（{t.workplace}{t.role}）</option>)}
       </select>
     </label>
-    {skillGroups.map(group=><div key={group.id} style={{marginBottom:18}}><h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4><div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {group.items.map(item=>{const key=item.key,current=card.skills?.[key]||"×";return <div key={key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontWeight:800,fontSize:13,marginBottom:8}}>{item.label}</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
-        {SUPPORT_RATINGS.map(r=><button key={r.mark} onClick={()=>setSkill(key,r.mark)} title={r.label} style={{border:`2px solid ${current===r.mark?C.green:C.border}`,borderRadius:8,padding:"9px 4px",background:current===r.mark?C.greenL:"#fff",color:current===r.mark?C.green:C.text,fontSize:16,fontWeight:900,cursor:"pointer"}}>{r.mark}<div style={{fontSize:10,fontWeight:700,marginTop:2}}>{r.label}</div></button>)}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:16}}>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Last training date<input type="date" value={card.lastTrainingDate||""} onChange={e=>onChange({lastTrainingDate:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Next target<input value={card.nextTarget||""} onChange={e=>onChange({nextTarget:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Training completed date<input type="date" value={card.completedDate||""} onChange={e=>onChange({completedDate:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/></label>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:18}}>{skillGroups.map(group=>{const gp=trainingCategoryProgress(card,group);return <div key={group.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:6}}>{group.title}</div><div style={{height:8,background:"#f3f4f6",borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:gp+"%",background:supportProgressColor(gp)}}/></div><div style={{fontSize:12,fontWeight:900,color:supportProgressColor(gp),marginTop:5}}>{gp}%</div></div>;})}</div>    {skillGroups.map(group=><div key={group.id} style={{marginBottom:18}}><h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4><div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {group.items.map(item=>{const key=item.key,current=card.skills?.[key]||TRAINING_STAGES[0].mark;return <div key={key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontWeight:800,fontSize:13,marginBottom:8}}>{item.label}</div><TrainingMaterialView item={item}/><div style={{fontSize:12,color:C.muted,fontWeight:900,margin:"8px 0 6px"}}>Evaluation</div><div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+        {TRAINING_STAGES.map(r=><button key={r.mark} onClick={()=>setSkill(key,r.mark)} title={r.label} style={{border:`2px solid ${current===r.mark?C.green:C.border}`,borderRadius:8,padding:"9px 4px",background:current===r.mark?C.greenL:"#fff",color:current===r.mark?C.green:C.text,fontSize:16,fontWeight:900,cursor:"pointer"}}>{r.mark}<div style={{fontSize:10,fontWeight:700,marginTop:2}}>{r.label}</div></button>)}
       </div></div>;})}
     </div></div>)}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:18}}>{[["得意なこと","strengths"],["苦手なこと","weaknesses"],["次に伸ばしたいこと","nextGoal"],["サポートメモ","memo"]].map(([label,key])=><label key={key} style={{fontSize:12,color:C.muted,fontWeight:800}}>{label}<textarea value={card[key]||""} onChange={e=>onChange({[key]:e.target.value})} rows={4} style={{width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}</div>
-    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}><h4 style={{margin:"0 0 10px",fontSize:15}}>成長履歴</h4><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><input type="date" value={historyDate} onChange={e=>setHistoryDate(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><input value={historyComment} onChange={e=>setHistoryComment(e.target.value)} placeholder="コメントを追加" style={{flex:"1 1 220px",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><button onClick={addHistory} style={{...Btn(C.green),padding:"11px 16px"}}>追加</button></div>
+    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14,marginTop:6}}><h4 style={{margin:"0 0 10px",fontSize:15}}>Comments</h4><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:18}}>{[["Good points","goodPoints"],["Needs improvement","needsImprovement"],["Next practice","nextPractice"]].map(([label,key])=><label key={key} style={{fontSize:12,color:C.muted,fontWeight:800}}>{label}<textarea value={card[key]||""} onChange={e=>onChange({[key]:e.target.value})} rows={4} style={{width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}</div></div>    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}><h4 style={{margin:"0 0 10px",fontSize:15}}>成長履歴</h4><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><input type="date" value={historyDate} onChange={e=>setHistoryDate(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><input value={historyComment} onChange={e=>setHistoryComment(e.target.value)} placeholder="コメントを追加" style={{flex:"1 1 220px",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><button onClick={addHistory} style={{...Btn(C.green),padding:"11px 16px"}}>追加</button></div>
       {[...(card.history||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(h=><div key={h.id} style={{borderBottom:`1px solid ${C.border}`,padding:"8px 0",fontSize:13}}><strong>{h.date}</strong>　{h.comment}</div>)}</div>
   </div>;
 }
@@ -3694,6 +3777,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 8 Build 20260701.2</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 9 Build 20260701.1</div>
 </body>
 </html>
