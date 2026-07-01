@@ -2073,7 +2073,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash, trainingProgress,
 
       {canSave && (
         <TrainingChecklistPanel cfg={cfg} trainingProgress={trainingProgress} sv={sv}
-          uname={uname} jobName={actualRole} locationName={form.company}/>
+          uname={uname} jobName={actualRole} locationName={`${form.company} ${form.venue}`}/>
       )}
 
       {/* 確認・保存 */}
@@ -2337,6 +2337,7 @@ const defaultTrainingMaster = () => {
     {id:"job_assistant",name:"アシスタント",sort:1},
     {id:"job_mc",name:"司会",sort:2},
     {id:"job_pantry",name:"パントリー",sort:3},
+    {id:"job_assistant_pantry",name:"アシスタント+パントリー",sort:4},
   ];
   const locations=[
     {id:"loc_asuka",name:"飛鳥会館",sort:0},
@@ -2391,6 +2392,11 @@ const normalizeTrainingMaster = (master) => {
   };
 };
 const trainingLevelLabels = ["","① 見学","② 一緒に実施","③ 一人で実施","④ 合格"];
+const isFukashinaLocation = name => /ふかしな|fukashina/i.test(String(name||""));
+const trainingJobNameFor = (jobName, locationName) =>
+  isFukashinaLocation(locationName) && ["アシスタント","パントリー"].includes(jobName)
+    ? "アシスタント+パントリー"
+    : jobName;
 const trainingProgressKey = (staff,jobId,locationId) => `${staff || "unknown"}__${jobId}__${locationId}`;
 const trainingProgressPercent = (items, progress) => {
   if(!items.length) return 0;
@@ -2507,8 +2513,9 @@ function TrainingMasterTab({cfg,sv}) {
 
 function TrainingChecklistPanel({cfg,trainingProgress,sv,uname,jobName,locationName}) {
   const master=normalizeTrainingMaster(cfg.trainingMaster);
-  const job=master.jobs.find(j=>j.name===jobName) || master.jobs.find(j=>jobName&&j.name.includes(jobName)) || master.jobs[0];
-  const location=master.locations.find(l=>l.name===locationName) || master.locations.find(l=>locationName&&locationName.includes(l.name)) || master.locations[0];
+  const effectiveJobName=trainingJobNameFor(jobName,locationName);
+  const job=master.jobs.find(j=>j.name===effectiveJobName) || master.jobs.find(j=>effectiveJobName&&j.name.includes(effectiveJobName)) || master.jobs[0];
+  const location=master.locations.find(l=>l.name===locationName) || master.locations.find(l=>locationName&&String(locationName).includes(l.name)) || master.locations[0];
   if(!job||!location) return <div style={GC}>教育マスターに職種・会場を登録してください。</div>;
   const items=master.items.filter(x=>x.jobId===job.id&&x.locationId===location.id).sort(bySort);
   const key=trainingProgressKey(uname,job.id,location.id);
