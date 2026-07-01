@@ -52,18 +52,13 @@ const SUPPORT_SKILL_GROUPS = [
   ]}
 ];
 const SUPPORT_RATINGS = [
-  {mark:"×", label:"まだ難しい", score:0},
-  {mark:"△", label:"要フォロー", score:1},
-  {mark:"○", label:"できる", score:2},
-  {mark:"◎", label:"安心して任せられる", score:3},
+  {id:"observe", mark:"\u898b\u5b66", label:"\u898b\u5b66", score:0, color:"#64748b"},
+  {id:"together", mark:"\u4e00\u7dd2\u306b\u5b9f\u65bd", label:"\u4e00\u7dd2\u306b\u5b9f\u65bd", score:1, color:"#2563eb"},
+  {id:"solo", mark:"\u4e00\u4eba\u3067\u5b9f\u65bd", label:"\u4e00\u4eba\u3067\u5b9f\u65bd", score:2, color:"#d97706"},
+  {id:"pass", mark:"\u5408\u683c", label:"\u5408\u683c", score:3, color:"#16a34a"},
 ];
-const TRAINING_STAGES = [
-  {id:"observe", label:"見学", score:0, color:"#64748b"},
-  {id:"together", label:"一緒に実施", score:1, color:"#2563eb"},
-  {id:"solo", label:"一人で実施", score:2, color:"#d97706"},
-  {id:"pass", label:"合格", score:3, color:"#16a34a"},
-];
-const SUPPORT_LEGACY_RATING_SCORES = {"見学":0,"一緒に実施":1,"一人で実施":2,"合格":3};
+const TRAINING_STAGES = SUPPORT_RATINGS;
+const SUPPORT_LEGACY_RATING_SCORES = {"observe":0,"together":1,"solo":2,"pass":3,"\uff83\u30fb":0,"\u7b06\uff73":1,"\u7b33\u30fb":2,"\u00d7":0};
 const SUPPORT_MATERIAL_FIELDS = [
   {key:"manual",label:"Manual"},
   {key:"importantPoints",label:"Important Points"},
@@ -3097,72 +3092,54 @@ function SupportStaffList({cards,templates,selected,onSelect}){
 function SupportGrowthChart({card,templates,trainers,onChange}){
   const [historyDate,setHistoryDate]=useState(new Date().toISOString().slice(0,10));
   const [historyComment,setHistoryComment]=useState("");
-  const [openItem,setOpenItem]=useState("");
   const template=supportFindTemplate(templates,card);
   const skillGroups=supportTemplateSkillGroups(template);
   const p=supportProgress(card,templates),color=supportProgressColor(p);
-  const setSkill=(key,mark)=>onChange({skills:{...(card.skills||{}),[key]:mark}});
+  const today=new Date().toISOString().slice(0,10);
+  const completedDate=card.trainingCompletedDate||(p>=100?today:"");
+  const updateComment=(key,patch)=>onChange({itemComments:{...(card.itemComments||{}),[key]:{...((card.itemComments||{})[key]||{}),...patch}}});
+  const setSkill=(key,mark)=>onChange({skills:{...(card.skills||{}),[key]:mark},lastTrainingDate:today});
   const addHistory=()=>{if(!historyComment.trim())return;onChange({history:[...(card.history||[]),{id:Date.now(),date:historyDate.replace(/-/g,"/"),comment:historyComment.trim()}]});setHistoryComment("");};
-  const trainerName=trainers.find(t=>t.id===card.trainerId)?.name||"未設定";
-  const renderText=(text,empty="未入力")=>String(text||"").trim()?String(text).split("\n").map((line,i)=><p key={i} style={{margin:i?"6px 0 0":"0"}}>{line}</p>):<span style={{color:C.muted}}>{empty}</span>;
   return <div style={GC}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}><div><h3 style={{margin:"0 0 4px",fontSize:20}}>{card.name} さんのスキルカルテ</h3><div style={{fontSize:13,color:C.muted}}>{card.role} / {supportStatus(card,templates)} / {template?.title||"標準項目"}</div></div><div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color}}>{p}%</div><div style={{fontSize:11,color:C.muted,fontWeight:700}}>総合進捗</div></div></div>
-    <div style={{height:12,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"14px 0 18px"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:16}}>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Last training date
-        <input type="date" value={card.lastTrainingDate||""} onChange={e=>onChange({lastTrainingDate:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>
-      </label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Trainer
-        <select value={card.trainerId||""} onChange={e=>onChange({trainerId:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}>
-          <option value="">未設定</option>
-          {trainers.map(t=><option key={t.id} value={t.id}>{t.name}（{t.workplace}{t.role}）</option>)}
-        </select>
-      </label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Next target
-        <input value={card.nextTarget||""} onChange={e=>onChange({nextTarget:e.target.value,nextGoal:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>
-      </label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Training completed date
-        <input type="date" value={card.trainingCompletedDate||""} onChange={e=>onChange({trainingCompletedDate:e.target.value})} style={{display:"block",width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>
-      </label>
+    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+      <div><h3 style={{margin:"0 0 4px",fontSize:20}}>{card.name} Training</h3><div style={{fontSize:13,color:C.muted}}>{card.role} / {supportStatus(card,templates)} / {template?.title||"Training"}</div></div>
+      <div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color}}>{p}%</div><div style={{fontSize:11,color:C.muted,fontWeight:700}}>Overall progress</div></div>
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:18}}>
-      {skillGroups.map(group=>{const gp=supportCategoryProgress(card,group),gc=supportProgressColor(gp);return <div key={group.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
-        <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,fontWeight:900}}><span>{group.title}</span><span style={{color:gc}}>{gp}%</span></div>
-        <div style={{height:7,background:"#f3f4f6",borderRadius:99,overflow:"hidden",marginTop:8}}><div style={{height:"100%",width:`${gp}%`,background:gc}}/></div>
-      </div>;})}
+    <div style={{height:12,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"14px 0 14px"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Last training date<input type="date" value={card.lastTrainingDate||""} onChange={e=>onChange({lastTrainingDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Trainer<select value={card.trainerId||""} onChange={e=>onChange({trainerId:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}><option value="">Not set</option>{trainers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Next target<input value={card.nextTarget||""} onChange={e=>onChange({nextTarget:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Training completed date<input type="date" value={completedDate} onChange={e=>onChange({trainingCompletedDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
     </div>
-    {skillGroups.map(group=><div key={group.id} style={{marginBottom:18}}><h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4><div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {group.items.map(item=>{const key=item.key,currentStage=supportStageFromValue(card.skills?.[key]||"observe"),material=normalizeTrainingMaterial(item.material),isOpen=openItem===key;return <div key={key} style={{border:`1px solid ${isOpen?C.green:C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
-        <button onClick={()=>setOpenItem(isOpen?"":key)} style={{width:"100%",textAlign:"left",background:"transparent",border:0,padding:0,cursor:"pointer"}}>
-          <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
-            <div style={{fontWeight:900,fontSize:14}}>Training Item：{item.label}</div>
-            <span style={{fontSize:12,fontWeight:900,color:currentStage.color,whiteSpace:"nowrap"}}>{currentStage.label}</span>
-          </div>
-        </button>
-        {isOpen&&<div style={{marginTop:12,display:"flex",flexDirection:"column",gap:12}}>
-          <section style={{borderTop:`1px solid ${C.border}`,paddingTop:10}}><h5 style={{margin:"0 0 6px",fontSize:13,color:"#14532d"}}>Manual</h5><div style={{fontSize:14,lineHeight:1.7}}>{renderText(material.manual)}</div></section>
-          <section><h5 style={{margin:"0 0 6px",fontSize:13,color:"#14532d"}}>Important Points</h5><div style={{fontSize:14,lineHeight:1.7}}>{renderText(material.importantPoints)}</div></section>
-          {(material.commonMistakes||material.tips||material.memo)&&<section><h5 style={{margin:"0 0 6px",fontSize:13,color:"#14532d"}}>Learning Notes</h5><div style={{fontSize:13,lineHeight:1.7}}>
-            {material.commonMistakes&&<div><strong>Common Mistakes：</strong>{renderText(material.commonMistakes,"")}</div>}
-            {material.tips&&<div style={{marginTop:6}}><strong>Tips：</strong>{renderText(material.tips,"")}</div>}
-            {material.memo&&<div style={{marginTop:6}}><strong>Memo：</strong>{renderText(material.memo,"")}</div>}
-          </div></section>}
-          <section><h5 style={{margin:"0 0 6px",fontSize:13,color:"#14532d"}}>Evaluation</h5><div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6}}>
-            {TRAINING_STAGES.map(stage=><button key={stage.id} onClick={()=>setSkill(key,stage.id)} style={{border:`2px solid ${currentStage.id===stage.id?stage.color:C.border}`,borderRadius:8,padding:"10px 6px",background:currentStage.id===stage.id?"#f0fdf4":"#fff",color:currentStage.id===stage.id?stage.color:C.text,fontSize:13,fontWeight:900,cursor:"pointer"}}>{stage.label}</button>)}
-          </div></section>
-          <section><h5 style={{margin:"0 0 6px",fontSize:13,color:"#14532d"}}>Comments</h5><div style={{fontSize:13,lineHeight:1.7,color:C.muted}}>Trainer: {trainerName} / Last training date: {card.lastTrainingDate||"未設定"} / Next target: {card.nextTarget||"未設定"}</div></section>
-        </div>}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:16}}>
+      {skillGroups.map(group=>{const gp=supportCategoryProgress(card,group),gc=supportProgressColor(gp);return <div key={group.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:12,fontWeight:900,color:C.muted}}>{group.title}</div><div style={{fontSize:22,fontWeight:900,color:gc}}>{gp}%</div><div style={{height:7,background:"#f3f4f6",borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:`${gp}%`,background:gc}}/></div></div>;})}
+    </div>
+    {skillGroups.map(group=><div key={group.id} style={{marginBottom:18}}><h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4><div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {group.items.map(item=>{const key=item.key,current=supportStageFromValue(card.skills?.[key]||"observe").mark;const material=normalizeTrainingMaterial(item.material);const comments=(card.itemComments||{})[key]||{};return <div key={key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,background:"#fff"}}>
+        <div style={{fontSize:12,color:C.green,fontWeight:900,marginBottom:4}}>Training Item</div>
+        <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>{item.label}</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginBottom:10}}>
+          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>Manual</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.manual||"-"}</div></section>
+          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>Important Points</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.importantPoints||"-"}</div></section>
+          {(material.commonMistakes||material.tips||material.memo)&&<section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>Learning material</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8}}>{[["Common Mistakes",material.commonMistakes],["Tips",material.tips],["Memo",material.memo]].map(([label,value])=>value?<div key={label} style={{whiteSpace:"pre-wrap",lineHeight:1.55,fontSize:13,background:"#f9fafb",borderRadius:8,padding:9}}><strong>{label}</strong><br/>{value}</div>:null)}</div></section>}
+        </div>
+        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>Evaluation</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:6,marginBottom:10}}>
+          {SUPPORT_RATINGS.map(r=><button key={r.mark} onClick={()=>setSkill(key,r.mark)} title={r.label} style={{border:`2px solid ${current===r.mark?C.green:C.border}`,borderRadius:8,padding:"10px 5px",background:current===r.mark?C.greenL:"#fff",color:current===r.mark?C.green:C.text,fontSize:13,fontWeight:900,cursor:"pointer"}}>{r.label}</button>)}
+        </div>
+        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>Comments</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
+          {[["Good points","goodPoints"],["Needs improvement","needsImprovement"],["Next practice","nextPractice"]].map(([label,field])=><label key={field} style={{fontSize:12,fontWeight:800,color:C.muted}}>{label}<textarea value={comments[field]||""} onChange={e=>updateComment(key,{[field]:e.target.value})} rows={3} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}
+        </div>
       </div>;})}
     </div></div>)}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:18}}>{[["Good points","goodPoints"],["Needs improvement","needsImprovement"],["Next practice","nextPractice"],["Memo","memo"]].map(([label,key])=><label key={key} style={{fontSize:12,color:C.muted,fontWeight:800}}>{label}<textarea value={card[key]||""} onChange={e=>onChange({[key]:e.target.value})} rows={4} style={{width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}</div>
-    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}><h4 style={{margin:"0 0 10px",fontSize:15}}>成長履歴</h4><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><input type="date" value={historyDate} onChange={e=>setHistoryDate(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><input value={historyComment} onChange={e=>setHistoryComment(e.target.value)} placeholder="コメントを追加" style={{flex:"1 1 220px",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><button onClick={addHistory} style={{...Btn(C.green),padding:"11px 16px"}}>追加</button></div>
-      {[...(card.history||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(h=><div key={h.id} style={{borderBottom:`1px solid ${C.border}`,padding:"8px 0",fontSize:13}}><strong>{h.date}</strong>　{h.comment}</div>)}</div>
+    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}><h4 style={{margin:"0 0 10px",fontSize:15}}>Training history</h4><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><input type="date" value={historyDate} onChange={e=>setHistoryDate(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><input value={historyComment} onChange={e=>setHistoryComment(e.target.value)} placeholder="Comment" style={{flex:"1 1 220px",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><button onClick={addHistory} style={{...Btn(C.green),padding:"11px 16px"}}>Add</button></div>
+      {[...(card.history||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(h=><div key={h.id} style={{borderBottom:`1px solid ${C.border}`,padding:"8px 0",fontSize:13}}><strong>{h.date}</strong> {h.comment}</div>)}</div>
   </div>;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 勉強会管理
-// ═══════════════════════════════════════════════════════════════
 function StudySessionView({year,month}){
   const [sessions,setSessions]=useState([]);
   const [loading,setLoading]=useState(true);
