@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 10 Build 20260701.1";
+const DEV_BUILD_LABEL = "Sprint 11 Build 20260701.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -142,7 +142,19 @@ DEFAULT_TRAINING_TEMPLATES = [
     {id:"cat-ashibe-cleanup",title:"片付け",items:[{id:"item-ashibe-cleanup",label:"式後片付けと忘れ物確認",material:trainingMaterial("返礼品、備品、控室、式場、忘れ物を順番に確認して片付ける。","個人情報や香典関連物は特に慎重に扱う。","急いで備品を戻し、忘れ物や数量差に気づかない。","片付け前後の写真確認とダブルチェックを習慣にする。")}]}
   ]},
   {id:"tpl-asuka-mc",workplace:"飛鳥",role:"司会",title:"飛鳥会館 × 司会",categories:[
-    {id:"cat-asuka-mc-wake",title:"通夜司会",items:[{id:"item-asuka-mc-wake",label:"通夜進行と案内文",material:trainingMaterial("開式、読経、焼香、閉式、通夜振る舞い等の流れを整えて案内する。","宗派、導師名、喪主名、式次第を直前まで確認する。","定型文に頼り、当日の変更を反映し忘れる。","式次第に赤字で変更点を書き込み、声に出して確認する。")}]},
+    {id:"cat-asuka-mc-wake-timeline",title:"通夜司会｜通夜当日タイムライン",items:[{id:"item-asuka-mc-wake-timeline",label:"到着から閉式後までの流れ確認",material:trainingMaterial("通夜当日は到着、担当者確認、喪主様打合せ、導師様打合せ、開式前案内、開式、焼香、閉式、翌日案内の順で準備と進行を整える。","時刻、導師到着、親族着席、焼香開始、法話や御文章、喪主挨拶の有無を一覧で確認する。","開式直前に未確認事項が残る。担当者・導師・喪主様の情報が別々のメモに分かれる。","式次第に時刻と確認済み印を付け、開式30分前と10分前に声に出して通し確認する。")}]},
+    {id:"cat-asuka-mc-wake-director-hearing",title:"通夜司会｜施行担当者ヒアリング",items:[{id:"item-asuka-mc-wake-director-hearing",label:"担当者から進行条件を聞き取る",material:trainingMaterial("施行担当者へ式次第、宗派、導師名、喪主名、焼香順、親族人数、一般会葬の見込み、変更点を確認する。","不明点は喪主様や導師様へ直接聞く前に担当者へ確認し、会館内の判断をそろえる。","思い込みで定型進行に当てはめる。焼香順や挨拶有無の変更を司会台本へ反映しない。","聞き取り後に「開式、焼香、法話、挨拶、閉式」の順で復唱し、担当者から了承をもらう。")}]},
+    {id:"cat-asuka-mc-wake-chief-meeting",title:"通夜司会｜喪主様打合せ",items:[{id:"item-asuka-mc-wake-chief-meeting",label:"喪主様への確認と負担軽減",material:trainingMaterial("喪主様には呼称、挨拶の有無、紹介内容、翌日の集合や開式時刻、案内してよい内容を短く確認する。","悲しみの場で長く聞きすぎず、選択肢を示して確認し、最後に必要事項だけ復唱する。","質問が多く事務的になる。呼称、読み方、挨拶位置を確認し忘れる。","確認事項を3つ程度にまとめ、喪主様の言葉をそのままメモして表現を整える。")}]},
+    {id:"cat-asuka-mc-wake-priest-meeting",title:"通夜司会｜導師様打合せ",items:[{id:"item-asuka-mc-wake-priest-meeting",label:"導師様との進行確認",material:trainingMaterial("導師様へ入場タイミング、読経、焼香案内、法話、御文章、退場、導師紹介の有無を確認する。","宗派や導師様の希望を優先し、呼称と読み方、合図の出し方を丁寧に確認する。","法話や御文章の有無を聞き漏らす。導師様の呼称を誤る。変更を担当者へ共有しない。","打合せ直後に司会文へ赤字で反映し、担当者へ変更点を一文で共有する。")}]},
+    {id:"cat-asuka-mc-wake-before-opening",title:"通夜司会｜開式前アナウンス",items:[{id:"item-asuka-mc-wake-before-opening",label:"着席・携帯電話・焼香準備の案内",material:trainingMaterial("開式前は参列者へ着席、携帯電話、写真や会場内注意、焼香順の準備を落ち着いた声で案内する。","案内は短く、会場の状況を見ながら必要な内容だけを選ぶ。親族席と一般席の動きを妨げない。","注意事項を詰め込みすぎる。声量が大きすぎて親族の会話を遮る。","30秒版と10秒版を用意し、会場のざわつきに合わせて使い分ける練習をする。")}]},
+    {id:"cat-asuka-mc-wake-narration",title:"通夜司会｜ナレーション",items:[{id:"item-asuka-mc-wake-narration",label:"故人様紹介の短文作成と読み上げ",material:trainingMaterial("聞き取った人柄、思い出、感謝の言葉を、通夜に合う短い紹介文へ整えて読み上げる。","事実確認、敬意、自然な間を重視し、演出過多にならないようにする。","内容を盛り込みすぎる。固有名詞や続柄の読みを確認しない。","一文を短くし、声に出して息継ぎ位置を確認する。迷った表現は担当者へ相談する。")}]},
+    {id:"cat-asuka-mc-wake-priest-entry",title:"通夜司会｜導師入場・開式",items:[{id:"item-asuka-mc-wake-priest-entry",label:"導師入場から開式宣言まで",material:trainingMaterial("導師様入場の合図を確認し、参列者へ起立や合掌など必要な所作を案内してから開式を告げる。","導師様の動き、担当者の合図、会場の着席状況を見て、声を出すタイミングを合わせる。","導師様より先に案内を始める。着席が整わないまま開式する。","司会台から導師控室方向と式場全体を確認する目線の動きを練習する。")}]},
+    {id:"cat-asuka-mc-wake-incense",title:"通夜司会｜焼香案内",items:[{id:"item-asuka-mc-wake-incense",label:"親族・一般会葬者の焼香誘導",material:trainingMaterial("焼香は喪主様、親族、一般会葬者の順や会館ごとの導線を確認し、必要なタイミングで案内する。","焼香開始の合図、席順、戻り導線、混雑時の間隔を担当者とそろえる。","案内が早すぎる。列が詰まる。親族と一般の順番を混同する。","実際の導線を歩き、どの言葉で誰が動くかをアシスタント役と合わせる。")}]},
+    {id:"cat-asuka-mc-wake-sermon-letter",title:"通夜司会｜法話・御文章対応",items:[{id:"item-asuka-mc-wake-sermon-letter",label:"法話・御文章の有無に合わせた間の取り方",material:trainingMaterial("導師様の法話や御文章がある場合は、読経後の流れと案内の要否を事前に確認し、静かに場面をつなぐ。","導師様が話し始める前後は司会が言葉を重ねず、必要な案内だけにとどめる。","法話の有無を確認せず閉式案内へ進む。御文章中に次の準備を急がせる。","導師様の所作が一区切りつくまで待つ練習をし、沈黙を恐れず間を保つ。")}]},
+    {id:"cat-asuka-mc-wake-priest-exit",title:"通夜司会｜導師退場",items:[{id:"item-asuka-mc-wake-priest-exit",label:"導師退場時の案内と見送り",material:trainingMaterial("導師様退場時は合掌や一礼など必要な所作を案内し、退場後の会場の空気を保つ。","導師様の歩調、扉の開閉、担当者の合図を見て、案内の長さを調整する。","退場前に次の案内を始める。参列者の所作が揃わない。","退場時の短い案内文を準備し、扉が閉まるまで次の案内を待つ練習をする。")}]},
+    {id:"cat-asuka-mc-wake-chief-greeting",title:"通夜司会｜喪主挨拶",items:[{id:"item-asuka-mc-wake-chief-greeting",label:"喪主挨拶の導入と立ち位置確認",material:trainingMaterial("喪主挨拶がある場合は、名前、立ち位置、マイク、挨拶後の流れを確認してから紹介する。","喪主様が安心して動けるよう、案内文は短くし、必要なら担当者やアシスタントと立ち位置を支える。","挨拶有無の変更を反映しない。マイクや立ち位置の準備が遅れる。","喪主様役を立てて、紹介、移動、挨拶後の着席まで一連で練習する。")}]},
+    {id:"cat-asuka-mc-wake-closing-nextday",title:"通夜司会｜閉式・翌日案内",items:[{id:"item-asuka-mc-wake-closing-nextday",label:"閉式案内と翌日の集合案内",material:trainingMaterial("閉式では会葬への御礼、翌日の葬儀開式時刻、親族集合、通夜振る舞い等の案内を担当者確認のうえ伝える。","翌日案内は時刻、場所、対象者を明確にし、全員向けと親族向けを混同しない。","翌日の時刻を言い間違える。通夜振る舞い案内を対象外の方へ広げてしまう。","案内前に時刻を指差し確認し、閉式後に担当者へ伝達漏れがないか確認する。")}]},
+    {id:"cat-asuka-mc-wake-qa",title:"通夜司会｜よくある対応Q&A",items:[{id:"item-asuka-mc-wake-qa",label:"変更・遅れ・読みにくい名前への対応",material:trainingMaterial("急な遅れ、焼香順変更、導師様の希望、読み方不明、参列者増減などは、自己判断せず担当者へ確認してから案内を変える。","落ち着いた声で短くつなぎ、分からないことは確認中として不用意に断定しない。","その場で言い切って誤案内になる。変更をアシスタントへ共有しない。","よくある質問をカード化し、確認先、返答例、司会文の差し替え方をロールプレイする。")}]},
     {id:"cat-asuka-mc-funeral",title:"葬儀司会",items:[{id:"item-asuka-mc-funeral",label:"葬儀・告別式の進行",material:trainingMaterial("開式から出棺案内まで、場面ごとの声量と間を調整する。","弔電、焼香順、喪主挨拶、出棺導線の確認を徹底する。","弔電や名前の読み違い。進行を急ぎすぎる。","重要箇所だけを抜き出した読み合わせを行う。")}]},
     {id:"cat-asuka-mc-farewell",title:"お別れの儀",items:[{id:"item-asuka-mc-farewell",label:"お別れの案内",material:trainingMaterial("花入れや副葬品の場面を、親族の気持ちに合わせて静かに案内する。","説明しすぎず、必要なタイミングだけ短く伝える。","感情の流れを切る。案内が長くなる。","短い案内文を複数用意し、状況で選ぶ練習をする。")}]},
     {id:"cat-asuka-mc-narration",title:"ナレーション作成",items:[{id:"item-asuka-mc-narration",label:"故人紹介文の作成",material:trainingMaterial("ヒアリング内容から人柄、思い出、感謝を短く温かい文章に整える。","事実確認と敬意を重視し、過度な演出を避ける。","聞いた内容を詰め込みすぎる。固有名詞を確認しない。","一文を短くし、読み上げて自然な長さに調整する。")}]},
@@ -3845,6 +3857,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 10 Build 20260701.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 11 Build 20260701.1</div>
 </body>
 </html>
