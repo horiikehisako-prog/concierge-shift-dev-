@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 7 improvement / Build 20260701-0847";
+const DEV_BUILD_LABEL = "Sprint 8 Build 20260701.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -204,7 +204,7 @@ function App(){
   const [month,setMonth]=useState(now.getMonth()+1);
   const [role,setRole]  =useState(null);
   const [uname,setUname]=useState("");
-  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null});
+  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null,trainingProgress:{}});
   const [busy,setBusy]  =useState(false);
   const [toast,setToast]=useState("");
 
@@ -227,20 +227,22 @@ function App(){
     ashibeRates:raw.ashibeRates||{}, // あしべの杜単価
     itemSettings:normalizeItemSettings(raw.itemSettings),
     mcRatesV2:raw.mcRatesV2||{},
+    trainingMaster:normalizeTrainingMaster(raw.trainingMaster),
   };
 
   const flash=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
 
   const reload=useCallback(async()=>{
     setBusy(true);
-    const [s,sh,pr,at,vc,mcs,asts]=await Promise.all([
+    const [s,sh,pr,at,vc,mcs,asts,tp]=await Promise.all([
       stLoad("settings"),stLoad(`shift-${ym}`),stLoad(`pref-${ym}`),
       stLoad(`att-${ym}`),stLoad(`vconf-${ym}`),
       stLoad("mcStaff_str"),stLoad("assistStaff_str"),
+      stLoad("trainingProgress"),
     ]);
     setD({
       settings:s,shifts:sh||{},prefs:pr||{},att:at||{},vconf:vc||{},
-      mcStaff:mcs||null,assistStaff:asts||null,
+      mcStaff:mcs||null,assistStaff:asts||null,trainingProgress:tp||{},
     });
     setBusy(false);
   },[ym]);
@@ -258,6 +260,17 @@ function App(){
       flash("✅ 設定を保存しました");
     },
     updateSettings: v=>{setD(d=>({...d,settings:v}));}, // メモリのみ更新
+    trainingMaster: async v=>{
+      const next={...cfg,trainingMaster:normalizeTrainingMaster(v)};
+      setD(d=>({...d,settings:next}));
+      await stSave("settings",next);
+      flash("✅ 教育マスターを保存しました");
+    },
+    trainingProgress: async v=>{
+      setD(d=>({...d,trainingProgress:v}));
+      await stSave("trainingProgress",v);
+      flash("✅ 研修進捗を保存しました");
+    },
     mcStaff: v=>{
       setD(d=>({...d,mcStaff:v.join("|")}));
       stSave("mcStaff_str",v.join("|")); // エラーが出ても止めない
@@ -308,7 +321,7 @@ function App(){
   if(!role) return <RoleSelect cfg={cfg} onSelect={(r,n)=>{setRole(r);setUname(n);}}/>;
 
   const P={year,month,setYear,setMonth,shifts:D.shifts,prefs:D.prefs,att:D.att,vconf:D.vconf,
-    cfg,sv,generate,uname,role,busy,flash};
+    cfg,sv,generate,uname,role,busy,flash,trainingProgress:D.trainingProgress};
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,
@@ -468,6 +481,9 @@ function TopBar({role,uname,onBack,year,month}){
       <button onClick={onBack} style={{background:"none",border:"none",color:"rgba(255,255,255,.7)",cursor:"pointer",fontSize:22,padding:0}}>‹</button>
       <img src={LOGO_SRC} alt="logo" style={{height:28,filter:"brightness(0) invert(1)"}}/>
       <span style={{fontSize:15,fontWeight:800}}>コンシェルシフト</span>
+      <span style={{fontSize:11,fontWeight:800,background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.35)",borderRadius:999,padding:"3px 8px"}}>
+        DEV {DEV_BUILD_LABEL}
+      </span>
       <span style={{marginLeft:"auto",fontSize:13,color:"rgba(255,255,255,.75)",fontWeight:600}}>
         {year}年{month}月 · {lbl[role]} · DEV {DEV_BUILD_LABEL}
       </span>
@@ -516,6 +532,7 @@ function AdminView(P){
     {id:"items", label:"🧩 項目設定"},
     {id:"mc",    label:"🎤 司会設定"},
     {id:"support",label:"🌱 成長カルテ"},
+    {id:"training",label:"🎓 教育マスター"},
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
@@ -526,6 +543,7 @@ function AdminView(P){
     {tab==="items" &&<ItemSettingsTab {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="support"&&<SupportManagerView {...P}/>}
+    {tab==="training"&&<TrainingMasterTab {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
 }
@@ -1437,6 +1455,7 @@ function OfficeView(P){
     {id:"att",     label:"✅ 勤怠承認"},
     {id:"mc",      label:"🎤 司会・記録"},
     {id:"study",   label:"📚 勉強会"},
+    {id:"training",label:"🎓 教育マスター"},
     {id:"items",   label:"🧩 項目設定"},
     {id:"rates",   label:"💰 単価設定"},
   ];
@@ -1456,6 +1475,7 @@ function OfficeView(P){
     {tab==="att"    &&<AdminAttView {...P}/>}
     {tab==="mc"     &&<MCAccountingView {...P}/>}
     {tab==="study"  &&<StudySessionView {...P}/>}
+    {tab==="training"&&<TrainingMasterTab {...P}/>}
     {tab==="items"  &&<ItemSettingsTab {...P}/>}
     {tab==="rates"  &&<MCConfigTab {...P}/>}
   </div>;
@@ -1471,6 +1491,7 @@ function StaffView(P){
     {id:"shift",label:"📅 全体シフト"},
     {id:"mine", label:"👤 マイシフト"},
     {id:"rec",  label:"🕐 出勤記録"},
+    {id:"training",label:"🎓 教育"},
     {id:"mc",   label:"🎤 司会・記録"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
@@ -1478,6 +1499,7 @@ function StaffView(P){
     {tab==="shift"&&<PublicShift {...P}/>}
     {tab==="mine" &&<MyShift    {...P}/>}
     {tab==="rec"  &&<MyRecord   {...P}/>}
+    {tab==="training"&&<StaffTrainingTab {...P} fixedJob="コンシェルジュ"/>}
     {tab==="mc"   &&<MCRecordTab {...P}/>}
   </div>;
 }
@@ -1889,6 +1911,7 @@ function MCStaffView(P) {
   const jobRole = role === "mc" ? "司会" : "アシスタント";
   const tabs = [
     { id:"record", label:"📝 出勤を記録" },
+    { id:"training", label:"🎓 教育" },
     { id:"history",label:"📋 履歴確認" },
   ];
   return (
@@ -1896,12 +1919,13 @@ function MCStaffView(P) {
       <MonthSel year={year} month={month} setYear={setYear} setMonth={setMonth}/>
       <Tabs tabs={tabs} active={tab} onChange={setTab}/>
       {tab==="record"  && <MCStaffRecord  {...P} jobRole={jobRole}/>}
+      {tab==="training"&& <StaffTrainingTab {...P} fixedJob={jobRole}/>}
       {tab==="history" && <MCStaffHistory {...P} jobRole={jobRole}/>}
     </div>
   );
 }
 
-function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
+function MCStaffRecord({ year, month, uname, role, cfg, flash, trainingProgress, sv }) {
   const jobRole = role==="mc"?"司会":"アシスタント";
   const today = new Date();
   const clients=getClients(cfg);
@@ -2045,6 +2069,11 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
             ))}
           </div>
         </div>
+      )}
+
+      {canSave && (
+        <TrainingChecklistPanel cfg={cfg} trainingProgress={trainingProgress} sv={sv}
+          uname={uname} jobName={actualRole} locationName={form.company}/>
       )}
 
       {/* 確認・保存 */}
@@ -2292,6 +2321,263 @@ function moveItem(list,from,to){
 // ═══════════════════════════════════════════════════════════════
 // 出勤一覧（スタッフ別・会場別）
 // ═══════════════════════════════════════════════════════════════
+const idOf = (prefix="id") => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
+const bySort = (a,b)=>(a.sort??0)-(b.sort??0);
+const moveInList = (list, fromId, toId) => {
+  const arr=[...list].sort(bySort);
+  const from=arr.findIndex(x=>x.id===fromId), to=arr.findIndex(x=>x.id===toId);
+  if(from<0||to<0||from===to) return list;
+  const [picked]=arr.splice(from,1);
+  arr.splice(to,0,picked);
+  return arr.map((x,i)=>({...x,sort:i}));
+};
+const defaultTrainingMaster = () => {
+  const jobs=[
+    {id:"job_concierge",name:"コンシェルジュ",sort:0},
+    {id:"job_assistant",name:"アシスタント",sort:1},
+    {id:"job_mc",name:"司会",sort:2},
+    {id:"job_pantry",name:"パントリー",sort:3},
+  ];
+  const locations=[
+    {id:"loc_asuka",name:"飛鳥会館",sort:0},
+    {id:"loc_ashibe",name:"あしべの杜",sort:1},
+    {id:"loc_fukashina",name:"ふかしな",sort:2},
+  ];
+  const categories=[
+    {id:"cat_basic",name:"基本動作",sort:0},
+    {id:"cat_service",name:"接客",sort:1},
+    {id:"cat_setup",name:"会場準備",sort:2},
+  ];
+  const jobByName=Object.fromEntries(jobs.map(j=>[j.name,j]));
+  const locByName=Object.fromEntries(locations.map(l=>[l.name,l]));
+  const catByName=Object.fromEntries(categories.map(c=>[c.name,c]));
+  const seed=[
+    ["アシスタント","飛鳥会館","基本動作","式場導線と控室を確認する"],
+    ["アシスタント","飛鳥会館","接客","ご遺族への案内を実施する"],
+    ["アシスタント","あしべの杜","基本動作","あしべの杜の会場導線を確認する"],
+    ["アシスタント","あしべの杜","会場準備","備品と配膳準備を確認する"],
+    ["司会","飛鳥会館","基本動作","進行表とタイムラインを確認する"],
+    ["司会","飛鳥会館","接客","開式前アナウンスを実施する"],
+  ];
+  return {
+    jobs,locations,categories,
+    items:seed.map(([job,location,category,title],i)=>({
+      id:`item_seed_${i+1}`,jobId:jobByName[job].id,locationId:locByName[location].id,
+      categoryId:catByName[category].id,title,sort:i
+    })),
+  };
+};
+const normalizeTrainingMaster = (master) => {
+  const base=defaultTrainingMaster();
+  if(!master || typeof master!=="object") return base;
+  const normList=(src,prefix)=>ensureArray(src).map((x,i)=>(
+    typeof x==="string"?{id:idOf(prefix),name:x,sort:i}:{...x,id:x.id||idOf(prefix),name:x.name||"",sort:x.sort??i}
+  )).filter(x=>x.name);
+  const jobs=normList(master.jobs,"job");
+  const locations=normList(master.locations,"loc");
+  const categories=normList(master.categories,"cat");
+  const validJob=new Set(jobs.map(x=>x.id)), validLoc=new Set(locations.map(x=>x.id)), validCat=new Set(categories.map(x=>x.id));
+  const items=ensureArray(master.items).map((x,i)=>({...x,id:x.id||idOf("item"),title:x.title||x.name||"",sort:x.sort??i}))
+    .filter(x=>x.title&&validJob.has(x.jobId)&&validLoc.has(x.locationId)&&validCat.has(x.categoryId));
+  const hasJobs=Object.prototype.hasOwnProperty.call(master,"jobs");
+  const hasLocations=Object.prototype.hasOwnProperty.call(master,"locations");
+  const hasCategories=Object.prototype.hasOwnProperty.call(master,"categories");
+  const hasItems=Object.prototype.hasOwnProperty.call(master,"items");
+  return {
+    jobs:(hasJobs?jobs:base.jobs).sort(bySort).map((x,i)=>({...x,sort:i})),
+    locations:(hasLocations?locations:base.locations).sort(bySort).map((x,i)=>({...x,sort:i})),
+    categories:(hasCategories?categories:base.categories).sort(bySort).map((x,i)=>({...x,sort:i})),
+    items:(hasItems?items:base.items).sort(bySort).map((x,i)=>({...x,sort:i})),
+  };
+};
+const trainingLevelLabels = ["","① 見学","② 一緒に実施","③ 一人で実施","④ 合格"];
+const trainingProgressKey = (staff,jobId,locationId) => `${staff || "unknown"}__${jobId}__${locationId}`;
+const trainingProgressPercent = (items, progress) => {
+  if(!items.length) return 0;
+  const score=items.reduce((a,item)=>a+(Number(progress?.items?.[item.id]?.level)||0),0);
+  return Math.round(score/(items.length*4)*100);
+};
+
+function InlineEditor({value,onSave,placeholder="名称"}) {
+  const [v,setV]=useState(value||"");
+  useEffect(()=>setV(value||""),[value]);
+  return <div style={{display:"flex",gap:8,alignItems:"center"}}>
+    <input value={v} onChange={e=>setV(e.target.value)} placeholder={placeholder}
+      style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:13}}/>
+    <button onClick={()=>v.trim()&&onSave(v.trim())} style={{...Btn(C.navy),padding:"8px 12px"}}>保存</button>
+  </div>;
+}
+
+function SortableMasterList({title,items,onAdd,onRename,onDelete,onMove,placeholder}) {
+  const [draft,setDraft]=useState("");
+  const [dragId,setDragId]=useState(null);
+  return <div style={{...GC,marginBottom:0}}>
+    <h3 style={{margin:"0 0 12px",fontSize:14}}>{title}</h3>
+    <div style={{display:"flex",gap:8,marginBottom:12}}>
+      <input value={draft} onChange={e=>setDraft(e.target.value)} placeholder={placeholder}
+        style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13}}/>
+      <button onClick={()=>{if(draft.trim()){onAdd(draft.trim());setDraft("");}}}
+        style={{...Btn(C.green),padding:"9px 14px"}}>追加</button>
+    </div>
+    {items.sort(bySort).map(item=>(
+      <div key={item.id} draggable onDragStart={()=>setDragId(item.id)} onDragOver={e=>e.preventDefault()}
+        onDrop={()=>{onMove(dragId,item.id);setDragId(null);}}
+        style={{display:"grid",gridTemplateColumns:"24px 1fr auto",gap:8,alignItems:"center",
+          borderBottom:`1px solid ${C.border}`,padding:"8px 0"}}>
+        <span style={{color:C.muted,cursor:"grab",textAlign:"center"}}>↕</span>
+        <InlineEditor value={item.name} onSave={name=>onRename(item.id,name)}/>
+        <button onClick={()=>onDelete(item.id)} style={{...Btn(C.white,C.red),border:`1px solid ${C.border}`,padding:"8px 10px"}}>削除</button>
+      </div>
+    ))}
+  </div>;
+}
+
+function TrainingMasterTab({cfg,sv}) {
+  const [master,setMaster]=useState(()=>normalizeTrainingMaster(cfg.trainingMaster));
+  const [itemForm,setItemForm]=useState({jobId:"",locationId:"",categoryId:"",title:""});
+  const [itemDragId,setItemDragId]=useState(null);
+  useEffect(()=>setMaster(normalizeTrainingMaster(cfg.trainingMaster)),[cfg.trainingMaster]);
+  const saveMaster=async(next)=>{const normalized=normalizeTrainingMaster(next);setMaster(normalized);await sv.trainingMaster(normalized);};
+  const addTo=(key,prefix,name)=>saveMaster({...master,[key]:[...master[key],{id:idOf(prefix),name,sort:master[key].length}]});
+  const renameIn=(key,id,name)=>saveMaster({...master,[key]:master[key].map(x=>x.id===id?{...x,name}:x)});
+  const deleteFrom=(key,id)=>saveMaster({
+    ...master,
+    [key]:master[key].filter(x=>x.id!==id),
+    items:key==="jobs"?master.items.filter(x=>x.jobId!==id):key==="locations"?master.items.filter(x=>x.locationId!==id):key==="categories"?master.items.filter(x=>x.categoryId!==id):master.items,
+  });
+  const moveIn=(key,fromId,toId)=>saveMaster({...master,[key]:moveInList(master[key],fromId,toId)});
+  const addItem=()=> {
+    const jobId=itemForm.jobId||master.jobs[0]?.id, locationId=itemForm.locationId||master.locations[0]?.id, categoryId=itemForm.categoryId||master.categories[0]?.id;
+    if(!jobId||!locationId||!categoryId||!itemForm.title.trim()) return;
+    saveMaster({...master,items:[...master.items,{id:idOf("item"),jobId,locationId,categoryId,title:itemForm.title.trim(),sort:master.items.length}]});
+    setItemForm({...itemForm,title:""});
+  };
+  const updateItem=(id,patch)=>saveMaster({...master,items:master.items.map(x=>x.id===id?{...x,...patch}:x)});
+  const deleteItem=id=>saveMaster({...master,items:master.items.filter(x=>x.id!==id)});
+  const moveItem=(fromId,toId)=>saveMaster({...master,items:moveInList(master.items,fromId,toId)});
+  return <div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginBottom:14}}>
+      <SortableMasterList title="職種" items={master.jobs} placeholder="例: 司会" onAdd={n=>addTo("jobs","job",n)}
+        onRename={(id,n)=>renameIn("jobs",id,n)} onDelete={id=>deleteFrom("jobs",id)} onMove={(a,b)=>moveIn("jobs",a,b)}/>
+      <SortableMasterList title="会場" items={master.locations} placeholder="例: 飛鳥会館" onAdd={n=>addTo("locations","loc",n)}
+        onRename={(id,n)=>renameIn("locations",id,n)} onDelete={id=>deleteFrom("locations",id)} onMove={(a,b)=>moveIn("locations",a,b)}/>
+      <SortableMasterList title="カテゴリ" items={master.categories} placeholder="例: 接客" onAdd={n=>addTo("categories","cat",n)}
+        onRename={(id,n)=>renameIn("categories",id,n)} onDelete={id=>deleteFrom("categories",id)} onMove={(a,b)=>moveIn("categories",a,b)}/>
+    </div>
+    <div style={GC}>
+      <h3 style={{margin:"0 0 12px",fontSize:15}}>研修項目</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr)) 2fr auto",gap:8,marginBottom:12}}>
+        {[["jobId",master.jobs],["locationId",master.locations],["categoryId",master.categories]].map(([key,list])=>(
+          <select key={key} value={itemForm[key]||list[0]?.id||""} onChange={e=>setItemForm({...itemForm,[key]:e.target.value})}
+            style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13}}>
+            {list.sort(bySort).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        ))}
+        <input value={itemForm.title} onChange={e=>setItemForm({...itemForm,title:e.target.value})} placeholder="研修項目名"
+          style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13}}/>
+        <button onClick={addItem} style={{...Btn(C.green),padding:"9px 14px"}}>追加</button>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr style={{background:"#f8f9fb"}}>
+            <th style={TH}>並び</th><th style={TH}>職種</th><th style={TH}>会場</th><th style={TH}>カテゴリ</th><th style={TH}>項目</th><th style={TH}></th>
+          </tr></thead>
+          <tbody>
+            {master.items.sort(bySort).map(item=>(
+              <tr key={item.id} draggable onDragStart={()=>setItemDragId(item.id)} onDragOver={e=>e.preventDefault()}
+                onDrop={()=>{moveItem(itemDragId,item.id);setItemDragId(null);}}>
+                <td style={{...TD,textAlign:"center",color:C.muted,cursor:"grab"}}>↕</td>
+                {[["jobId",master.jobs],["locationId",master.locations],["categoryId",master.categories]].map(([key,list])=><td key={key} style={TD}>
+                  <select value={item[key]} onChange={e=>updateItem(item.id,{[key]:e.target.value})}
+                    style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px"}}>
+                    {list.sort(bySort).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+                  </select>
+                </td>)}
+                <td style={TD}><input value={item.title} onChange={e=>updateItem(item.id,{title:e.target.value})}
+                  style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px"}}/></td>
+                <td style={TD}><button onClick={()=>deleteItem(item.id)} style={{...Btn(C.white,C.red),border:`1px solid ${C.border}`,padding:"6px 10px"}}>削除</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>;
+}
+
+function TrainingChecklistPanel({cfg,trainingProgress,sv,uname,jobName,locationName}) {
+  const master=normalizeTrainingMaster(cfg.trainingMaster);
+  const job=master.jobs.find(j=>j.name===jobName) || master.jobs.find(j=>jobName&&j.name.includes(jobName)) || master.jobs[0];
+  const location=master.locations.find(l=>l.name===locationName) || master.locations.find(l=>locationName&&locationName.includes(l.name)) || master.locations[0];
+  if(!job||!location) return <div style={GC}>教育マスターに職種・会場を登録してください。</div>;
+  const items=master.items.filter(x=>x.jobId===job.id&&x.locationId===location.id).sort(bySort);
+  const key=trainingProgressKey(uname,job.id,location.id);
+  const current=trainingProgress?.[key]||{items:{},comments:{}};
+  const saveCurrent=patch=>sv.trainingProgress({...trainingProgress,[key]:{...current,...patch}});
+  const setLevel=(itemId,level)=>saveCurrent({items:{...(current.items||{}),[itemId]:{level,updatedAt:new Date().toISOString()}}});
+  const setComment=(categoryId,comment)=>saveCurrent({comments:{...(current.comments||{}),[categoryId]:comment}});
+  const pct=trainingProgressPercent(items,current);
+  const grouped=master.categories.sort(bySort).map(cat=>({cat,items:items.filter(i=>i.categoryId===cat.id)})).filter(g=>g.items.length);
+  return <div style={GC}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+      <div>
+        <h3 style={{margin:"0 0 4px",fontSize:15}}>🎓 {location.name} × {job.name}</h3>
+        <div style={{fontSize:12,color:C.muted}}>該当する研修項目のみ表示しています</div>
+      </div>
+      <div style={{minWidth:140}}>
+        <div style={{fontSize:12,color:C.muted,textAlign:"right",marginBottom:4}}>進捗 {pct}%</div>
+        <div style={{height:8,background:"#f3e8df",borderRadius:99,overflow:"hidden"}}>
+          <div style={{width:`${pct}%`,height:"100%",background:pct>=100?C.green:C.blue}}/>
+        </div>
+      </div>
+    </div>
+    {items.length===0&&<p style={{fontSize:13,color:C.muted}}>この職種・会場の研修項目はまだ登録されていません。</p>}
+    {grouped.map(({cat,items})=>(
+      <div key={cat.id} style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginTop:12}}>
+        <div style={{fontWeight:800,fontSize:14,marginBottom:8}}>{cat.name}</div>
+        {items.map(item=>{
+          const level=Number(current.items?.[item.id]?.level)||0;
+          return <div key={item.id} style={{display:"grid",gridTemplateColumns:"1fr auto",gap:10,alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{fontSize:13,fontWeight:600}}>{item.title}</div>
+            <select value={level} onChange={e=>setLevel(item.id,Number(e.target.value))}
+              style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"7px 8px",fontSize:13}}>
+              {trainingLevelLabels.map((label,i)=><option key={i} value={i}>{i===0?"未評価":label}</option>)}
+            </select>
+          </div>;
+        })}
+        <textarea value={current.comments?.[cat.id]||""} onChange={e=>setComment(cat.id,e.target.value)}
+          placeholder={`${cat.name} のコメント`}
+          style={{width:"100%",marginTop:10,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13,minHeight:64}}/>
+      </div>
+    ))}
+  </div>;
+}
+
+function StaffTrainingTab({cfg,trainingProgress,sv,uname,fixedJob}) {
+  const master=normalizeTrainingMaster(cfg.trainingMaster);
+  const [jobId,setJobId]=useState(master.jobs.find(j=>j.name===fixedJob)?.id||master.jobs[0]?.id||"");
+  const [locationId,setLocationId]=useState(master.locations[0]?.id||"");
+  const job=master.jobs.find(j=>j.id===jobId);
+  const location=master.locations.find(l=>l.id===locationId);
+  useEffect(()=>{
+    if(fixedJob){const j=master.jobs.find(x=>x.name===fixedJob);if(j)setJobId(j.id);}
+  },[fixedJob,cfg.trainingMaster]);
+  return <div>
+    <div style={{...GC,display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+      {!fixedJob&&<select value={jobId} onChange={e=>setJobId(e.target.value)}
+        style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13}}>
+        {master.jobs.sort(bySort).map(j=><option key={j.id} value={j.id}>{j.name}</option>)}
+      </select>}
+      {fixedJob&&<div style={{fontWeight:800,fontSize:14}}>{fixedJob}</div>}
+      <select value={locationId} onChange={e=>setLocationId(e.target.value)}
+        style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13}}>
+        {master.locations.sort(bySort).map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+      </select>
+    </div>
+    {job&&location&&<TrainingChecklistPanel cfg={cfg} trainingProgress={trainingProgress} sv={sv} uname={uname} jobName={job.name} locationName={location.name}/>}
+  </div>;
+}
+
 function AttendanceSummaryView({year,month,att,shifts,vconf,cfg}){
   const {staff,venues}=cfg;
   const days=getDays(year,month);
@@ -2708,7 +2994,17 @@ function SupportBadge(){
   return <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#fffbeb",border:"1px solid #f59e0b",color:"#92400e",
     borderRadius:999,padding:"5px 10px",fontSize:12,fontWeight:800}}>DEV {DEV_BUILD_LABEL}</div>;
 }
-function SupportManagerView({cfg,sv,flash}){
+function SupportManagerView({cfg,sv,flash,trainingProgress}){
+  const [tab,setTab]=useState("master");
+  const tabs=[
+    {id:"master",label:"🎓 教育マスター"},
+    {id:"progress",label:"📈 研修進捗"},
+  ];
+  return <div>
+    <Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="master"&&<TrainingMasterTab cfg={cfg} sv={sv}/>}
+    {tab==="progress"&&<StaffTrainingTab cfg={cfg} sv={sv} trainingProgress={trainingProgress} uname="support-manager"/>}
+  </div>;
   const [cards,setCards]=useState([]);
   const [selected,setSelected]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -3467,6 +3763,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 7 improvement / Build 20260701-0847</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 8 Build 20260701.1</div>
 </body>
 </html>
