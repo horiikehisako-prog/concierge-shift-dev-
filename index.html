@@ -40,7 +40,44 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Bugfix Assistant Member Save Build 20260701.2";
+const DEV_BUILD_LABEL = "Sprint 15 Build 20260701.1";
+const COMPASS_SEASONS = [
+  {key:"spring",label:"\u6625",months:[3,4,5]},
+  {key:"summer",label:"\u590f",months:[6,7,8]},
+  {key:"autumn",label:"\u79cb",months:[9,10,11]},
+  {key:"winter",label:"\u51ac",months:[12,1,2]},
+];
+const DEFAULT_COMPASS_SEASONAL_INTROS = {
+  spring:["\u3084\u308f\u3089\u304b\u306a\u6625\u98a8\u306b\u5305\u307e\u308c\u3066"],
+  summer:["\u7729\u3057\u3044\u590f\u306e\u65e5\u5dee\u3057\u306e\u4e2d"],
+  autumn:["\u9ad8\u304f\u6f84\u3093\u3060\u79cb\u7a7a\u306e\u4e0b"],
+  winter:["\u4eca\u5e74\u3082\u6b8b\u3059\u3068\u3053\u308d\u3042\u3068\u308f\u305a\u304b"],
+};
+const DEFAULT_COMPASS_ENDINGS = [
+  {id:"ending-1",text:"\u7686\u69d8\u306e\u304a\u5fc3\u306b\u751f\u304d\u7d9a\u3051\u308b\u3053\u3068\u3067\u3057\u3087\u3046"},
+  {id:"ending-2",text:"\u5fc3\u304b\u3089\u306e\u611f\u8b1d\u3092\u5c4a\u3051"},
+  {id:"ending-3",text:"\u3054\u907a\u5fb3\u3092\u5072\u3073"},
+];
+const DEFAULT_COMPASS_DICTIONARY = {
+  seasonalExpressions:["\u7a4f\u3084\u304b\u306a\u5b63\u7bc0\u306e\u79fb\u308d\u3044","\u3042\u305f\u305f\u304b\u306a\u601d\u3044\u51fa"],
+  openingPhrases:["\u672c\u65e5\u306f\u5927\u5207\u306a\u304a\u6642\u9593\u3092\u304a\u9810\u3051\u3044\u305f\u3060\u304d"],
+  endingPhrases:["\u611f\u8b1d\u306e\u601d\u3044\u3092\u80f8\u306b","\u3054\u7e01\u306b\u6df1\u304f\u611f\u8b1d\u3057"],
+  writingStyle:["\u4eba\u67c4\u3092\u51fa\u6765\u4e8b\u3060\u3051\u3067\u7d42\u308f\u3089\u305b\u305a\u3001\u5bb6\u65cf\u3084\u5468\u56f2\u306e\u65b9\u3068\u306e\u8a18\u61b6\u306b\u3064\u306a\u3052\u308b"],
+  preferredWording:["\u304a\u4eba\u67c4","\u3054\u5bb6\u65cf\u3068\u306e\u6642\u9593","\u7686\u69d8\u3068\u306e\u3054\u7e01"],
+  futureNarrationExamples:["\u8da3\u5473\u306f\u3001\u5bb6\u65cf\u3084\u3054\u53cb\u4eba\u3068\u306e\u4f1a\u8a71\u3092\u3042\u305f\u305f\u3081\u308b\u5927\u5207\u306a\u6642\u9593\u3067\u3057\u305f"],
+};
+const DEFAULT_FORBIDDEN_WORDS = [
+  {id:"forbidden-1",word:"\u307e\u3059\u307e\u3059",note:"\u91cd\u306d\u8a00\u8449"},
+  {id:"forbidden-2",word:"\u91cd\u306d\u91cd\u306d",note:"\u91cd\u306d\u8a00\u8449"},
+  {id:"forbidden-3",word:"\u518d\u3073",note:"\u7e70\u308a\u8fd4\u3057\u3092\u9023\u60f3"},
+  {id:"forbidden-4",word:"\u6b7b\u306c",note:"\u76f4\u63a5\u8868\u73fe"},
+  {id:"forbidden-5",word:"\u6b7b\u4ea1",note:"\u76f4\u63a5\u8868\u73fe"},
+];
+const DEFAULT_COMPASS_FUTURE_DESIGN = {
+  aiProviders:{openaiApi:false,geminiApi:false},
+  futureModules:["narrationProofreading","narrationScoring","readingPractice","voiceAnalysis"],
+  dataNotes:"Sprint 15 future storage only. External AI, scoring, and voice analysis are not implemented yet.",
+};
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -373,6 +410,21 @@ const buildShortageAlerts = ({year,month,prefs,shifts,cfg}) => {
 const stLoad=async k=>{try{const snap=await firebase.database().ref('/data/'+k).get();if(!snap.exists())return null;const val=snap.val();if(typeof val==="string"){try{return JSON.parse(val);}catch{return val;}}return val;}catch(e){return null;}};
 const stSave=async(k,v)=>{await firebase.database().ref('/data/'+k).set(JSON.stringify(v));};
 
+const uid = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+const linesToList = txt => txt.split("\n").map(s=>s.trim()).filter(Boolean);
+const listToLines = list => ensureArray(list).join("\n");
+const seasonByDate = dateStr => {
+  const m = Number((dateStr||"").split("-")[1]) || (new Date().getMonth()+1);
+  return COMPASS_SEASONS.find(s=>s.months.includes(m)) || COMPASS_SEASONS[0];
+};
+const normalizeCompassMasters = c => ({
+  seasonalIntroductions:c?.seasonalIntroductions || DEFAULT_COMPASS_SEASONAL_INTROS,
+  endings:ensureArray(c?.endings).length ? ensureArray(c.endings) : DEFAULT_COMPASS_ENDINGS,
+  writingDictionary:c?.writingDictionary || DEFAULT_COMPASS_DICTIONARY,
+  forbiddenWords:ensureArray(c?.forbiddenWords).length ? ensureArray(c.forbiddenWords) : DEFAULT_FORBIDDEN_WORDS,
+  futureDesign:c?.futureDesign || DEFAULT_COMPASS_FUTURE_DESIGN,
+});
+
 // ─── PALETTE & STYLES ─────────────────────────────────────────
 const C={
   bg:"#fdf5f0", white:"#fff", border:"#f5ddd0",
@@ -401,7 +453,7 @@ function App(){
   const [month,setMonth]=useState(now.getMonth()+1);
   const [role,setRole]  =useState(null);
   const [uname,setUname]=useState("");
-  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null});
+  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null,compass:null});
   const [busy,setBusy]  =useState(false);
   const [toast,setToast]=useState("");
 
@@ -432,15 +484,24 @@ function App(){
 
   const reload=useCallback(async()=>{
     setBusy(true);
-    const [s,sh,pr,at,vc,mcs,asts]=await Promise.all([
+    const [s,sh,pr,at,vc,mcs,asts,seasonal,endings,dict,forbidden,futureDesign]=await Promise.all([
       stLoad("settings"),stLoad(`shift-${ym}`),stLoad(`pref-${ym}`),
       stLoad(`att-${ym}`),stLoad(`vconf-${ym}`),
       stLoad("mcStaff_str"),stLoad("assistStaff_str"),
+      stLoad("compassSeasonalIntroductions"),stLoad("compassEndings"),
+      stLoad("compassWritingDictionary"),stLoad("compassForbiddenWords"),
+      stLoad("compassFutureDesign"),
     ]);
+    const compass=normalizeCompassMasters({seasonalIntroductions:seasonal,endings,writingDictionary:dict,forbiddenWords:forbidden,futureDesign});
     setD({
       settings:s,shifts:sh||{},prefs:pr||{},att:at||{},vconf:vc||{},
-      mcStaff:mcs||null,assistStaff:asts||null,
+      mcStaff:mcs||null,assistStaff:asts||null,compass,
     });
+    if(!seasonal) stSave("compassSeasonalIntroductions", compass.seasonalIntroductions);
+    if(!endings) stSave("compassEndings", compass.endings);
+    if(!dict) stSave("compassWritingDictionary", compass.writingDictionary);
+    if(!forbidden) stSave("compassForbiddenWords", compass.forbiddenWords);
+    if(!futureDesign) stSave("compassFutureDesign", compass.futureDesign);
     setBusy(false);
   },[ym]);
 
@@ -464,6 +525,18 @@ function App(){
     assistStaff: v=>{
       setD(d=>({...d,assistStaff:v.join("|")}));
       stSave("assistStaff_str",v.join("|")); // エラーが出ても止めない
+    },
+    compass: async v=>{
+      const compass=normalizeCompassMasters(v);
+      setD(d=>({...d,compass}));
+      await Promise.all([
+        stSave("compassSeasonalIntroductions", compass.seasonalIntroductions),
+        stSave("compassEndings", compass.endings),
+        stSave("compassWritingDictionary", compass.writingDictionary),
+        stSave("compassForbiddenWords", compass.forbiddenWords),
+        stSave("compassFutureDesign", compass.futureDesign),
+      ]);
+      flash("Compass AI saved");
     },
   };
 
@@ -507,6 +580,7 @@ function App(){
   if(!role) return <RoleSelect cfg={cfg} onSelect={(r,n)=>{setRole(r);setUname(n);}}/>;
 
   const P={year,month,setYear,setMonth,shifts:D.shifts,prefs:D.prefs,att:D.att,vconf:D.vconf,
+    compass:D.compass,
     cfg,sv,generate,uname,role,busy,flash};
 
   return (
@@ -724,6 +798,7 @@ function AdminView(P){
     {id:"mc",    label:"🎤 司会設定"},
     {id:"support",label:"🌱 成長カルテ"},
     {id:"ai",    label:"AIナレーション"},
+    {id:"compass",label:"Compass AI"},
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
@@ -735,6 +810,7 @@ function AdminView(P){
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="ai"    &&<AINarrationView {...P}/>}
     {tab==="support"&&<SupportManagerView {...P}/>}
+    {tab==="compass"&&<CompassAIAdmin {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
 }
@@ -1112,6 +1188,56 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
       </table>
     </div>
   </div>;
+}
+
+function CompassAIAdmin({compass,sv}){
+  const [tab,setTab]=useState("generate");
+  const [local,setLocal]=useState(()=>normalizeCompassMasters(compass));
+  const [form,setForm]=useState({name:"",deathDate:"",personality:"",episode:"",hobbies:"",familyFeelings:"",theme:""});
+  const [result,setResult]=useState("");
+  const [saved,setSaved]=useState(false);
+  useEffect(()=>{setLocal(normalizeCompassMasters(compass));},[compass]);
+  const save=async()=>{await sv.compass(local);setSaved(true);setTimeout(()=>setSaved(false),1800);};
+  const season=seasonByDate(form.deathDate);
+  const detectTheme=()=>{
+    const text=[form.personality,form.episode,form.hobbies,form.familyFeelings].join(" ");
+    const checks=[["\u5bb6\u65cf\u611b",["\u5bb6\u65cf","\u5b50","\u5b6b"]],["\u50cd\u304d\u8005",["\u4ed5\u4e8b","\u50cd","\u52e4"]],["\u512a\u3057\u3055",["\u512a\u3057","\u601d\u3044\u3084\u308a"]],["\u3054\u7e01",["\u53cb\u4eba","\u4ef2\u9593","\u7e01"]],["\u5730\u57df\u3078\u306e\u8ca2\u732e",["\u5730\u57df","\u5949\u4ed5"]],["\u8da3\u5473\u3092\u901a\u3058\u305f\u4eba\u751f",["\u8da3\u5473","\u91e3","\u82b1","\u65c5\u884c"]],["\u6559\u80b2",["\u6559","\u5b66"]],["\u6311\u6226",["\u6311\u6226","\u52aa\u529b"]]];
+    return checks.find(([,ws])=>ws.some(w=>text.includes(w)))?.[0]||"\u5bb6\u65cf\u611b";
+  };
+  const generate=()=>{
+    const theme=form.theme.trim()||detectTheme();
+    setForm(f=>({...f,theme}));
+    const name=form.name||"\u6545\u4eba\u69d8";
+    const intro=(local.seasonalIntroductions?.[season.key]||[])[0]||"";
+    const ending=(local.endings||[])[0]?.text||"\u611f\u8b1d\u306e\u601d\u3044\u3068\u3068\u3082\u306b\u3001\u8b39\u3093\u3067\u304a\u898b\u9001\u308a\u3044\u305f\u3057\u307e\u3059";
+    const life=(form.episode||form.hobbies||`${name}\u304c\u5927\u5207\u306b\u3055\u308c\u3066\u304d\u305f\u65e5\u3005`);
+    setResult([
+      `${intro?intro+"\u3001":""}${name}\u3068\u306e\u304a\u5225\u308c\u306e\u6642\u3092\u8fce\u3048\u307e\u3057\u305f\u3002`,
+      `\u30c6\u30fc\u30de\u306f\u300c${theme}\u300d\u3067\u3059\u3002`,
+      form.personality?`${name}\u306e\u304a\u4eba\u67c4\u3092\u601d\u3046\u6642\u3001${form.personality}\u3068\u3044\u3046\u8a00\u8449\u304c\u81ea\u7136\u306b\u6d6e\u304b\u3073\u307e\u3059\u3002`:`${name}\u306e\u304a\u4eba\u67c4\u306f\u3001\u7686\u69d8\u306e\u5fc3\u306b\u9759\u304b\u306b\u6b8b\u3055\u308c\u3066\u3044\u307e\u3059\u3002`,
+      `${life}\u306f\u3001\u305f\u3060\u306e\u51fa\u6765\u4e8b\u3067\u306f\u306a\u304f\u3001\u3054\u5bb6\u65cf\u3084\u5468\u308a\u306e\u65b9\u3005\u3068\u306e\u6642\u9593\u3092\u3042\u305f\u305f\u3081\u308b\u5927\u5207\u306a\u8a18\u61b6\u3067\u3057\u305f\u3002`,
+      form.familyFeelings?`\u3054\u5bb6\u65cf\u306e\u80f8\u306b\u306f\u3001${form.familyFeelings}\u3068\u3044\u3046\u601d\u3044\u304c\u6df1\u304f\u523b\u307e\u308c\u3066\u3044\u307e\u3059\u3002`:"\u3054\u5bb6\u65cf\u306e\u80f8\u306b\u306f\u3001\u5171\u306b\u904e\u3054\u3057\u305f\u6642\u9593\u3078\u306e\u611f\u8b1d\u304c\u6df1\u304f\u523b\u307e\u308c\u3066\u3044\u307e\u3059\u3002",
+      `${ending}\u3002`,
+    ].join("\n\n"));
+  };
+  const masters={season:"\u5b63\u7bc0\u306e\u5c0e\u5165\u6587",ending:"\u7d50\u3073\u306e\u8a00\u8449",dict:"Compass Writing Dictionary",forbidden:"\u5fcc\u307f\u8a00\u8449\u8f9e\u66f8",future:"\u5c06\u6765\u8a2d\u8a08"};
+  const updateLocal=p=>setLocal(v=>normalizeCompassMasters({...v,...p}));
+  return <div><Tabs tabs={[{id:"generate",label:"\u4f5c\u6210"},{id:"season",label:masters.season},{id:"ending",label:masters.ending},{id:"dict",label:masters.dict},{id:"forbidden",label:masters.forbidden},{id:"future",label:masters.future}]} active={tab} onChange={setTab}/>
+    {tab==="generate"&&<div style={GC}><h3 style={{margin:"0 0 14px",fontSize:15}}>Compass AI Narration Generator</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>{[["name","\u6545\u4eba\u540d","text"],["deathDate","\u4ea1\u304f\u306a\u3089\u308c\u305f\u65e5","date"],["theme","\u691c\u51fa\u30c6\u30fc\u30de\uff08\u5909\u66f4\u53ef\uff09","text"]].map(([k,l,t])=><label key={k} style={{fontSize:12,fontWeight:700,color:C.muted}}>{l}<input type={t} value={form[k]} placeholder={k==="theme"?detectTheme():""} onChange={e=>setForm({...form,[k]:e.target.value})} style={{width:"100%",marginTop:4,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px"}}/></label>)}</div><div style={{marginTop:8,fontWeight:800,color:C.navy}}>{`\u81ea\u52d5\u5224\u5b9a\u5b63\u7bc0: ${season.label}`}</div>{[["personality","\u304a\u4eba\u67c4"],["episode","\u5370\u8c61\u7684\u306a\u30a8\u30d4\u30bd\u30fc\u30c9"],["hobbies","\u8da3\u5473\u30fb\u597d\u304d\u3060\u3063\u305f\u3053\u3068"],["familyFeelings","\u3054\u5bb6\u65cf\u306e\u304a\u6c17\u6301\u3061"]].map(([k,l])=><label key={k} style={{display:"block",marginTop:10,fontSize:12,fontWeight:700,color:C.muted}}>{l}<textarea rows={3} value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})} style={{width:"100%",marginTop:4,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontFamily:"inherit"}}/></label>)}<button onClick={generate} style={{...Btn(C.navy),marginTop:12}}>{"\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3\u751f\u6210"}</button>{result&&<pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",lineHeight:1.8,marginTop:12,background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:14}}>{result}</pre>}</div>}
+    {tab==="season"&&<TextAreaMaster title={masters.season} value={Object.fromEntries(COMPASS_SEASONS.map(s=>[s.key,listToLines(local.seasonalIntroductions?.[s.key]||[])]))} onChange={(k,v)=>updateLocal({seasonalIntroductions:{...local.seasonalIntroductions,[k]:linesToList(v)}})} labels={Object.fromEntries(COMPASS_SEASONS.map(s=>[s.key,s.label]))} saved={saved} save={save}/>}
+    {tab==="ending"&&<ListMaster title={masters.ending} items={local.endings} setItems={endings=>updateLocal({endings})} saved={saved} save={save}/>}
+    {tab==="dict"&&<TextAreaMaster title={masters.dict} value={Object.fromEntries(Object.entries(local.writingDictionary||{}).map(([k,v])=>[k,listToLines(v)]))} onChange={(k,v)=>updateLocal({writingDictionary:{...local.writingDictionary,[k]:linesToList(v)}})} saved={saved} save={save}/>}
+    {tab==="forbidden"&&<ListMaster title={masters.forbidden} items={local.forbiddenWords.map(w=>({id:w.id,text:w.word,note:w.note}))} setItems={items=>updateLocal({forbiddenWords:items.map(x=>({id:x.id,word:x.text,note:x.note||""}))})} saved={saved} save={save}/>}
+    {tab==="future"&&<div style={GC}><h3>{masters.future}</h3><textarea rows={6} value={local.futureDesign?.dataNotes||""} onChange={e=>updateLocal({futureDesign:{...local.futureDesign,dataNotes:e.target.value}})} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}/><button onClick={save} style={{...Btn(saved?C.green:C.navy),marginTop:12}}>{saved?"Saved":"Save"}</button></div>}
+  </div>;
+}
+
+function TextAreaMaster({title,value,onChange,labels={},saved,save}){
+  return <div style={GC}><h3 style={{margin:"0 0 14px",fontSize:15}}>{title}</h3>{Object.entries(value).map(([k,v])=><label key={k} style={{display:"block",marginBottom:10,fontSize:12,fontWeight:800,color:C.muted}}>{labels[k]||k}<textarea rows={4} value={v} onChange={e=>onChange(k,e.target.value)} style={{width:"100%",marginTop:4,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontFamily:"inherit"}}/></label>)}<button onClick={save} style={Btn(saved?C.green:C.navy)}>{saved?"Saved":"Save"}</button></div>;
+}
+function ListMaster({title,items,setItems,saved,save}){
+  const add=()=>setItems([...ensureArray(items),{id:uid("item"),text:"",note:""}]);
+  return <div style={GC}><h3 style={{margin:"0 0 14px",fontSize:15}}>{title}</h3>{ensureArray(items).map((it,i)=><div key={it.id} style={{display:"flex",gap:6,marginBottom:8}}><input value={it.text} onChange={e=>setItems(items.map(x=>x.id===it.id?{...x,text:e.target.value}:x))} style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px"}}/><button onClick={()=>{const n=[...items];if(i>0)[n[i-1],n[i]]=[n[i],n[i-1]];setItems(n);}} style={Btn("#fff",C.text)}>Up</button><button onClick={()=>{const n=[...items];if(i<n.length-1)[n[i+1],n[i]]=[n[i],n[i+1]];setItems(n);}} style={Btn("#fff",C.text)}>Down</button><button onClick={()=>setItems(items.filter(x=>x.id!==it.id))} style={Btn(C.red)}>Delete</button></div>)}<div style={{display:"flex",gap:8}}><button onClick={add} style={Btn(C.blue)}>Add</button><button onClick={save} style={Btn(saved?C.green:C.navy)}>{saved?"Saved":"Save"}</button></div></div>;
 }
 
 function AdminConfig({cfg,sv}){
@@ -2372,11 +2498,11 @@ const AI_NARRATION_FIELDS = [
   ["familyMemories","ご家族との思い出","textarea"],["memorableEvents","印象的な出来事","textarea"],
   ["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],
   ["valuedThings","大切にしていたこと・物","textarea"],["openingKeywords","開式前ナレーション用キーワード","textarea"],
-  ["closingKeywords","閉式後ナレーション用キーワード","textarea"],["sect","宗派","text"],
+  ["closingKeywords","閉式後ナレーション用キーワード","textarea"],
   ["ceremonyType","式種別","select"],["venue","会場","text"],["notes","備考","textarea"],
 ];
 const emptyNarrationSheet=()=>({deceasedName:"",age:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
-  travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",openingKeywords:"",closingKeywords:"",sect:"",
+  travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",openingKeywords:"",closingKeywords:"",
   ceremonyType:"通夜",venue:"",notes:""});
 const emptyNarrationDrafts=()=>({opening:"",closing:""});
 const jDateTime=v=>v?new Date(v).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"－";
@@ -2387,11 +2513,9 @@ const generateNarrationDraft=(sheet)=>{
   const age=clean(sheet.age)?`享年${clean(sheet.age)}歳`:"";
   const ceremony=clean(sheet.ceremonyType)||"ご葬儀";
   const venue=clean(sheet.venue)?`、${clean(sheet.venue)}にて`:"";
-  const sect=clean(sheet.sect)?`${clean(sheet.sect)}の作法に沿い、`:"";
   const opening=[
     `まもなく${ceremony}の開式でございます。`,
     `本日${venue}、${name}${age?`（${age}）`:""}をお偲びし、皆様とともに静かにお見送りの時を迎えます。`,
-    sect?`${sect}心を込めておつとめいたします。`:"",
     sentence(sheet.personality,"故人様は、","というお人柄でいらっしゃいました。"),
     sentence(sheet.hobbies,"また、","を大切に楽しんでこられました。"),
     sentence(sheet.familyMemories,"ご家族との思い出として、","が心に残ります。"),
@@ -4164,6 +4288,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Bugfix Assistant Member Save Build 20260701.2</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 15 Build 20260701.1</div>
 </body>
 </html>
