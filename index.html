@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 14 Build 20260701.1";
+const DEV_BUILD_LABEL = "Bugfix Member Save Build 20260701.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -412,8 +412,10 @@ function App(){
     if(str && typeof str==="string") return str.split("|").filter(Boolean);
     return fallback;
   };
-  const mcStaffData   = parsePipe(D.mcStaff,   ensureArray(raw.mcStaff));
-  const assistStaffData = parsePipe(D.assistStaff, ensureArray(raw.assistStaff));
+  const rawMcStaff = ensureArray(raw.mcStaff);
+  const rawAssistStaff = ensureArray(raw.assistStaff);
+  const mcStaffData = rawMcStaff.length ? rawMcStaff : parsePipe(D.mcStaff, []);
+  const assistStaffData = rawAssistStaff.length ? rawAssistStaff : parsePipe(D.assistStaff, []);
   const cfg={...raw,
     venues:normalizeConciergeVenues(raw.venues),
     staff:ensureArray(raw.staff).length>0?ensureArray(raw.staff):DEFAULT_STAFF,
@@ -1138,13 +1140,18 @@ function AdminConfig({cfg,sv}){
   const toList = txt => txt.split("\n").map(s=>s.trim()).filter(Boolean);
   const save=async()=>{
     setErrMsg("");
-    const managed=normalizeStaffManagement({staffManagement:managedStaff});
+    const textLists={
+      staff:toList(staffTxt),
+      mcStaff:toList(mcStaffTxt),
+      assistStaff:toList(assistStaffTxt),
+    };
+    const managed=mergeStaffManagementWithLists(managedStaff,textLists);
     const derived=supportListsFromStaff(managed);
     const newSettings={
       ...cfg,
-      staff:derived.staff.length?derived.staff:toList(staffTxt),
-      mcStaff:derived.mcStaff.length?derived.mcStaff:toList(mcStaffTxt),
-      assistStaff:derived.assistStaff.length?derived.assistStaff:toList(assistStaffTxt),
+      staff:derived.staff,
+      mcStaff:derived.mcStaff,
+      assistStaff:derived.assistStaff,
       staffManagement:managed,
       venues:normalizeConciergeVenues([{name:v1n.trim()||"春日",options:[]},{name:v2n.trim()||"花園",options:[]}]),
       staffRates,
@@ -1157,7 +1164,12 @@ function AdminConfig({cfg,sv}){
     };
     try{
       await stSave("settings", newSettings);
+      await Promise.all([
+        stSave("mcStaff_str", newSettings.mcStaff.join("|")),
+        stSave("assistStaff_str", newSettings.assistStaff.join("|")),
+      ]);
       sv.updateSettings(newSettings);
+      setManagedStaff(managed);
       setSaved(true);
       setTimeout(()=>setSaved(false),2500);
     }catch(e){
@@ -1228,7 +1240,7 @@ function AdminConfig({cfg,sv}){
       ))}
     </div>
     <button style={{...Btn(saved?C.green:C.navy),width:"100%",padding:"12px"}} onClick={save}>
-      {saved?"✅ 保存しました！Firebase書き込み成功":"保存する"}
+      {saved?"保存しました":"保存する"}
     </button>
   </div>;
 }
@@ -3013,6 +3025,33 @@ const supportListsFromStaff=staffList=>{
   };
 };
 const supportGroupLabel=staff=>`${staff.workplace||"未設定"}${staff.role||""}`;
+const mergeStaffManagementWithLists=(staffList,lists)=>{
+  const current=normalizeStaffManagement({staffManagement:staffList});
+  const byName=new Map(current.map(s=>[s.name,s]));
+  const next=[];
+  const seen=new Set();
+  const add=(names,role)=>{
+    ensureArray(names).forEach(name=>{
+      const clean=String(name||"").trim();
+      if(!clean||seen.has(clean)) return;
+      seen.add(clean);
+      const existing=byName.get(clean)||{};
+      next.push({
+        id:existing.id||supportId(),
+        name:clean,
+        role,
+        workplace:existing.workplace||supportDefaultWorkplace(role),
+        location:existing.location||existing.workplace||supportDefaultWorkplace(role),
+        trainingTarget:!!existing.trainingTarget,
+        trainer:!!existing.trainer,
+      });
+    });
+  };
+  add(lists.staff,SUPPORT_ROLES[0]);
+  add(lists.assistStaff,SUPPORT_ROLES[1]);
+  add(lists.mcStaff,SUPPORT_ROLES[2]);
+  return next;
+};
 const supportTrainers=staffList=>normalizeStaffManagement({staffManagement:staffList}).filter(s=>s.trainer);
 const supportMakeId=(prefix="id")=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 const emptyTrainingMaterial=()=>({
@@ -4126,6 +4165,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 14 Build 20260701.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Bugfix Member Save Build 20260701.1</div>
 </body>
 </html>
