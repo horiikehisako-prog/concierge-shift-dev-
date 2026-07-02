@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Bugfix Member Save Build 20260701.1";
+const DEV_BUILD_LABEL = "Bugfix Assistant Member Save Build 20260701.2";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -1146,12 +1146,11 @@ function AdminConfig({cfg,sv}){
       assistStaff:toList(assistStaffTxt),
     };
     const managed=mergeStaffManagementWithLists(managedStaff,textLists);
-    const derived=supportListsFromStaff(managed);
     const newSettings={
       ...cfg,
-      staff:derived.staff,
-      mcStaff:derived.mcStaff,
-      assistStaff:derived.assistStaff,
+      staff:textLists.staff,
+      mcStaff:textLists.mcStaff,
+      assistStaff:textLists.assistStaff,
       staffManagement:managed,
       venues:normalizeConciergeVenues([{name:v1n.trim()||"春日",options:[]},{name:v2n.trim()||"花園",options:[]}]),
       staffRates,
@@ -4165,6 +4164,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Bugfix Member Save Build 20260701.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Bugfix Assistant Member Save Build 20260701.2</div>
 </body>
 </html>
