@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 11 Build 20260701.1";
+const DEV_BUILD_LABEL = "Sprint 12 Build 20260701.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -486,6 +486,10 @@ function RoleSelect({cfg,onSelect}){
         <img src={LOGO_SRC} alt="logo" style={{width:130,display:"block",margin:"0 auto 12px",filter:"drop-shadow(0 2px 8px rgba(180,80,20,.25))"}}/>
         <h1 style={{color:"#7c2d0a",margin:"0 0 6px",fontSize:22,fontWeight:800,textAlign:"center"}}>コンシェルシフト</h1>
         <p style={{color:"#c2784a",fontSize:13,margin:0,textAlign:"center"}}>シフト管理システム</p>
+        <div style={{display:"inline-block",marginTop:10,fontSize:11,fontWeight:800,color:"#7c2d0a",
+          background:"rgba(255,255,255,.72)",border:"1px solid rgba(124,45,10,.16)",borderRadius:999,padding:"4px 10px"}}>
+          DEV · Sprint 12 Build 20260701.1
+        </div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:300}}>
         {[
@@ -585,12 +589,16 @@ function TopBar({role,uname,onBack,year,month}){
   const lbl={admin:"⚙️ 管理者",staff:`👤 ${uname}`,venue:`🏛️ ${uname}`,office:"📊 事務",support:"🌱 業務サポートマネージャー",mc:`🎤 ${uname}`,assist:`🤝 ${uname}`};
   return (
     <div style={{background:"linear-gradient(90deg,#c2613a,#d4785a)",color:"#fff",padding:"12px 20px",display:"flex",alignItems:"center",
-      gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(180,80,20,.25)"}}>
+      gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(180,80,20,.25)",flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:"rgba(255,255,255,.7)",cursor:"pointer",fontSize:22,padding:0}}>‹</button>
       <img src={LOGO_SRC} alt="logo" style={{height:28,filter:"brightness(0) invert(1)"}}/>
       <span style={{fontSize:15,fontWeight:800}}>コンシェルシフト</span>
+      <span style={{fontSize:11,fontWeight:800,letterSpacing:0,background:"rgba(255,255,255,.18)",
+        border:"1px solid rgba(255,255,255,.35)",borderRadius:999,padding:"3px 8px",whiteSpace:"nowrap"}}>
+        DEV · Sprint 12 Build 20260701.1
+      </span>
       <span style={{marginLeft:"auto",fontSize:13,color:"rgba(255,255,255,.75)",fontWeight:600}}>
-        {year}年{month}月 · {lbl[role]} · DEV {DEV_BUILD_LABEL}
+        {year}年{month}月 · {lbl[role]}
       </span>
     </div>
   );
@@ -637,6 +645,7 @@ function AdminView(P){
     {id:"items", label:"🧩 項目設定"},
     {id:"mc",    label:"🎤 司会設定"},
     {id:"support",label:"🌱 成長カルテ"},
+    {id:"ai",    label:"AIナレーション"},
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
@@ -646,6 +655,7 @@ function AdminView(P){
     {tab==="att"   &&<AdminAttView   {...P}/>}
     {tab==="items" &&<ItemSettingsTab {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
+    {tab==="ai"    &&<AINarrationView {...P}/>}
     {tab==="support"&&<SupportManagerView {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
@@ -1560,6 +1570,7 @@ function OfficeView(P){
     {id:"study",   label:"📚 勉強会"},
     {id:"items",   label:"🧩 項目設定"},
     {id:"rates",   label:"💰 単価設定"},
+    {id:"ai",      label:"AIナレーション"},
   ];
   return <div>
     <div style={{...GC,background:`linear-gradient(135deg,${C.office},#0c4a6e)`,color:"#fff",padding:"16px 20px"}}>
@@ -1576,9 +1587,10 @@ function OfficeView(P){
     {tab==="shift"  &&<AdminShiftView {...P}/>}
     {tab==="att"    &&<AdminAttView {...P}/>}
     {tab==="mc"     &&<MCAccountingView {...P}/>}
-    {tab==="study"  &&<StudySessionView {...P}/>}
+    {tab==="study"  &&<StudySessionView {...P} openAINarration={()=>setTab("ai")}/>}
     {tab==="items"  &&<ItemSettingsTab {...P}/>}
     {tab==="rates"  &&<MCConfigTab {...P}/>}
+    {tab==="ai"     &&<AINarrationView {...P}/>}
   </div>;
 }
 
@@ -2011,13 +2023,25 @@ function MCStaffView(P) {
   const tabs = [
     { id:"record", label:"📝 出勤を記録" },
     { id:"history",label:"📋 履歴確認" },
+    ...(role==="mc" ? [{ id:"ai", label:"AIナレーション" }] : []),
   ];
   return (
     <div>
       <MonthSel year={year} month={month} setYear={setYear} setMonth={setMonth}/>
       <Tabs tabs={tabs} active={tab} onChange={setTab}/>
+      {role==="mc"&&tab!=="ai"&&(
+        <div style={{...GC,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",
+          background:"#fffaf5",border:`1px solid ${C.border}`,padding:"12px 14px"}}>
+          <div>
+            <div style={{fontWeight:800,fontSize:14,color:C.navy}}>司会トレーニング</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>ヒアリングシートから下書きを作成して練習できます。</div>
+          </div>
+          <button onClick={()=>setTab("ai")} style={{...Btn(C.navy),padding:"11px 18px",fontSize:14}}>AIナレーション練習</button>
+        </div>
+      )}
       {tab==="record"  && <MCStaffRecord  {...P} jobRole={jobRole}/>}
       {tab==="history" && <MCStaffHistory {...P} jobRole={jobRole}/>}
+      {tab==="ai"      && <AINarrationView {...P}/>}
     </div>
   );
 }
@@ -2248,6 +2272,154 @@ function MCStaffHistory({ year, month, uname, role, cfg }) {
       })}
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AIナレーション（ベータ）
+// ═══════════════════════════════════════════════════════════════
+const AI_NARRATION_KEY = "aiNarrations";
+const AI_NARRATION_WARNING = "AIが作成した文章は下書きです。必ず司会者が内容を確認・修正してから使用してください。";
+const AI_NARRATION_FIELDS = [
+  ["deceasedName","故人様のお名前","text"],["age","享年","number"],
+  ["personality","お人柄・性格","textarea"],["hobbies","趣味・好きなこと","textarea"],
+  ["familyMemories","ご家族との思い出","textarea"],["memorableEvents","印象的な出来事","textarea"],
+  ["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],
+  ["valuedThings","大切にしていたこと・物","textarea"],["openingKeywords","開式前ナレーション用キーワード","textarea"],
+  ["closingKeywords","閉式後ナレーション用キーワード","textarea"],["sect","宗派","text"],
+  ["ceremonyType","式種別","select"],["venue","会場","text"],["notes","備考","textarea"],
+];
+const emptyNarrationSheet=()=>({deceasedName:"",age:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
+  travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",openingKeywords:"",closingKeywords:"",sect:"",
+  ceremonyType:"通夜",venue:"",notes:""});
+const emptyNarrationDrafts=()=>({opening:"",closing:""});
+const jDateTime=v=>v?new Date(v).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"－";
+const clean=v=>(v||"").trim();
+const sentence=(v,prefix,suffix="。")=>clean(v)?`${prefix}${clean(v)}${suffix}`:"";
+const generateNarrationDraft=(sheet)=>{
+  const name=clean(sheet.deceasedName)||"故人様";
+  const age=clean(sheet.age)?`享年${clean(sheet.age)}歳`:"";
+  const ceremony=clean(sheet.ceremonyType)||"ご葬儀";
+  const venue=clean(sheet.venue)?`、${clean(sheet.venue)}にて`:"";
+  const sect=clean(sheet.sect)?`${clean(sheet.sect)}の作法に沿い、`:"";
+  const opening=[
+    `まもなく${ceremony}の開式でございます。`,
+    `本日${venue}、${name}${age?`（${age}）`:""}をお偲びし、皆様とともに静かにお見送りの時を迎えます。`,
+    sect?`${sect}心を込めておつとめいたします。`:"",
+    sentence(sheet.personality,"故人様は、","というお人柄でいらっしゃいました。"),
+    sentence(sheet.hobbies,"また、","を大切に楽しんでこられました。"),
+    sentence(sheet.familyMemories,"ご家族との思い出として、","が心に残ります。"),
+    sentence(sheet.memorableEvents,"中でも、","という出来事は、皆様の胸に深く刻まれていることと存じます。"),
+    sentence(sheet.travelAnniversaryEffort,"日々の歩みの中では、","にも真摯に向き合ってこられました。"),
+    sentence(sheet.favoritePhrases,"よく口にされていた「","」というお言葉にも、故人様らしさが偲ばれます。"),
+    sentence(sheet.valuedThings,"故人様が大切にされていた","を思いながら、これより開式までのお時間をお過ごしください。"),
+    clean(sheet.openingKeywords)?`本日は、${clean(sheet.openingKeywords)}というお気持ちを大切に、皆様とご一緒にお見送りいたします。`:"どうぞお心を静かにお寄せいただき、開式まで今しばらくお待ちください。",
+  ].filter(Boolean).join("\n");
+  const closing=[
+    `以上をもちまして、${name}の${ceremony}は滞りなく閉式となりました。`,
+    "ご参列の皆様には、最後まで温かくお見送りいただき、誠にありがとうございました。",
+    sentence(sheet.personality,"故人様の","お姿は、これからも皆様の心の中にやさしく残り続けることと存じます。"),
+    sentence(sheet.familyMemories,"ご家族と過ごされた","の日々は、かけがえのない宝物でございます。"),
+    sentence(sheet.hobbies,"お好きだった","に触れるたび、故人様のお姿を思い出されることでしょう。"),
+    sentence(sheet.valuedThings,"大切にされていた","への思いも、皆様の中で受け継がれていくことと存じます。"),
+    clean(sheet.closingKeywords)?`どうぞ、${clean(sheet.closingKeywords)}という思いを胸に、故人様をお偲びください。`:"これからも、故人様との思い出を大切にお過ごしいただければと存じます。",
+    "本日はご会葬、誠にありがとうございました。",
+  ].filter(Boolean).join("\n");
+  return {opening,closing};
+};
+
+function AINarrationView({uname,role,flash}) {
+  const [sheet,setSheet]=useState(emptyNarrationSheet());
+  const [drafts,setDrafts]=useState(emptyNarrationDrafts());
+  const [records,setRecords]=useState([]);
+  const [activeId,setActiveId]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const load=useCallback(()=>{setLoading(true);stLoad(AI_NARRATION_KEY).then(d=>{setRecords(Array.isArray(d)?d:[]);setLoading(false);});},[]);
+  useEffect(()=>{load();},[load]);
+  const updateField=(key,val)=>setSheet(s=>({...s,[key]:val}));
+  const makeDraft=()=>{setDrafts(generateNarrationDraft(sheet));flash("AIナレーション案を作成しました");};
+  const resetNew=()=>{setActiveId(null);setSheet(emptyNarrationSheet());setDrafts(emptyNarrationDrafts());};
+  const openRecord=rec=>{setActiveId(rec.id);setSheet({...emptyNarrationSheet(),...(rec.hearingSheet||{})});setDrafts({...emptyNarrationDrafts(),...(rec.editedDraft||rec.generatedDraft||{})});};
+  const save=async()=>{
+    const now=new Date().toISOString();
+    const existing=records.find(r=>r.id===activeId);
+    const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
+      mcName:existing?.mcName||uname||"未入力",hearingSheet:sheet,generatedDraft:existing?.generatedDraft||drafts,editedDraft:drafts,
+      createdAt:existing?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
+      aiMeta:{provider:"local-template",model:null,templateVersion:"beta-20260701.1",
+        future:{apiIntegration:["OpenAI","Gemini"],feedback:true,proofreading:true,readingPractice:true,audioRecording:true,templateSelection:true,pastExamples:true}},
+      practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"respectful-standard",label:"標準・あたたかい"}};
+    setSaving(true);
+    const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
+    await stSave(AI_NARRATION_KEY,next);
+    setRecords(next);setActiveId(rec.id);setSaving(false);flash("ナレーションを保存しました");
+  };
+  const copyText=async text=>{try{await navigator.clipboard.writeText(text);flash("コピーしました");}catch(e){flash("コピーできませんでした。本文を選択してコピーしてください");}};
+  const printDraft=()=>{
+    const w=window.open("","_blank");
+    const esc=s=>String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+    w.document.write(`<html><head><title>AIナレーション</title><style>body{font-family:'Yu Gothic','Meiryo',sans-serif;line-height:1.9;padding:32px;color:#222}h1{font-size:20px}.warn{border:1px solid #d97706;background:#fff7ed;padding:12px;margin:16px 0;font-weight:bold}pre{white-space:pre-wrap;font-family:inherit;font-size:14px}</style></head><body><h1>${esc(sheet.deceasedName||"AIナレーション下書き")}</h1><div class="warn">${esc(AI_NARRATION_WARNING)}</div><h2>開式前ナレーション</h2><pre>${esc(drafts.opening)}</pre><h2>閉式後ナレーション</h2><pre>${esc(drafts.closing)}</pre></body></html>`);
+    w.document.close();w.focus();w.print();
+  };
+  return <div>
+    <div style={{...GC,background:"#fff7ed",border:`1px solid ${C.amber}`,display:"flex",gap:10,alignItems:"flex-start"}}>
+      <span style={{fontSize:20}}>⚠️</span><div style={{fontWeight:800,color:"#92400e",fontSize:14,lineHeight:1.6}}>{AI_NARRATION_WARNING}</div>
+    </div>
+    <div style={GC}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:14}}>
+        <h3 style={{margin:0,fontSize:16,color:C.navy}}>AIナレーション</h3>
+        <button onClick={resetNew} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"10px 16px"}}>新規作成</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+        {AI_NARRATION_FIELDS.map(([key,label,type])=>(
+          <div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1",minWidth:0}}>
+            <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>{label}</label>
+            {type==="textarea"?<textarea value={sheet[key]} onChange={e=>updateField(key,e.target.value)} rows={3}
+              style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,resize:"vertical"}}/>
+            : type==="select"?<select value={sheet[key]} onChange={e=>updateField(key,e.target.value)}
+              style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:"#fff"}}>
+                <option>通夜</option><option>葬儀</option>
+              </select>
+            : <input type={type} value={sheet[key]} onChange={e=>updateField(key,e.target.value)}
+              style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
+          </div>
+        ))}
+      </div>
+      <button onClick={makeDraft} style={{...Btn(C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>ナレーション案を作成</button>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14}}>
+      {[["opening","開式前ナレーション"],["closing","閉式後ナレーション"]].map(([key,label])=>(
+        <div key={key} style={GC}>
+          <h3 style={{margin:"0 0 10px",fontSize:15,color:C.navy}}>{label}</h3>
+          <textarea value={drafts[key]} onChange={e=>setDrafts(d=>({...d,[key]:e.target.value}))} rows={14}
+            placeholder="ナレーション案を作成すると、ここに下書きが入ります。"
+            style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:14,lineHeight:1.7,resize:"vertical"}}/>
+          <button onClick={()=>copyText(drafts[key])} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,marginTop:10,width:"100%",padding:"11px"}}>コピー</button>
+        </div>
+      ))}
+    </div>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+      <button onClick={save} disabled={saving} style={{...Btn(saving?C.muted:C.green),padding:"13px 22px",fontSize:15}}>{saving?"保存中…":"保存する"}</button>
+      <button onClick={printDraft} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"13px 22px",fontSize:15}}>印刷</button>
+    </div>
+    <div style={GC}>
+      <h3 style={{margin:"0 0 12px",fontSize:15,color:C.navy}}>保存済みナレーション</h3>
+      {loading&&<p style={{fontSize:13,color:C.muted}}>読み込み中…</p>}
+      {!loading&&records.length===0&&<p style={{fontSize:13,color:C.muted}}>保存済みの下書きはありません</p>}
+      <div style={{overflowX:"auto"}}>
+        {records.length>0&&<table style={{width:"100%",borderCollapse:"collapse",minWidth:620}}>
+          <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>日付</th><th style={TH}>故人様</th><th style={TH}>式種別</th><th style={TH}>MC名</th><th style={TH}>最終更新</th><th style={TH}></th></tr></thead>
+          <tbody>{[...records].sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||"")).map(r=>(
+            <tr key={r.id} style={{background:r.id===activeId?C.blueL:"#fff"}}>
+              <td style={TD}>{jDateTime(r.createdAt)}</td><td style={{...TD,fontWeight:800}}>{r.deceasedName||"未入力"}</td>
+              <td style={TD}>{r.ceremonyType||"－"}</td><td style={TD}>{r.mcName||"－"}</td><td style={TD}>{jDateTime(r.updatedAt)}</td>
+              <td style={TD}><button onClick={()=>openRecord(r)} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"7px 12px"}}>開く</button></td>
+            </tr>
+          ))}</tbody>
+        </table>}
+      </div>
+    </div>
+  </div>;
 }
 
 
@@ -2988,9 +3160,10 @@ function SupportManagerView({cfg,sv,flash}){
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{recent.map(c=><button key={c.id} onClick={()=>setSelected(c.id)} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"9px 12px"}}>{c.name} <span style={{color:supportProgressColor(supportProgress(c,templates)),fontWeight:900}}>{supportProgress(c,templates)}%</span></button>)}</div>
       </div>
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-      {[["cards","教育マスター"],["templates","テンプレート"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{...Btn(tab===id?C.green:"#fff",tab===id?"#fff":C.text),border:`2px solid ${tab===id?C.green:C.border}`,padding:"13px 12px",fontSize:15}}>{label}</button>)}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:14}}>
+      {[["cards","教育マスター"],["templates","テンプレート"],["ai","AIナレーション"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{...Btn(tab===id?C.green:"#fff",tab===id?"#fff":C.text),border:`2px solid ${tab===id?C.green:C.border}`,padding:"13px 12px",fontSize:15}}>{label}</button>)}
     </div>
+    {tab==="ai"&&<AINarrationView cfg={cfg} sv={sv} flash={flash} uname="業務サポートマネージャー" role="support"/>}
     {tab==="templates"&&<TrainingTemplateManager templates={templates} staffList={managedStaff} onSave={saveTemplates}/>}
     {tab==="cards"&&<>
     <StaffManagementPanel staffList={managedStaff} onChange={saveStaffManagement}/>
@@ -3199,7 +3372,10 @@ function SupportGrowthChart({card,templates,trainers,onChange}){
   </div>;
 }
 
-function StudySessionView({year,month}){
+// ═══════════════════════════════════════════════════════════════
+// 勉強会管理
+// ═══════════════════════════════════════════════════════════════
+function StudySessionView({year,month,openAINarration}){
   const [sessions,setSessions]=useState([]);
   const [loading,setLoading]=useState(true);
   const [form,setForm]=useState({date:`${year}-${p2(month)}-01`,start:"16:00",end:"18:00"});
@@ -3234,6 +3410,11 @@ function StudySessionView({year,month}){
   return <div>
     <div style={GC}>
       <h3 style={{margin:"0 0 14px",fontSize:15}}>📚 勉強会記録　<span style={{fontWeight:400,fontSize:13,color:C.muted}}>{STUDY_RATE.toLocaleString()}円/h + 消費税</span></h3>
+      {openAINarration&&(
+        <button onClick={openAINarration} style={{...Btn(C.navy),width:"100%",marginBottom:14,padding:"12px 18px",fontSize:15}}>
+          AIナレーション練習
+        </button>
+      )}
       <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
         <div style={{flex:"1 1 100px"}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>日付</label>
@@ -3857,6 +4038,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 11 Build 20260701.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 12 Build 20260701.1</div>
 </body>
 </html>
