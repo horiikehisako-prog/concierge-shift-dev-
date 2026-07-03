@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 15 Build 20260701.1";
+const DEV_BUILD_LABEL = "Sprint 16 Build 20260701.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -394,8 +394,22 @@ const DEFAULT_COMPASS_DICTIONARY = {
   futureNarrationExamples:[],
 };
 const DEFAULT_FORBIDDEN_WORDS = ["ますます","重ね重ね","再び","死ぬ","死亡"];
+const DEFAULT_AI_SETTINGS = {
+  provider:"openai",
+  apiKey:"",
+  model:"gpt-4.1-mini",
+  temperature:0.7,
+  maxTokens:1200,
+  apiStatus:"not_connected",
+  callEnabled:false,
+};
 const DEFAULT_COMPASS_FUTURE = {
-  providers:{openai:{enabled:false,model:"",apiKeyRef:""},gemini:{enabled:false,model:"",apiKeyRef:""}},
+  providers:{
+    openai:{enabled:true,model:"gpt-4.1-mini",apiKeyRef:"aiSettings.apiKey",status:"prepared"},
+    gemini:{enabled:false,model:"",apiKeyRef:"",status:"future"},
+    claude:{enabled:false,model:"",apiKeyRef:"",status:"future"},
+    localTemplate:{enabled:false,model:"",apiKeyRef:"",status:"disabled"},
+  },
   features:{proofreading:false,scoring:false,readingPractice:false,voiceAnalysis:false},
   storage:{proofreadingCollection:"compassProofreading",scoreCollection:"compassScores",practiceCollection:"readingPractice",voiceCollection:"voiceAnalysis"},
 };
@@ -458,7 +472,9 @@ function App(){
     endingPhrases:ensureArray(raw.endingPhrases).length?ensureArray(raw.endingPhrases):DEFAULT_ENDING_PHRASES,
     compassDictionary:{...DEFAULT_COMPASS_DICTIONARY,...(raw.compassDictionary||{})},
     forbiddenWords:ensureArray(raw.forbiddenWords).length?ensureArray(raw.forbiddenWords):DEFAULT_FORBIDDEN_WORDS,
-    compassFuture:{...DEFAULT_COMPASS_FUTURE,...(raw.compassFuture||{})},
+    compassFuture:{...DEFAULT_COMPASS_FUTURE,...(raw.compassFuture||{}),
+      providers:{...DEFAULT_COMPASS_FUTURE.providers,...((raw.compassFuture||{}).providers||{})}},
+    aiSettings:{...DEFAULT_AI_SETTINGS,...(raw.aiSettings||{})},
     compassThemes:ensureArray(raw.compassThemes).length?ensureArray(raw.compassThemes):DEFAULT_THEMES,
   };
 
@@ -467,13 +483,14 @@ function App(){
   useEffect(()=>{
     const s=D.settings;
     if(!s) return;
-    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.compassFuture||!s.compassThemes;
+    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.compassFuture||!s.aiSettings||!s.compassThemes;
     if(missingCompass) stSave("settings",{...s,
       seasonalIntros:cfg.seasonalIntros,
       endingPhrases:cfg.endingPhrases,
       compassDictionary:cfg.compassDictionary,
       forbiddenWords:cfg.forbiddenWords,
       compassFuture:cfg.compassFuture,
+      aiSettings:cfg.aiSettings,
       compassThemes:cfg.compassThemes,
     });
   },[D.settings]);
@@ -2440,42 +2457,71 @@ const compassDetectTheme=(sheet,cfg={})=>{
 const compassEmptySheet=()=>({deceasedName:"",age:"",deceasedDate:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
   travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",familyFeelings:"",ceremonyType:"通夜",venue:"",notes:""});
 const compassEmptyDraft=()=>({full:""});
-const compassSentence=(v,prefix,suffix="。")=>clean(v)?`${prefix}${clean(v)}${suffix}`:"";
-const compassFirst=arr=>ensureArray(arr).find(Boolean)||"";
-const compassHobbyLine=v=>{
-  const t=clean(v);
-  if(!t) return "";
-  return `趣味や好きだったことも、ただ楽しむだけではなく、周りの方との会話やご家族の思い出を育てる大切な時間でした。${t}にふれるたび、そこには人とのつながりや、やさしい記憶が重なっていたことでしょう。`;
-};
-const compassGenerateNarration=(sheet,cfg,theme)=>{
-  const name=clean(sheet.deceasedName)||"故人様";
-  const age=clean(sheet.age)?`享年${clean(sheet.age)}歳`:"";
-  const ceremony=clean(sheet.ceremonyType)||"ご葬儀";
-  const venue=clean(sheet.venue)?`、${clean(sheet.venue)}にて`:"";
+const clean=v=>(v||"").trim();
+const compassBuildNarrationPrompt=(sheet,cfg,theme)=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
-  const seasonalIntro=compassFirst(cfg.seasonalIntros?.[season])||compassFirst(DEFAULT_SEASONAL_INTROS[season]);
-  const ending=compassFirst(cfg.endingPhrases)||compassFirst(DEFAULT_ENDING_PHRASES);
-  const episode=[
-    compassHobbyLine(sheet.hobbies),
-    compassSentence(sheet.memorableEvents,"とりわけ、","という出来事は、皆様の胸に深く残っていることでしょう。"),
-    compassSentence(sheet.travelAnniversaryEffort,"日々の歩みの中では、","にも真摯に向き合ってこられました。"),
-    compassSentence(sheet.favoritePhrases,"よく口にされていた「","」という言葉にも、その方らしさがにじんでいます。"),
-    compassSentence(sheet.valuedThings,"大切にされていた","への思いは、今も周りの方へ受け継がれています。"),
-  ].filter(Boolean).join("\n")||"日々の何気ない時間の中にこそ、ご家族や周りの方と分かち合った思い出がありました。";
-  return {
-    full:[
-      `【① 季節の導入】\n${seasonalIntro}`,
-      `【② テーマ：${selectedTheme}】\n本日${venue}、${name}${age?`（${age}）`:""}の${ceremony}にあたり、皆様とともに「${selectedTheme}」を大切な軸として、その歩みを偲びます。`,
-      `【③ お人柄】\n${compassSentence(sheet.personality,`${name}は、`,"というお人柄でいらっしゃいました。")||`${name}のお人柄は、皆様の記憶の中に静かに息づいています。`}`,
-      `【④ エピソード】\n${episode}`,
-      `【⑤ ご家族のお気持ち】\n${compassSentence(sheet.familyMemories,"ご家族にとって、","はかけがえのない記憶です。")}${compassSentence(sheet.familyFeelings,"そして今、","という思いを胸に、この時を迎えていらっしゃいます。")||"言葉に尽くせない感謝と寂しさの中で、これまでの時間を静かに振り返っていらっしゃいます。"}`,
-      `【⑥ 結び】\n${ending}`,
-    ].join("\n\n"),
-    theme:selectedTheme,
-    season,
+  const ai=cfg.aiSettings||DEFAULT_AI_SETTINGS;
+  const payload={
+    workflow:"Hearing Sheet -> Prompt Builder -> OpenAI API (future) -> Draft -> MC edits -> Save",
+    provider:{selected:ai.provider||"openai",model:ai.model||DEFAULT_AI_SETTINGS.model,apiCallEnabled:false},
+    writingRules:{
+      season,
+      openingStyle:"季節と会場の空気に沿った、あたたかく押しつけない導入",
+      endingStyle:"感謝を中心にした、静かで丁寧な結び",
+      writingDictionary:cfg.compassDictionary||DEFAULT_COMPASS_DICTIONARY,
+      forbiddenWords:cfg.forbiddenWords||DEFAULT_FORBIDDEN_WORDS,
+      seasonalLibrary:cfg.seasonalIntros||DEFAULT_SEASONAL_INTROS,
+      endingLibrary:cfg.endingPhrases||DEFAULT_ENDING_PHRASES,
+      theme:selectedTheme,
+    },
+    hearingSheet:sheet,
+    outputRules:[
+      "日本語の葬儀司会ナレーション下書きを作成する",
+      "Hearing Sheetにない事実は作らない",
+      "Compass Writing Dictionary、Forbidden Words Dictionary、Seasonal Library、Ending Library、Themeを必ず反映する",
+      "MCが編集できる下書きとして、やさしく具体的に書く",
+    ],
   };
+  return [
+    "You are Compass, an AI-assisted narration platform.",
+    "The user never writes prompts. Compass automatically built this prompt.",
+    "Sprint 16 prepares OpenAI API architecture only. Do not call any API in this build.",
+    "",
+    JSON.stringify(payload,null,2),
+  ].join("\n");
 };
+const compassPreparedDraftText=(provider="OpenAI")=>
+  `AI API連携の準備ができています。\n\n現在は${provider} APIをまだ呼び出しません。\n管理者が確認できる Prompt Builder の内容を、将来の OpenAI API 呼び出しに渡す設計です。\n\n運用フロー:\nHearing Sheet\n↓\nPrompt Builder\n↓\nOpenAI API (future)\n↓\nDraft\n↓\nMC edits\n↓\nSave`;
+
+function CompassAISettingsEditor({cfg,sv,flash,role}) {
+  if(role!=="admin") return null;
+  const current={...DEFAULT_AI_SETTINGS,...(cfg.aiSettings||{})};
+  const [provider,setProvider]=useState(current.provider);
+  const [apiKey,setApiKey]=useState(current.apiKey||"");
+  const [model,setModel]=useState(current.model||DEFAULT_AI_SETTINGS.model);
+  const [temperature,setTemperature]=useState(current.temperature??DEFAULT_AI_SETTINGS.temperature);
+  const [maxTokens,setMaxTokens]=useState(current.maxTokens||DEFAULT_AI_SETTINGS.maxTokens);
+  const [saved,setSaved]=useState(false);
+  const save=async()=>{
+    await sv.sets({...cfg,aiSettings:{provider,apiKey,model,temperature:Number(temperature),maxTokens:Number(maxTokens),apiStatus:"not_connected",callEnabled:false}});
+    setSaved(true);setTimeout(()=>setSaved(false),1800);flash?.("AI Settingsを保存しました。API呼び出しはまだ無効です。");
+  };
+  return <div style={GC}>
+    <h3 style={{margin:"0 0 12px",fontSize:16,color:C.navy}}>AI Settings</h3>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Provider</label><select value={provider} onChange={e=>setProvider(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14,background:"#fff"}}>
+        <option value="openai">OpenAI</option><option value="gemini" disabled>Gemini (future)</option><option value="claude" disabled>Claude (future)</option><option value="localTemplate" disabled>Local Template (disabled)</option>
+      </select></div>
+      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>API Key</label><input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="OpenAI API key (prepared only)" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
+      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Model</label><input value={model} onChange={e=>setModel(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
+      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Temperature</label><input type="number" step="0.1" min="0" max="2" value={temperature} onChange={e=>setTemperature(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
+      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Maximum Tokens</label><input type="number" min="1" value={maxTokens} onChange={e=>setMaxTokens(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
+    </div>
+    <div style={{marginTop:10,fontSize:12,color:C.muted,fontWeight:700}}>OpenAI is prepared first. Gemini, Claude, and Local Template remain future options. No API request is sent in this build.</div>
+    <button onClick={save} style={{...Btn(saved?C.green:C.navy),width:"100%",marginTop:12,padding:"12px 18px"}}>{saved?"保存しました":"AI Settingsを保存"}</button>
+  </div>;
+}
 function CompassMasterEditor({cfg,sv,flash,role}) {
   const [seasonal,setSeasonal]=useState(()=>JSON.stringify(cfg.seasonalIntros,null,2));
   const [endings,setEndings]=useState(()=>compassListText(cfg.endingPhrases));
@@ -2511,6 +2557,7 @@ function CompassMasterEditor({cfg,sv,flash,role}) {
 function CompassNarrationView({cfg,sv,uname,role,flash}) {
   const [sheet,setSheet]=useState(compassEmptySheet());
   const [draft,setDraft]=useState(compassEmptyDraft());
+  const [prompt,setPrompt]=useState("");
   const [theme,setTheme]=useState("");
   const [records,setRecords]=useState([]);
   const [activeId,setActiveId]=useState(null);
@@ -2521,15 +2568,15 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   const update=(key,val)=>setSheet(s=>({...s,[key]:val}));
   const selectedSeason=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
-  const makeDraft=()=>{const made=compassGenerateNarration(sheet,cfg,selectedTheme);setTheme(made.theme);setDraft({full:made.full});flash?.("Compass AIナレーション案を作成しました");};
-  const reset=()=>{setActiveId(null);setSheet(compassEmptySheet());setDraft(compassEmptyDraft());setTheme("");};
-  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...(rec.hearingSheet||{})});setDraft({full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setTheme(rec.theme||rec.aiMeta?.theme||"");};
+  const makeDraft=()=>{const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme);setTheme(selectedTheme);setPrompt(built);setDraft({full:compassPreparedDraftText((cfg.aiSettings?.provider||"openai").toUpperCase())});flash?.("Prompt Builderでプロンプトを作成しました。APIはまだ呼び出していません。");};
+  const reset=()=>{setActiveId(null);setSheet(compassEmptySheet());setDraft(compassEmptyDraft());setPrompt("");setTheme("");};
+  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...(rec.hearingSheet||{})});setDraft({full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setPrompt(rec.generatedPrompt||rec.aiMeta?.prompt||"");setTheme(rec.theme||rec.aiMeta?.theme||"");};
   const save=async()=>{
     const now=new Date().toISOString();
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
-      mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,theme:selectedTheme,season:selectedSeason,
+      mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:"compass-local",model:null,templateVersion:"sprint15-20260701.1",theme:selectedTheme,season:selectedSeason,future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",templateVersion:"sprint16-20260701.1",theme:selectedTheme,season:selectedSeason,promptBuilt:!!prompt,apiCalled:false,future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -2538,6 +2585,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   };
   const copy=async()=>{try{await navigator.clipboard.writeText(draft.full);flash?.("コピーしました");}catch(e){flash?.("本文を選択してコピーしてください");}};
   return <div>
+    {role==="admin"&&<CompassAISettingsEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
     {["admin","support"].includes(role)&&<CompassMasterEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
     <div style={{...GC,background:"#fff7ed",border:`1px solid ${C.amber}`,fontWeight:800,color:"#92400e",lineHeight:1.6}}>{AI_NARRATION_WARNING}</div>
     <div style={GC}>
@@ -2557,8 +2605,13 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
       </div>
-      <button onClick={makeDraft} style={{...Btn(C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIで下書きを作成</button>
+      <button onClick={makeDraft} style={{...Btn(C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Prompt BuilderでAI用プロンプトを作成</button>
     </div>
+    {role==="admin"&&<div style={GC}>
+      <h3 style={{margin:"0 0 10px",fontSize:15,color:C.navy}}>Prompt Preview</h3>
+      <textarea value={prompt} readOnly rows={18} placeholder="Prompt Builderを実行すると、OpenAI APIへ渡す予定のプロンプトがここに表示されます。" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:12,lineHeight:1.55,resize:"vertical",fontFamily:"monospace",background:"#f8fafc"}}/>
+      <div style={{fontSize:12,color:C.muted,fontWeight:700,marginTop:8}}>Administrator only. Support Manager and MC cannot view this prompt.</div>
+    </div>}
     <div style={GC}>
       <h3 style={{margin:"0 0 10px",fontSize:15,color:C.navy}}>ナレーション下書き</h3>
       <textarea value={draft.full} onChange={e=>setDraft({full:e.target.value})} rows={24} placeholder="①季節の導入 → ②テーマ → ③お人柄 → ④エピソード → ⑤ご家族のお気持ち → ⑥結び の順で生成されます。" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:14,lineHeight:1.7,resize:"vertical"}}/>
@@ -2576,146 +2629,6 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   </div>;
 }
 const AI_NARRATION_WARNING = "Compass AIが作成した文章は下書きです。必ず司会者または業務サポートマネージャーが確認・修正してから使用してください。";
-const AI_NARRATION_FIELDS = [
-  ["deceasedName","故人様のお名前","text"],["age","享年","number"],
-  ["personality","お人柄・性格","textarea"],["hobbies","趣味・好きなこと","textarea"],
-  ["familyMemories","ご家族との思い出","textarea"],["memorableEvents","印象的な出来事","textarea"],
-  ["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],
-  ["valuedThings","大切にしていたこと・物","textarea"],["openingKeywords","開式前ナレーション用キーワード","textarea"],
-  ["closingKeywords","閉式後ナレーション用キーワード","textarea"],
-  ["ceremonyType","式種別","select"],["venue","会場","text"],["notes","備考","textarea"],
-];
-const emptyNarrationSheet=()=>({deceasedName:"",age:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
-  travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",openingKeywords:"",closingKeywords:"",
-  ceremonyType:"通夜",venue:"",notes:""});
-const emptyNarrationDrafts=()=>({opening:"",closing:""});
-const jDateTime=v=>v?new Date(v).toLocaleString("ja-JP",{year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}):"－";
-const clean=v=>(v||"").trim();
-const sentence=(v,prefix,suffix="。")=>clean(v)?`${prefix}${clean(v)}${suffix}`:"";
-const generateNarrationDraft=(sheet)=>{
-  const name=clean(sheet.deceasedName)||"故人様";
-  const age=clean(sheet.age)?`享年${clean(sheet.age)}歳`:"";
-  const ceremony=clean(sheet.ceremonyType)||"ご葬儀";
-  const venue=clean(sheet.venue)?`、${clean(sheet.venue)}にて`:"";
-  const opening=[
-    `まもなく${ceremony}の開式でございます。`,
-    `本日${venue}、${name}${age?`（${age}）`:""}をお偲びし、皆様とともに静かにお見送りの時を迎えます。`,
-    sentence(sheet.personality,"故人様は、","というお人柄でいらっしゃいました。"),
-    sentence(sheet.hobbies,"また、","を大切に楽しんでこられました。"),
-    sentence(sheet.familyMemories,"ご家族との思い出として、","が心に残ります。"),
-    sentence(sheet.memorableEvents,"中でも、","という出来事は、皆様の胸に深く刻まれていることと存じます。"),
-    sentence(sheet.travelAnniversaryEffort,"日々の歩みの中では、","にも真摯に向き合ってこられました。"),
-    sentence(sheet.favoritePhrases,"よく口にされていた「","」というお言葉にも、故人様らしさが偲ばれます。"),
-    sentence(sheet.valuedThings,"故人様が大切にされていた","を思いながら、これより開式までのお時間をお過ごしください。"),
-    clean(sheet.openingKeywords)?`本日は、${clean(sheet.openingKeywords)}というお気持ちを大切に、皆様とご一緒にお見送りいたします。`:"どうぞお心を静かにお寄せいただき、開式まで今しばらくお待ちください。",
-  ].filter(Boolean).join("\n");
-  const closing=[
-    `以上をもちまして、${name}の${ceremony}は滞りなく閉式となりました。`,
-    "ご参列の皆様には、最後まで温かくお見送りいただき、誠にありがとうございました。",
-    sentence(sheet.personality,"故人様の","お姿は、これからも皆様の心の中にやさしく残り続けることと存じます。"),
-    sentence(sheet.familyMemories,"ご家族と過ごされた","の日々は、かけがえのない宝物でございます。"),
-    sentence(sheet.hobbies,"お好きだった","に触れるたび、故人様のお姿を思い出されることでしょう。"),
-    sentence(sheet.valuedThings,"大切にされていた","への思いも、皆様の中で受け継がれていくことと存じます。"),
-    clean(sheet.closingKeywords)?`どうぞ、${clean(sheet.closingKeywords)}という思いを胸に、故人様をお偲びください。`:"これからも、故人様との思い出を大切にお過ごしいただければと存じます。",
-    "本日はご会葬、誠にありがとうございました。",
-  ].filter(Boolean).join("\n");
-  return {opening,closing};
-};
-
-function AINarrationView({uname,role,flash}) {
-  const [sheet,setSheet]=useState(emptyNarrationSheet());
-  const [drafts,setDrafts]=useState(emptyNarrationDrafts());
-  const [records,setRecords]=useState([]);
-  const [activeId,setActiveId]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const [saving,setSaving]=useState(false);
-  const load=useCallback(()=>{setLoading(true);stLoad(AI_NARRATION_KEY).then(d=>{setRecords(Array.isArray(d)?d:[]);setLoading(false);});},[]);
-  useEffect(()=>{load();},[load]);
-  const updateField=(key,val)=>setSheet(s=>({...s,[key]:val}));
-  const makeDraft=()=>{setDrafts(generateNarrationDraft(sheet));flash("AIナレーション案を作成しました");};
-  const resetNew=()=>{setActiveId(null);setSheet(emptyNarrationSheet());setDrafts(emptyNarrationDrafts());};
-  const openRecord=rec=>{setActiveId(rec.id);setSheet({...emptyNarrationSheet(),...(rec.hearingSheet||{})});setDrafts({...emptyNarrationDrafts(),...(rec.editedDraft||rec.generatedDraft||{})});};
-  const save=async()=>{
-    const now=new Date().toISOString();
-    const existing=records.find(r=>r.id===activeId);
-    const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
-      mcName:existing?.mcName||uname||"未入力",hearingSheet:sheet,generatedDraft:existing?.generatedDraft||drafts,editedDraft:drafts,
-      createdAt:existing?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:"local-template",model:null,templateVersion:"beta-20260701.1",
-        future:{apiIntegration:["OpenAI","Gemini"],feedback:true,proofreading:true,readingPractice:true,audioRecording:true,templateSelection:true,pastExamples:true}},
-      practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"respectful-standard",label:"標準・あたたかい"}};
-    setSaving(true);
-    const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
-    await stSave(AI_NARRATION_KEY,next);
-    setRecords(next);setActiveId(rec.id);setSaving(false);flash("ナレーションを保存しました");
-  };
-  const copyText=async text=>{try{await navigator.clipboard.writeText(text);flash("コピーしました");}catch(e){flash("コピーできませんでした。本文を選択してコピーしてください");}};
-  const printDraft=()=>{
-    const w=window.open("","_blank");
-    const esc=s=>String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
-    w.document.write(`<html><head><title>AIナレーション</title><style>body{font-family:'Yu Gothic','Meiryo',sans-serif;line-height:1.9;padding:32px;color:#222}h1{font-size:20px}.warn{border:1px solid #d97706;background:#fff7ed;padding:12px;margin:16px 0;font-weight:bold}pre{white-space:pre-wrap;font-family:inherit;font-size:14px}</style></head><body><h1>${esc(sheet.deceasedName||"AIナレーション下書き")}</h1><div class="warn">${esc(AI_NARRATION_WARNING)}</div><h2>開式前ナレーション</h2><pre>${esc(drafts.opening)}</pre><h2>閉式後ナレーション</h2><pre>${esc(drafts.closing)}</pre></body></html>`);
-    w.document.close();w.focus();w.print();
-  };
-  return <div>
-    <div style={{...GC,background:"#fff7ed",border:`1px solid ${C.amber}`,display:"flex",gap:10,alignItems:"flex-start"}}>
-      <span style={{fontSize:20}}>⚠️</span><div style={{fontWeight:800,color:"#92400e",fontSize:14,lineHeight:1.6}}>{AI_NARRATION_WARNING}</div>
-    </div>
-    <div style={GC}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:14}}>
-        <h3 style={{margin:0,fontSize:16,color:C.navy}}>AIナレーション</h3>
-        <button onClick={resetNew} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"10px 16px"}}>新規作成</button>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-        {AI_NARRATION_FIELDS.map(([key,label,type])=>(
-          <div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1",minWidth:0}}>
-            <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>{label}</label>
-            {type==="textarea"?<textarea value={sheet[key]} onChange={e=>updateField(key,e.target.value)} rows={3}
-              style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,resize:"vertical"}}/>
-            : type==="select"?<select value={sheet[key]} onChange={e=>updateField(key,e.target.value)}
-              style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:"#fff"}}>
-                <option>通夜</option><option>葬儀</option>
-              </select>
-            : <input type={type} value={sheet[key]} onChange={e=>updateField(key,e.target.value)}
-              style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
-          </div>
-        ))}
-      </div>
-      <button onClick={makeDraft} style={{...Btn(C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>ナレーション案を作成</button>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14}}>
-      {[["opening","開式前ナレーション"],["closing","閉式後ナレーション"]].map(([key,label])=>(
-        <div key={key} style={GC}>
-          <h3 style={{margin:"0 0 10px",fontSize:15,color:C.navy}}>{label}</h3>
-          <textarea value={drafts[key]} onChange={e=>setDrafts(d=>({...d,[key]:e.target.value}))} rows={14}
-            placeholder="ナレーション案を作成すると、ここに下書きが入ります。"
-            style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:14,lineHeight:1.7,resize:"vertical"}}/>
-          <button onClick={()=>copyText(drafts[key])} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,marginTop:10,width:"100%",padding:"11px"}}>コピー</button>
-        </div>
-      ))}
-    </div>
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-      <button onClick={save} disabled={saving} style={{...Btn(saving?C.muted:C.green),padding:"13px 22px",fontSize:15}}>{saving?"保存中…":"保存する"}</button>
-      <button onClick={printDraft} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"13px 22px",fontSize:15}}>印刷</button>
-    </div>
-    <div style={GC}>
-      <h3 style={{margin:"0 0 12px",fontSize:15,color:C.navy}}>保存済みナレーション</h3>
-      {loading&&<p style={{fontSize:13,color:C.muted}}>読み込み中…</p>}
-      {!loading&&records.length===0&&<p style={{fontSize:13,color:C.muted}}>保存済みの下書きはありません</p>}
-      <div style={{overflowX:"auto"}}>
-        {records.length>0&&<table style={{width:"100%",borderCollapse:"collapse",minWidth:620}}>
-          <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>日付</th><th style={TH}>故人様</th><th style={TH}>式種別</th><th style={TH}>MC名</th><th style={TH}>最終更新</th><th style={TH}></th></tr></thead>
-          <tbody>{[...records].sort((a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||"")).map(r=>(
-            <tr key={r.id} style={{background:r.id===activeId?C.blueL:"#fff"}}>
-              <td style={TD}>{jDateTime(r.createdAt)}</td><td style={{...TD,fontWeight:800}}>{r.deceasedName||"未入力"}</td>
-              <td style={TD}>{r.ceremonyType||"－"}</td><td style={TD}>{r.mcName||"－"}</td><td style={TD}>{jDateTime(r.updatedAt)}</td>
-              <td style={TD}><button onClick={()=>openRecord(r)} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"7px 12px"}}>開く</button></td>
-            </tr>
-          ))}</tbody>
-        </table>}
-      </div>
-    </div>
-  </div>;
-}
 
 
 const MC_COMPANIES = {
@@ -4372,6 +4285,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 15 Build 20260701.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 16 Build 20260701.1</div>
 </body>
 </html>
