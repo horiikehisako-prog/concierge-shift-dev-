@@ -40,7 +40,7 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 16 Build 20260701.1";
+const DEV_BUILD_LABEL = "Sprint 17 Build 20260701.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -396,16 +396,15 @@ const DEFAULT_COMPASS_DICTIONARY = {
 const DEFAULT_FORBIDDEN_WORDS = ["ますます","重ね重ね","再び","死ぬ","死亡"];
 const DEFAULT_AI_SETTINGS = {
   provider:"openai",
-  apiKey:"",
   model:"gpt-4.1-mini",
   temperature:0.7,
   maxTokens:1200,
-  apiStatus:"not_connected",
-  callEnabled:false,
+  apiStatus:"server_required",
+  callEnabled:true,
 };
 const DEFAULT_COMPASS_FUTURE = {
   providers:{
-    openai:{enabled:true,model:"gpt-4.1-mini",apiKeyRef:"aiSettings.apiKey",status:"prepared"},
+    openai:{enabled:true,model:"gpt-4.1-mini",apiKeyRef:"OPENAI_API_KEY",status:"server_env_required"},
     gemini:{enabled:false,model:"",apiKeyRef:"",status:"future"},
     claude:{enabled:false,model:"",apiKeyRef:"",status:"future"},
     localTemplate:{enabled:false,model:"",apiKeyRef:"",status:"disabled"},
@@ -2463,8 +2462,8 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme)=>{
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   const ai=cfg.aiSettings||DEFAULT_AI_SETTINGS;
   const payload={
-    workflow:"Hearing Sheet -> Prompt Builder -> OpenAI API (future) -> Draft -> MC edits -> Save",
-    provider:{selected:ai.provider||"openai",model:ai.model||DEFAULT_AI_SETTINGS.model,apiCallEnabled:false},
+    workflow:"Hearing Sheet -> Prompt Builder -> Serverless API -> OpenAI API -> Draft -> MC edits -> Save",
+    provider:{selected:ai.provider||"openai",model:ai.model||DEFAULT_AI_SETTINGS.model,apiCallEnabled:true},
     writingRules:{
       season,
       openingStyle:"季節と会場の空気に沿った、あたたかく押しつけない導入",
@@ -2478,6 +2477,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme)=>{
     hearingSheet:sheet,
     outputRules:[
       "日本語の葬儀司会ナレーション下書きを作成する",
+      "開式前ナレーション、閉式後ナレーション、detectedTheme、improvementNotesをJSONで返す",
       "Hearing Sheetにない事実は作らない",
       "Compass Writing Dictionary、Forbidden Words Dictionary、Seasonal Library、Ending Library、Themeを必ず反映する",
       "MCが編集できる下書きとして、やさしく具体的に書く",
@@ -2486,26 +2486,76 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme)=>{
   return [
     "You are Compass, an AI-assisted narration platform.",
     "The user never writes prompts. Compass automatically built this prompt.",
-    "Sprint 16 prepares OpenAI API architecture only. Do not call any API in this build.",
+    "Return only valid JSON with keys: openingNarration, closingNarration, detectedTheme, improvementNotes.",
     "",
     JSON.stringify(payload,null,2),
   ].join("\n");
 };
 const compassPreparedDraftText=(provider="OpenAI")=>
-  `AI API連携の準備ができています。\n\n現在は${provider} APIをまだ呼び出しません。\n管理者が確認できる Prompt Builder の内容を、将来の OpenAI API 呼び出しに渡す設計です。\n\n運用フロー:\nHearing Sheet\n↓\nPrompt Builder\n↓\nOpenAI API (future)\n↓\nDraft\n↓\nMC edits\n↓\nSave`;
+  `AI API連携の準備ができています。\n\n${provider} APIはサーバーレスAPI経由で呼び出します。\nAPIキーはOPENAI_API_KEYとしてサーバー側に設定してください。\n\n運用フロー:\nHearing Sheet\n↓\nPrompt Builder\n↓\nServerless API\n↓\nOpenAI API\n↓\nDraft\n↓\nMC edits\n↓\nSave`;
+const AI_LOADING_MESSAGES = [
+  "ヒアリング内容を確認しています",
+  "故人様のテーマを整理しています",
+  "季節表現を選んでいます",
+  "ナレーション案を作成しています",
+];
+const AI_NOT_CONFIGURED_MESSAGE = "AI接続がまだ設定されていません。管理者に確認してください。";
+const AI_FAILED_MESSAGE = "AIナレーション作成に失敗しました。時間をおいて再度お試しください。";
+const compassFormatDraft=response=>{
+  const opening=clean(response?.openingNarration||response?.opening||response?.preCeremonyNarration||"");
+  const closing=clean(response?.closingNarration||response?.closing||response?.postCeremonyNarration||"");
+  const detectedTheme=clean(response?.detectedTheme||response?.theme||"");
+  const notes=Array.isArray(response?.improvementNotes)?response.improvementNotes.filter(Boolean).join("\n"):clean(response?.improvementNotes||response?.notes||"");
+  return {
+    openingNarration:opening,
+    closingNarration:closing,
+    detectedTheme,
+    improvementNotes:notes,
+    full:[
+      "【開式前ナレーション】",
+      opening||"（生成結果が空でした）",
+      "",
+      "【閉式後ナレーション】",
+      closing||"（生成結果が空でした）",
+      "",
+      "【Detected theme】",
+      detectedTheme||"未検出",
+      "",
+      "【Improvement notes】",
+      notes||"特記事項なし",
+    ].join("\n")
+  };
+};
+const compassGenerateNarration=async({prompt,cfg})=>{
+  const ai={...DEFAULT_AI_SETTINGS,...(cfg.aiSettings||{})};
+  const res=await fetch("/api/generate-narration",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      prompt,
+      model:ai.model||DEFAULT_AI_SETTINGS.model,
+      temperature:Number(ai.temperature??DEFAULT_AI_SETTINGS.temperature),
+      maxTokens:Number(ai.maxTokens||DEFAULT_AI_SETTINGS.maxTokens),
+    }),
+  });
+  let data=null;
+  try{data=await res.json();}catch(e){}
+  if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") throw new Error("AI_NOT_CONFIGURED");
+  if(!res.ok) throw new Error("AI_FAILED");
+  return compassFormatDraft(data);
+};
 
 function CompassAISettingsEditor({cfg,sv,flash,role}) {
   if(role!=="admin") return null;
   const current={...DEFAULT_AI_SETTINGS,...(cfg.aiSettings||{})};
   const [provider,setProvider]=useState(current.provider);
-  const [apiKey,setApiKey]=useState(current.apiKey||"");
   const [model,setModel]=useState(current.model||DEFAULT_AI_SETTINGS.model);
   const [temperature,setTemperature]=useState(current.temperature??DEFAULT_AI_SETTINGS.temperature);
   const [maxTokens,setMaxTokens]=useState(current.maxTokens||DEFAULT_AI_SETTINGS.maxTokens);
   const [saved,setSaved]=useState(false);
   const save=async()=>{
-    await sv.sets({...cfg,aiSettings:{provider,apiKey,model,temperature:Number(temperature),maxTokens:Number(maxTokens),apiStatus:"not_connected",callEnabled:false}});
-    setSaved(true);setTimeout(()=>setSaved(false),1800);flash?.("AI Settingsを保存しました。API呼び出しはまだ無効です。");
+    await sv.sets({...cfg,aiSettings:{provider,model,temperature:Number(temperature),maxTokens:Number(maxTokens),apiStatus:"server_env_required",callEnabled:true}});
+    setSaved(true);setTimeout(()=>setSaved(false),1800);flash?.("AI Settingsを保存しました。APIキーはサーバー環境変数で管理します。");
   };
   return <div style={GC}>
     <h3 style={{margin:"0 0 12px",fontSize:16,color:C.navy}}>AI Settings</h3>
@@ -2513,12 +2563,11 @@ function CompassAISettingsEditor({cfg,sv,flash,role}) {
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Provider</label><select value={provider} onChange={e=>setProvider(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14,background:"#fff"}}>
         <option value="openai">OpenAI</option><option value="gemini" disabled>Gemini (future)</option><option value="claude" disabled>Claude (future)</option><option value="localTemplate" disabled>Local Template (disabled)</option>
       </select></div>
-      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>API Key</label><input type="password" value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="OpenAI API key (prepared only)" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Model</label><input value={model} onChange={e=>setModel(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Temperature</label><input type="number" step="0.1" min="0" max="2" value={temperature} onChange={e=>setTemperature(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Maximum Tokens</label><input type="number" min="1" value={maxTokens} onChange={e=>setMaxTokens(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
     </div>
-    <div style={{marginTop:10,fontSize:12,color:C.muted,fontWeight:700}}>OpenAI is prepared first. Gemini, Claude, and Local Template remain future options. No API request is sent in this build.</div>
+    <div style={{marginTop:10,fontSize:12,color:C.muted,fontWeight:700}}>API key is never saved in Firebase or frontend JavaScript. Set OPENAI_API_KEY on the serverless backend.</div>
     <button onClick={save} style={{...Btn(saved?C.green:C.navy),width:"100%",marginTop:12,padding:"12px 18px"}}>{saved?"保存しました":"AI Settingsを保存"}</button>
   </div>;
 }
@@ -2563,20 +2612,41 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   const [activeId,setActiveId]=useState(null);
   const [loading,setLoading]=useState(true);
   const [saving,setSaving]=useState(false);
+  const [generating,setGenerating]=useState(false);
+  const [loadingStep,setLoadingStep]=useState("");
+  const [aiError,setAiError]=useState("");
   const load=useCallback(()=>{setLoading(true);stLoad(AI_NARRATION_KEY).then(d=>{setRecords(Array.isArray(d)?d:[]);setLoading(false);});},[]);
   useEffect(()=>{load();},[load]);
   const update=(key,val)=>setSheet(s=>({...s,[key]:val}));
   const selectedSeason=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
-  const makeDraft=()=>{const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme);setTheme(selectedTheme);setPrompt(built);setDraft({full:compassPreparedDraftText((cfg.aiSettings?.provider||"openai").toUpperCase())});flash?.("Prompt Builderでプロンプトを作成しました。APIはまだ呼び出していません。");};
-  const reset=()=>{setActiveId(null);setSheet(compassEmptySheet());setDraft(compassEmptyDraft());setPrompt("");setTheme("");};
-  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...(rec.hearingSheet||{})});setDraft({full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setPrompt(rec.generatedPrompt||rec.aiMeta?.prompt||"");setTheme(rec.theme||rec.aiMeta?.theme||"");};
+  const makeDraft=async()=>{
+    const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme);
+    setTheme(selectedTheme);setPrompt(built);setAiError("");setGenerating(true);setLoadingStep(AI_LOADING_MESSAGES[0]);
+    let timer=null;
+    try{
+      let i=0;
+      timer=setInterval(()=>{i=Math.min(i+1,AI_LOADING_MESSAGES.length-1);setLoadingStep(AI_LOADING_MESSAGES[i]);},1200);
+      const generated=await compassGenerateNarration({prompt:built,cfg});
+      setDraft(generated);
+      if(generated.detectedTheme) setTheme(generated.detectedTheme);
+      flash?.("AIナレーション案を作成しました。内容を確認して保存してください。");
+    }catch(e){
+      const msg=e?.message==="AI_NOT_CONFIGURED"?AI_NOT_CONFIGURED_MESSAGE:AI_FAILED_MESSAGE;
+      setAiError(msg);flash?.(msg);
+    }finally{
+      if(timer) clearInterval(timer);
+      setGenerating(false);setLoadingStep("");
+    }
+  };
+  const reset=()=>{setActiveId(null);setSheet(compassEmptySheet());setDraft(compassEmptyDraft());setPrompt("");setTheme("");setAiError("");setLoadingStep("");};
+  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...(rec.hearingSheet||{})});setDraft({...compassEmptyDraft(),...(rec.generatedDraft||{}),...(rec.editedDraft||{}),full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setPrompt(rec.generatedPrompt||rec.aiMeta?.prompt||"");setTheme(rec.theme||rec.aiMeta?.theme||rec.aiMeta?.detectedTheme||"");setAiError("");};
   const save=async()=>{
     const now=new Date().toISOString();
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",templateVersion:"sprint16-20260701.1",theme:selectedTheme,season:selectedSeason,promptBuilt:!!prompt,apiCalled:false,future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint17-20260701.1",templateVersion:"sprint17-20260701.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -2605,7 +2675,9 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
       </div>
-      <button onClick={makeDraft} style={{...Btn(C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Prompt BuilderでAI用プロンプトを作成</button>
+      <button onClick={makeDraft} disabled={generating} style={{...Btn(generating?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
+      {generating&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.border}`,borderRadius:8,background:"#f8fafc",fontSize:13,fontWeight:800,color:C.navy}}>{loadingStep}</div>}
+      {aiError&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.red}`,borderRadius:8,background:C.redL,fontSize:13,fontWeight:800,color:C.red}}>{aiError}</div>}
     </div>
     {role==="admin"&&<div style={GC}>
       <h3 style={{margin:"0 0 10px",fontSize:15,color:C.navy}}>Prompt Preview</h3>
@@ -2614,7 +2686,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     </div>}
     <div style={GC}>
       <h3 style={{margin:"0 0 10px",fontSize:15,color:C.navy}}>ナレーション下書き</h3>
-      <textarea value={draft.full} onChange={e=>setDraft({full:e.target.value})} rows={24} placeholder="①季節の導入 → ②テーマ → ③お人柄 → ④エピソード → ⑤ご家族のお気持ち → ⑥結び の順で生成されます。" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:14,lineHeight:1.7,resize:"vertical"}}/>
+      <textarea value={draft.full} onChange={e=>setDraft(d=>({...d,full:e.target.value}))} rows={24} placeholder="①季節の導入 → ②テーマ → ③お人柄 → ④エピソード → ⑤ご家族のお気持ち → ⑥結び の順で生成されます。" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:14,lineHeight:1.7,resize:"vertical"}}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginTop:10}}>
         <button onClick={save} disabled={saving} style={{...Btn(C.green),padding:"12px 18px"}}>{saving?"保存中":"保存"}</button>
         <button onClick={copy} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"12px 18px"}}>本文をコピー</button>
@@ -4285,6 +4357,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 16 Build 20260701.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 17 Build 20260701.1</div>
 </body>
 </html>
