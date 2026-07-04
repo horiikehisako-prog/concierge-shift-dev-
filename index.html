@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
-<title>コンシェルシフト</title>
+<title>Compass</title>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -40,7 +40,9 @@ const DEFAULT_ASSIST_PASS = "1234";
 const OVERTIME_HOURS = 6; // 残業判定（6時間超）
 const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
-const DEV_BUILD_LABEL = "Sprint 17 Build 20260701.1";
+const APP_NAME = "Compass";
+const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
+const DEV_BUILD_LABEL = "Compass · Sprint 18 · Build 20260704.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -581,7 +583,7 @@ function App(){
         boxShadow:"0 4px 20px rgba(0,0,0,.2)"}}>{toast}</div>}
       <TopBar role={role} uname={uname} onBack={()=>setRole(null)} year={year} month={month}/>
       <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px"}}>
-        {busy&&<div style={{textAlign:"center",padding:60,color:C.muted}}>読み込み中…</div>}
+        {busy&&<div style={{textAlign:"center",padding:60,color:C.muted}}><div style={{fontWeight:800,color:C.text,marginBottom:6}}>{APP_NAME}</div><div>{APP_SUBTITLE}</div><div style={{marginTop:10}}>読み込み中…</div></div>}
         {!busy&&role==="admin"  &&<AdminView  {...P}/>}
         {!busy&&role==="staff"  &&<StaffView  {...P}/>}
         {!busy&&role==="venue"  &&<VenueView  {...P}/>}
@@ -626,8 +628,8 @@ function RoleSelect({cfg,onSelect}){
       display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{textAlign:"center",marginBottom:40}}>
         <img src={LOGO_SRC} alt="logo" style={{width:130,display:"block",margin:"0 auto 12px",filter:"drop-shadow(0 2px 8px rgba(180,80,20,.25))"}}/>
-        <h1 style={{color:"#7c2d0a",margin:"0 0 6px",fontSize:22,fontWeight:800,textAlign:"center"}}>コンシェルシフト</h1>
-        <p style={{color:"#c2784a",fontSize:13,margin:0,textAlign:"center"}}>シフト管理システム</p>
+        <h1 style={{color:"#7c2d0a",margin:"0 0 6px",fontSize:22,fontWeight:800,textAlign:"center"}}>{APP_NAME}</h1>
+        <p style={{color:"#c2784a",fontSize:13,margin:0,textAlign:"center"}}>{APP_SUBTITLE}</p>
         <div style={{display:"inline-block",marginTop:10,fontSize:11,fontWeight:800,color:"#7c2d0a",
           background:"rgba(255,255,255,.72)",border:"1px solid rgba(124,45,10,.16)",borderRadius:999,padding:"4px 10px"}}>
           DEV · {DEV_BUILD_LABEL}
@@ -734,7 +736,10 @@ function TopBar({role,uname,onBack,year,month}){
       gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(180,80,20,.25)",flexWrap:"wrap"}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:"rgba(255,255,255,.7)",cursor:"pointer",fontSize:22,padding:0}}>‹</button>
       <img src={LOGO_SRC} alt="logo" style={{height:28,filter:"brightness(0) invert(1)"}}/>
-      <span style={{fontSize:15,fontWeight:800}}>コンシェルシフト</span>
+      <span style={{display:"flex",flexDirection:"column",lineHeight:1.15}}>
+        <span style={{fontSize:15,fontWeight:800}}>{APP_NAME}</span>
+        <span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,.72)"}}>{APP_SUBTITLE}</span>
+      </span>
       <span style={{fontSize:11,fontWeight:800,letterSpacing:0,background:"rgba(255,255,255,.18)",
         border:"1px solid rgba(255,255,255,.35)",borderRadius:999,padding:"3px 8px",whiteSpace:"nowrap"}}>
         DEV · {DEV_BUILD_LABEL}
@@ -2646,7 +2651,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint17-20260701.1",templateVersion:"sprint17-20260701.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint18-20260704.1",templateVersion:"sprint18-20260704.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -4356,7 +4361,7 @@ function MCConfigTab({ cfg, sv }) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
-<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 17 Build 20260701.1</div>
+<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Compass DEV確認中</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 18 Build 20260704.1</div>
 </body>
 </html>
