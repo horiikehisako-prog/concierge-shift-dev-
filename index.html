@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 20 Build 20260704.1";
+const DEV_BUILD_LABEL = "Sprint 21 Build 20260705.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -2550,14 +2550,22 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedSampleIds=[])=>{
     provider:{selected:ai.provider||"openai",model:ai.model||DEFAULT_AI_SETTINGS.model,apiCallEnabled:true},
     writingRules:{
       season,
-      openingStyle:"季節の言葉は使ってよい。ただし会場名や参列者への挨拶を書かず、すぐに故人様のお人柄・歩み・具体的なエピソードへ入る。",
+      themeSelection:"書き始める前に人生のテーマを一つだけ決める。例: 家族愛、やさしさ、働き者、前向きに生きる、自然を愛する、人に教える、地域とのつながり。openingNarrationとclosingNarrationは同じテーマに沿わせる。",
+      openingPurpose:"開式前ナレーションの目的は、故人様を紹介し、参列者がその方の人生を思い出せるように静かに導くこと。",
+      openingStyle:"季節の言葉は使ってよい。ただし会場名や参列者への挨拶を書かず、すぐに故人様のお人柄・歩み・職業・趣味・ご家族との記憶・具体的なエピソードへ入る。",
+      openingFocus:["お人柄","人生の歩み","お仕事","趣味","家族との思い出","具体的なエピソード","人間的な温かさ"],
+      closingPurpose:"閉式後ナレーションの目的は、人生を語り直すことではなく、ご家族の思い、残された記憶、故人様の人生の意味、これからも続く思い出を伝え、静かにお別れへ導くこと。",
+      closingStyle:"閉式後は故人様の生涯を再度説明しない。開式前で使ったエピソードを描写し直さず、その出来事がなぜ大切だったのか、家族の心に何が残ったのかを短く深く言葉にする。",
+      closingFocus:["ご家族の感謝","残された思い出","故人様の人生の意味","思い出が続いていく希望","静かで美しい結び"],
       mainFocus:["故人様のお人柄","趣味","家族との思い出","口癖","大切にしていたこと","具体的なエピソード"],
-      endingStyle:"定型的な葬儀挨拶ではなく、故人様らしさとご家族の思いを受け止める静かな結びにする。",
+      endingStyle:"定型的な葬儀挨拶ではなく、ご家族の思いと、故人様が残したものを受け止める静かな結びにする。",
       lengthTargets:{openingNarration:"600〜900日本語文字程度",closingNarration:"500〜700日本語文字程度"},
+      sentenceRhythm:"記事ではなく読み上げ用の台本として書く。短い文、自然な間、息継ぎしやすい行のリズムを優先する。多くの文は30〜45日本語文字程度にする。",
       venueNameRule:"会場名はナレーション本文に絶対に入れない。Hearing Sheetのvenueは運用メモであり、本文には使わない。",
       genericGreetingRule:"ご参列・ご来場・お集まりへのお礼など、一般的な葬儀の開会挨拶を書かない。",
-      repetitionRule:"同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
+      repetitionRule:"openingNarrationで描いたエピソード、場面、思い出をclosingNarrationで再説明しない。同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
       styleReferenceRule:"selectedSampleReferencesは文体・構成・リズム・あたたかさ・結び方だけを学ぶ。サンプル文を直接コピー、部分転用、言い換えコピーしない。",
+      professionalMcStandard:"一般的なAI文章ではなく、経験ある葬儀司会者が読み上げる原稿の水準にする。抽象語を重ねず、具体的な記憶から温度を出す。",
       writingDictionary:cfg.compassDictionary||DEFAULT_COMPASS_DICTIONARY,
       forbiddenWords:cfg.forbiddenWords||DEFAULT_FORBIDDEN_WORDS,
       seasonalLibrary:cfg.seasonalIntros||DEFAULT_SEASONAL_INTROS,
@@ -2570,13 +2578,18 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedSampleIds=[])=>{
       "日本語の葬儀司会ナレーション下書きを作成する",
       "開式前ナレーション、閉式後ナレーション、detectedTheme、improvementNotesをJSONで返す",
       "openingNarrationは600〜900日本語文字程度、closingNarrationは500〜700日本語文字程度で、短く終わらせない",
+      "書き始める前に人生のテーマを一つだけ決め、detectedThemeに入れる",
       "会場名、会場に集まったことへの挨拶、本日はご参列ありがとうございます等の定型挨拶は書かない",
-      "開式前は季節表現を短く置いたあと、故人様のお人柄・人生・エピソードへ直接進む",
-      "閉式後も一般的な謝辞ではなく、故人様らしさ、ご家族との思い出、大切にしていたことを中心に書く",
+      "開式前は故人様を紹介し、参列者が人生を思い出せるように、お人柄・歩み・職業・趣味・家族の記憶・具体的なエピソードへ進む",
+      "閉式後は人生を語り直さない。ご家族の気持ち、残された記憶、故人様の人生の意味、思い出が続く希望、静かな別れを中心に書く",
+      "開式前で使ったエピソードを閉式後で再描写しない。閉式後では、その出来事がなぜ心に残るのか、何が家族に残ったのかを書く",
+      "記事や作文ではなく、読み上げる台本として短い文と自然な行のリズムで書く。多くの文は30〜45日本語文字程度にする",
       "感謝という語の連続使用や、同じ意味の表現の反復を避ける",
+      "抽象的な美辞麗句より、具体的な記憶と人間的な温かさを優先する",
       "Hearing Sheetにない事実は作らない",
       "Compass Writing Dictionary、Forbidden Words Dictionary、Seasonal Library、Ending Library、Themeを必ず反映する",
-      "MCが編集できる下書きとして、やさしく具体的に書く",
+      "堀池久子さんの葬儀ナレーションに近づく将来目標を意識し、保存済みサンプルがある場合は文体・リズム・構成だけを参考にする",
+      "MCが編集できる下書きとして、温かく、上品で、静かに、読みやすく書く",
     ],
   };
   return [
@@ -2850,7 +2863,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint20-20260704.1",templateVersion:"sprint20-20260704.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedSampleIds,selectedSampleTitles:selectedSamples.map(s=>s.title),promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint21-20260705.1",templateVersion:"sprint21-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedSampleIds,selectedSampleTitles:selectedSamples.map(s=>s.title),promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -4582,6 +4595,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Compass DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 20 Build 20260704.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 21 Build 20260705.1</div>
 </body>
 </html>
