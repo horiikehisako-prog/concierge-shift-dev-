@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 19 Build 20260704.1";
+const DEV_BUILD_LABEL = "Sprint 20 Build 20260704.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -389,18 +389,48 @@ const DEFAULT_ENDING_PHRASES = [
 ];
 const DEFAULT_COMPASS_DICTIONARY = {
   seasonalExpressions:["春のぬくもり","夏の光","秋の空","冬の静けさ"],
-  openingPhrases:["本日はお集まりいただき、ありがとうございます"],
+  openingPhrases:["季節の気配にふれながら、故人様のお人柄へ自然につなぐ"],
   endingPhrases:["感謝の思いを胸に","ご縁に支えられた歩みを偲び"],
-  writingStyle:["説明で終わらせず、人・家族・思い出につなげる","丁寧であたたかく、押しつけない表現にする"],
+  writingStyle:["説明で終わらせず、人柄・趣味・家族の思い出・具体的なエピソードにつなげる","丁寧であたたかく、押しつけない表現にする","会場名や参列者への一般的な挨拶から始めない","同じ語尾、同じ名詞、同じ感謝表現を近い位置で繰り返さない"],
   preferredWording:["お人柄","歩み","ご家族との時間","皆様とのご縁"],
   futureNarrationExamples:[],
 };
-const DEFAULT_FORBIDDEN_WORDS = ["ますます","重ね重ね","再び","死ぬ","死亡"];
+const DEFAULT_FORBIDDEN_WORDS = [
+  "ますます","重ね重ね","再び","死ぬ","死亡",
+  "飛鳥会館にお集まりいただき","会場にお集まりいただき","本日はご参列ありがとうございます",
+  "ご来場ありがとうございます","お越しいただきありがとうございます","ご参列ありがとうございます",
+  "感謝を届けられたことに深く感謝","心から感謝し、感謝申し上げます"
+];
+const NARRATION_SAMPLE_TAGS = ["季節","家族愛","趣味","仕事","地域","ありがとう","お浄土","お別れ","その他"];
+const DEFAULT_NARRATION_SAMPLES = [
+  {
+    id:"sample-season-family",
+    title:"季節から人柄へ",
+    tags:["季節","家族愛"],
+    sort:10,
+    text:"季節の移ろいを短く添えたあと、故人様のやさしい人柄、ご家族と過ごした日々、何気ない口癖へ自然につなぐ構成。最後は大げさにせず、残された方の心に続く余韻で結ぶ。"
+  },
+  {
+    id:"sample-hobby-memory",
+    title:"趣味と具体的な思い出",
+    tags:["趣味","ありがとう"],
+    sort:20,
+    text:"趣味や好きだったことを入口に、手元のしぐさ、家族にかけた言葉、周囲を笑顔にした場面を重ねる。感謝は一度だけ置き、同じ表現を繰り返さず、温度のある結びにする。"
+  }
+];
+const normalizeNarrationSamples=v=>ensureArray(v).map((s,i)=>({
+  id:s.id||`sample-${i+1}`,
+  title:String(s.title||`サンプル${i+1}`),
+  tags:ensureArray(s.tags).filter(Boolean),
+  sort:Number.isFinite(Number(s.sort))?Number(s.sort):(i+1)*10,
+  text:String(s.text||""),
+})).sort((a,b)=>(a.sort-b.sort)||a.title.localeCompare(b.title,"ja"));
+const mergeForbiddenWords=v=>Array.from(new Set([...ensureArray(v),...DEFAULT_FORBIDDEN_WORDS])).filter(Boolean);
 const DEFAULT_AI_SETTINGS = {
   provider:"openai",
   model:"gpt-4.1-mini",
   temperature:0.7,
-  maxTokens:1200,
+  maxTokens:1800,
   apiStatus:"server_required",
   enabled:true,
   monthlyBudgetJpy:5000,
@@ -514,7 +544,8 @@ function App(){
     seasonalIntros:{...DEFAULT_SEASONAL_INTROS,...(raw.seasonalIntros||{})},
     endingPhrases:ensureArray(raw.endingPhrases).length?ensureArray(raw.endingPhrases):DEFAULT_ENDING_PHRASES,
     compassDictionary:{...DEFAULT_COMPASS_DICTIONARY,...(raw.compassDictionary||{})},
-    forbiddenWords:ensureArray(raw.forbiddenWords).length?ensureArray(raw.forbiddenWords):DEFAULT_FORBIDDEN_WORDS,
+    forbiddenWords:mergeForbiddenWords(raw.forbiddenWords),
+    narrationSamples:normalizeNarrationSamples(ensureArray(raw.narrationSamples).length?raw.narrationSamples:DEFAULT_NARRATION_SAMPLES),
     compassFuture:{...DEFAULT_COMPASS_FUTURE,...(raw.compassFuture||{}),
       providers:{...DEFAULT_COMPASS_FUTURE.providers,...((raw.compassFuture||{}).providers||{})}},
     aiSettings:normalizeAISettings(raw.aiSettings),
@@ -526,13 +557,14 @@ function App(){
   useEffect(()=>{
     const s=D.settings;
     if(!s) return;
-    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.compassFuture||!s.aiSettings||!s.compassThemes;
+    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.narrationSamples||!s.compassFuture||!s.aiSettings||!s.compassThemes;
     const hasLegacyAIFlag=!!(s.aiSettings&&Object.prototype.hasOwnProperty.call(s.aiSettings,"callEnabled"));
     if(missingCompass||hasLegacyAIFlag) stSave("settings",sanitizeSettingsForSave({...s,
       seasonalIntros:cfg.seasonalIntros,
       endingPhrases:cfg.endingPhrases,
       compassDictionary:cfg.compassDictionary,
       forbiddenWords:cfg.forbiddenWords,
+      narrationSamples:cfg.narrationSamples,
       compassFuture:cfg.compassFuture,
       aiSettings:cfg.aiSettings,
       compassThemes:cfg.compassThemes,
@@ -2506,27 +2538,42 @@ const compassEmptySheet=()=>({deceasedName:"",age:"",deceasedDate:"",personality
   travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",familyFeelings:"",ceremonyType:"通夜",venue:"",notes:""});
 const compassEmptyDraft=()=>({full:""});
 const clean=v=>(v||"").trim();
-const compassBuildNarrationPrompt=(sheet,cfg,theme)=>{
+const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedSampleIds=[])=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   const ai=cfg.aiSettings||DEFAULT_AI_SETTINGS;
+  const selectedSamples=normalizeNarrationSamples(cfg.narrationSamples)
+    .filter(s=>ensureArray(selectedSampleIds).includes(s.id))
+    .map(({id,title,tags,text})=>({id,title,tags,text}));
   const payload={
     workflow:"Hearing Sheet -> Prompt Builder -> Serverless API -> OpenAI API -> Draft -> MC edits -> Save",
     provider:{selected:ai.provider||"openai",model:ai.model||DEFAULT_AI_SETTINGS.model,apiCallEnabled:true},
     writingRules:{
       season,
-      openingStyle:"季節と会場の空気に沿った、あたたかく押しつけない導入",
-      endingStyle:"感謝を中心にした、静かで丁寧な結び",
+      openingStyle:"季節の言葉は使ってよい。ただし会場名や参列者への挨拶を書かず、すぐに故人様のお人柄・歩み・具体的なエピソードへ入る。",
+      mainFocus:["故人様のお人柄","趣味","家族との思い出","口癖","大切にしていたこと","具体的なエピソード"],
+      endingStyle:"定型的な葬儀挨拶ではなく、故人様らしさとご家族の思いを受け止める静かな結びにする。",
+      lengthTargets:{openingNarration:"600〜900日本語文字程度",closingNarration:"500〜700日本語文字程度"},
+      venueNameRule:"会場名はナレーション本文に絶対に入れない。Hearing Sheetのvenueは運用メモであり、本文には使わない。",
+      genericGreetingRule:"ご参列・ご来場・お集まりへのお礼など、一般的な葬儀の開会挨拶を書かない。",
+      repetitionRule:"同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
+      styleReferenceRule:"selectedSampleReferencesは文体・構成・リズム・あたたかさ・結び方だけを学ぶ。サンプル文を直接コピー、部分転用、言い換えコピーしない。",
       writingDictionary:cfg.compassDictionary||DEFAULT_COMPASS_DICTIONARY,
       forbiddenWords:cfg.forbiddenWords||DEFAULT_FORBIDDEN_WORDS,
       seasonalLibrary:cfg.seasonalIntros||DEFAULT_SEASONAL_INTROS,
       endingLibrary:cfg.endingPhrases||DEFAULT_ENDING_PHRASES,
       theme:selectedTheme,
     },
+    selectedSampleReferences:selectedSamples,
     hearingSheet:sheet,
     outputRules:[
       "日本語の葬儀司会ナレーション下書きを作成する",
       "開式前ナレーション、閉式後ナレーション、detectedTheme、improvementNotesをJSONで返す",
+      "openingNarrationは600〜900日本語文字程度、closingNarrationは500〜700日本語文字程度で、短く終わらせない",
+      "会場名、会場に集まったことへの挨拶、本日はご参列ありがとうございます等の定型挨拶は書かない",
+      "開式前は季節表現を短く置いたあと、故人様のお人柄・人生・エピソードへ直接進む",
+      "閉式後も一般的な謝辞ではなく、故人様らしさ、ご家族との思い出、大切にしていたことを中心に書く",
+      "感謝という語の連続使用や、同じ意味の表現の反復を避ける",
       "Hearing Sheetにない事実は作らない",
       "Compass Writing Dictionary、Forbidden Words Dictionary、Seasonal Library、Ending Library、Themeを必ず反映する",
       "MCが編集できる下書きとして、やさしく具体的に書く",
@@ -2663,14 +2710,31 @@ function CompassMasterEditor({cfg,sv,flash,role}) {
   const [forbidden,setForbidden]=useState(()=>compassListText(cfg.forbiddenWords));
   const [dict,setDict]=useState(()=>JSON.stringify(cfg.compassDictionary,null,2));
   const [future,setFuture]=useState(()=>JSON.stringify(cfg.compassFuture,null,2));
+  const [samples,setSamples]=useState(()=>normalizeNarrationSamples(cfg.narrationSamples));
   const [saved,setSaved]=useState(false);
+  const updateSample=(id,patch)=>setSamples(list=>normalizeNarrationSamples(list.map(s=>s.id===id?{...s,...patch}:s)));
+  const addSample=()=>setSamples(list=>normalizeNarrationSamples([...list,{id:`sample-${Date.now()}`,title:"新しいサンプル",tags:["その他"],sort:(list.length+1)*10,text:""}]));
+  const deleteSample=id=>setSamples(list=>normalizeNarrationSamples(list.filter(s=>s.id!==id).map((s,i)=>({...s,sort:(i+1)*10}))));
+  const moveSample=(id,dir)=>setSamples(list=>{
+    const next=[...normalizeNarrationSamples(list)];
+    const i=next.findIndex(s=>s.id===id);
+    const j=i+dir;
+    if(i<0||j<0||j>=next.length) return next;
+    [next[i],next[j]]=[next[j],next[i]];
+    return next.map((s,idx)=>({...s,sort:(idx+1)*10}));
+  });
+  const toggleSampleTag=(id,tag)=>setSamples(list=>list.map(s=>{
+    if(s.id!==id) return s;
+    const tags=ensureArray(s.tags);
+    return {...s,tags:tags.includes(tag)?tags.filter(t=>t!==tag):[...tags,tag]};
+  }));
   const save=async()=>{
     let nextSeasonal=cfg.seasonalIntros,nextDict=cfg.compassDictionary,nextFuture=cfg.compassFuture;
     try{nextSeasonal=JSON.parse(seasonal);}catch(e){flash?.("季節の導入文はJSON形式で確認してください");return;}
     try{nextDict=JSON.parse(dict);}catch(e){flash?.("Compass Writing DictionaryはJSON形式で確認してください");return;}
     try{nextFuture=JSON.parse(future);}catch(e){flash?.("将来設計はJSON形式で確認してください");return;}
     const next={...cfg,seasonalIntros:nextSeasonal,endingPhrases:compassToList(endings),compassThemes:compassToList(themes),
-      forbiddenWords:compassToList(forbidden),compassDictionary:nextDict,compassFuture:nextFuture};
+      forbiddenWords:compassToList(forbidden),compassDictionary:nextDict,compassFuture:nextFuture,narrationSamples:normalizeNarrationSamples(samples)};
     await sv.sets(next);
     setSaved(true);setTimeout(()=>setSaved(false),1800);
   };
@@ -2685,6 +2749,27 @@ function CompassMasterEditor({cfg,sv,flash,role}) {
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Compass Writing Dictionary（JSON）</label><textarea value={dict} onChange={e=>setDict(e.target.value)} rows={12} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:13,fontFamily:"monospace"}}/></div>
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>将来設計（OpenAI / Gemini / 校正 / 採点 / 読み練習 / 音声分析）</label><textarea value={future} onChange={e=>setFuture(e.target.value)} rows={12} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:13,fontFamily:"monospace"}}/></div>
     </div>
+    {role==="admin"&&<div style={{marginTop:14,border:`1px solid ${C.border}`,borderRadius:10,padding:12,background:"#fff"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+        <h4 style={{margin:0,fontSize:15,color:C.navy}}>ナレーションサンプル集</h4>
+        <button onClick={addSample} style={{...Btn(C.blue),padding:"8px 12px"}}>サンプル追加</button>
+      </div>
+      {samples.map((sample,idx)=><div key={sample.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,marginBottom:10,background:"#fffaf7"}}>
+        <div style={{display:"grid",gridTemplateColumns:"minmax(160px,1fr) auto auto auto",gap:8,alignItems:"center",marginBottom:8}}>
+          <input value={sample.title} onChange={e=>updateSample(sample.id,{title:e.target.value})} placeholder="タイトル" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13,minWidth:0}}/>
+          <button onClick={()=>moveSample(sample.id,-1)} disabled={idx===0} style={{...Btn("#fff",C.navy),border:`1px solid ${C.border}`,padding:"7px 9px"}}>上へ</button>
+          <button onClick={()=>moveSample(sample.id,1)} disabled={idx===samples.length-1} style={{...Btn("#fff",C.navy),border:`1px solid ${C.border}`,padding:"7px 9px"}}>下へ</button>
+          <button onClick={()=>deleteSample(sample.id)} style={{...Btn(C.red),padding:"7px 9px"}}>削除</button>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+          {NARRATION_SAMPLE_TAGS.map(tag=><label key={tag} style={{fontSize:12,fontWeight:800,border:`1px solid ${ensureArray(sample.tags).includes(tag)?C.blue:C.border}`,borderRadius:999,padding:"5px 8px",background:ensureArray(sample.tags).includes(tag)?C.blueL:"#fff",color:ensureArray(sample.tags).includes(tag)?C.navy:C.muted,cursor:"pointer"}}>
+            <input type="checkbox" checked={ensureArray(sample.tags).includes(tag)} onChange={()=>toggleSampleTag(sample.id,tag)} style={{marginRight:4}}/>{tag}
+          </label>)}
+        </div>
+        <textarea value={sample.text} onChange={e=>updateSample(sample.id,{text:e.target.value})} rows={5} placeholder="サンプル本文。生成時は文体・構成・リズムの参照にのみ使い、本文へ直接コピーしないルールで渡します。" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:13,lineHeight:1.6,resize:"vertical"}}/>
+      </div>)}
+      {!samples.length&&<div style={{fontSize:13,color:C.muted}}>サンプルはまだありません。</div>}
+    </div>}
     <button onClick={save} style={{...Btn(saved?C.green:C.navy),width:"100%",marginTop:12,padding:"12px 18px"}}>{saved?"保存しました":"Compass AIマスターを保存"}</button>
   </div>;
 }
@@ -2693,6 +2778,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   const [draft,setDraft]=useState(compassEmptyDraft());
   const [prompt,setPrompt]=useState("");
   const [theme,setTheme]=useState("");
+  const [selectedSampleIds,setSelectedSampleIds]=useState([]);
   const [records,setRecords]=useState([]);
   const [activeId,setActiveId]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -2705,9 +2791,11 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   const update=(key,val)=>setSheet(s=>({...s,[key]:val}));
   const selectedSeason=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
+  const availableSamples=normalizeNarrationSamples(cfg.narrationSamples);
+  const selectedSamples=availableSamples.filter(s=>selectedSampleIds.includes(s.id));
   const aiControl=normalizeAISettings(cfg.aiSettings);
   const makeDraft=async()=>{
-    const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme);
+    const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme,selectedSampleIds);
     const ai=normalizeAISettings(cfg.aiSettings);
     const estimatedInputTokens=estimateAITokens(built);
     const estimatedOutputTokens=Number(ai.maxTokens||DEFAULT_AI_SETTINGS.maxTokens);
@@ -2754,14 +2842,15 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
       setGenerating(false);setLoadingStep("");
     }
   };
-  const reset=()=>{setActiveId(null);setSheet(compassEmptySheet());setDraft(compassEmptyDraft());setPrompt("");setTheme("");setAiError("");setLoadingStep("");};
-  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...(rec.hearingSheet||{})});setDraft({...compassEmptyDraft(),...(rec.generatedDraft||{}),...(rec.editedDraft||{}),full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setPrompt(rec.generatedPrompt||rec.aiMeta?.prompt||"");setTheme(rec.theme||rec.aiMeta?.theme||rec.aiMeta?.detectedTheme||"");setAiError("");};
+  const toggleSelectedSample=id=>setSelectedSampleIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
+  const reset=()=>{setActiveId(null);setSheet(compassEmptySheet());setDraft(compassEmptyDraft());setPrompt("");setTheme("");setSelectedSampleIds([]);setAiError("");setLoadingStep("");};
+  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...(rec.hearingSheet||{})});setDraft({...compassEmptyDraft(),...(rec.generatedDraft||{}),...(rec.editedDraft||{}),full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setPrompt(rec.generatedPrompt||rec.aiMeta?.prompt||"");setTheme(rec.theme||rec.aiMeta?.theme||rec.aiMeta?.detectedTheme||"");setSelectedSampleIds(ensureArray(rec.aiMeta?.selectedSampleIds));setAiError("");};
   const save=async()=>{
     const now=new Date().toISOString();
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint18-20260704.1",templateVersion:"sprint18-20260704.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint20-20260704.1",templateVersion:"sprint20-20260704.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedSampleIds,selectedSampleTitles:selectedSamples.map(s=>s.title),promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -2783,6 +2872,16 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
         <div style={{background:C.blueL,border:`1px solid ${C.border}`,borderRadius:8,padding:10}}><div style={{fontSize:11,color:C.muted,fontWeight:800}}>自動判定季節</div><div style={{fontSize:16,fontWeight:900,color:C.navy}}>{SEASON_LABELS[selectedSeason]}</div></div>
         <div><label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>検出テーマ（変更可）</label><select value={selectedTheme} onChange={e=>setTheme(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:"#fff"}}>{ensureArray(cfg.compassThemes).map(t=><option key={t} value={t}>{t}</option>)}</select></div>
       </div>
+      <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fffaf7",marginBottom:12}}>
+        <div style={{fontSize:12,color:C.muted,fontWeight:800,marginBottom:8}}>スタイル参照サンプル</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
+          {availableSamples.map(sample=><label key={sample.id} style={{border:`1px solid ${selectedSampleIds.includes(sample.id)?C.blue:C.border}`,borderRadius:8,padding:9,background:selectedSampleIds.includes(sample.id)?C.blueL:"#fff",cursor:"pointer"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:900,color:C.navy}}><input type="checkbox" checked={selectedSampleIds.includes(sample.id)} onChange={()=>toggleSelectedSample(sample.id)}/>{sample.title}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:4}}>{ensureArray(sample.tags).join(" / ")||"タグなし"}</div>
+          </label>)}
+          {!availableSamples.length&&<div style={{fontSize:13,color:C.muted}}>管理者がサンプルを追加すると選択できます。</div>}
+        </div>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
         {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["venue","会場","text"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>{label}</label>
@@ -2797,6 +2896,16 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     </div>
     {role==="admin"&&<div style={GC}>
       <h3 style={{margin:"0 0 10px",fontSize:15,color:C.navy}}>Prompt Preview</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:10}}>
+        <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
+          <div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:6}}>Selected sample references</div>
+          {selectedSamples.length?selectedSamples.map(s=><div key={s.id} style={{fontSize:13,lineHeight:1.5,borderTop:`1px solid ${C.border}`,padding:"6px 0"}}><b>{s.title}</b><br/><span style={{color:C.muted}}>{ensureArray(s.tags).join(" / ")}</span></div>):<div style={{fontSize:13,color:C.muted}}>未選択</div>}
+        </div>
+        <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
+          <div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:6}}>Forbidden phrases</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{ensureArray(cfg.forbiddenWords).map(w=><span key={w} style={{fontSize:11,border:`1px solid ${C.border}`,borderRadius:999,padding:"3px 7px",background:C.redL,color:C.red,fontWeight:800}}>{w}</span>)}</div>
+        </div>
+      </div>
       <textarea value={prompt} readOnly rows={18} placeholder="Prompt Builderを実行すると、OpenAI APIへ渡す予定のプロンプトがここに表示されます。" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:12,lineHeight:1.55,resize:"vertical",fontFamily:"monospace",background:"#f8fafc"}}/>
       <div style={{fontSize:12,color:C.muted,fontWeight:700,marginTop:8}}>Administrator only. Support Manager and MC cannot view this prompt.</div>
     </div>}
@@ -4473,6 +4582,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Compass DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 19 Build 20260704.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 20 Build 20260704.1</div>
 </body>
 </html>

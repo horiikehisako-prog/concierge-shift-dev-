@@ -56,7 +56,7 @@ module.exports = async (req, res) => {
 
     const model = String(body.model || "gpt-4.1-mini").trim();
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
-    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 1200, 100, 4000));
+    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 1800, 100, 4000));
 
     const openAiResponse = await fetch(OPENAI_URL, {
       method: "POST",
@@ -76,6 +76,12 @@ module.exports = async (req, res) => {
               "You create respectful Japanese funeral MC narration drafts.",
               "Return only JSON with openingNarration, closingNarration, detectedTheme, improvementNotes.",
               "Do not invent facts that are not in the prompt.",
+              "Never include venue names or generic attendee greetings in the narration.",
+              "Do not write phrases equivalent to: 飛鳥会館にお集まりいただき, 会場にお集まりいただき, 本日はご参列ありがとうございます, ご来場ありがとうございます, お越しいただきありがとうございます.",
+              "Opening narration may begin with seasonal language, then must move directly into the deceased person's personality, life, hobbies, family memories, favorite phrases, values, and specific episodes.",
+              "Target length: openingNarration about 600-900 Japanese characters; closingNarration about 500-700 Japanese characters.",
+              "Avoid repeated expressions, especially repeated gratitude wording.",
+              "Use any sample references only for tone, structure, rhythm, warmth, and ending style. Do not copy sample text directly.",
             ].join(" "),
           },
           { role: "user", content: prompt },
