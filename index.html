@@ -2572,6 +2572,15 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedSampleIds=[])=>{
       endingLibrary:cfg.endingPhrases||DEFAULT_ENDING_PHRASES,
       theme:selectedTheme,
     },
+    sprint22WritingQualityRules:{
+      role:"Professional Japanese funeral MC. Not essay writer, novelist, or general AI assistant.",
+      sourceLimit:"Use only Compass Hearing Sheet fields. If a field is blank or unclear, omit it naturally. Never invent facts and never ask follow-up questions.",
+      spokenPriority:["rhythm","breathing","emotional pacing","warmth","quiet dignity"],
+      openingJob:"Introduce the deceased and help attendees remember the person's life through personality, life work, hobbies, family memories, concrete episodes, values, favorite phrases, and warm human details.",
+      closingJob:"Do not summarize the life again. Express the family's feelings, the afterglow left in their hearts, the memories that remain, the meaning carried forward, and a quiet goodbye.",
+      style:"Plain, natural Japanese funeral MC script that can be read aloud. Prefer short sentences, natural pauses, and one feeling or memory per paragraph.",
+      avoid:["literary flourish","novel-like description","generic AI phrases","dramatic metaphors","repeated gratitude wording","closing that repeats the opening"],
+    },
     selectedSampleReferences:selectedSamples,
     hearingSheet:sheet,
     outputRules:[
@@ -2863,7 +2872,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint21-20260705.1",templateVersion:"sprint21-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedSampleIds,selectedSampleTitles:selectedSamples.map(s=>s.title),promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint22-20260705.1",templateVersion:"sprint22-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedSampleIds,selectedSampleTitles:selectedSamples.map(s=>s.title),promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
