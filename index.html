@@ -402,7 +402,6 @@ const DEFAULT_AI_SETTINGS = {
   temperature:0.7,
   maxTokens:1200,
   apiStatus:"server_required",
-  callEnabled:true,
   enabled:true,
   monthlyBudgetJpy:5000,
   inputPricePer1MUsd:0.15,
@@ -414,12 +413,13 @@ const AI_USAGE_LOG_KEY = "aiUsageLogs";
 const AI_STOPPED_MESSAGE = "Compass AIは現在停止中です。管理者に確認してください。";
 const AI_BUDGET_LIMIT_MESSAGE = "今月のAI利用上限に達しました。管理者に確認してください。";
 const normalizeAISettings=s=>{
-  const n={...DEFAULT_AI_SETTINGS,...(s||{})};
+  const {callEnabled:_legacyCallEnabled,...incoming}=s||{};
+  const n={...DEFAULT_AI_SETTINGS,...incoming};
   const numberOr=(v,fallback)=>Number.isFinite(Number(v))&&Number(v)>=0?Number(v):fallback;
+  const enabled=n.enabled!==false;
   return {
     ...n,
-    enabled:n.enabled!==false,
-    callEnabled:n.callEnabled!==false,
+    enabled,
     monthlyBudgetJpy:numberOr(n.monthlyBudgetJpy,DEFAULT_AI_SETTINGS.monthlyBudgetJpy),
     inputPricePer1MUsd:numberOr(n.inputPricePer1MUsd,DEFAULT_AI_SETTINGS.inputPricePer1MUsd),
     outputPricePer1MUsd:numberOr(n.outputPricePer1MUsd,DEFAULT_AI_SETTINGS.outputPricePer1MUsd),
@@ -430,6 +430,7 @@ const normalizeAISettings=s=>{
     apiProxyPath:String(n.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath),
   };
 };
+const sanitizeSettingsForSave=v=>v?{...v,aiSettings:normalizeAISettings(v.aiSettings)}:v;
 const aiMonthKey=(d=new Date())=>`${d.getFullYear()}-${p2(d.getMonth()+1)}`;
 const estimateAITokens=txt=>Math.max(1,Math.ceil(String(txt||"").length/2));
 const estimateAICostJpy=(settings,inputTokens,outputTokens)=>{
@@ -526,7 +527,8 @@ function App(){
     const s=D.settings;
     if(!s) return;
     const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.compassFuture||!s.aiSettings||!s.compassThemes;
-    if(missingCompass) stSave("settings",{...s,
+    const hasLegacyAIFlag=!!(s.aiSettings&&Object.prototype.hasOwnProperty.call(s.aiSettings,"callEnabled"));
+    if(missingCompass||hasLegacyAIFlag) stSave("settings",sanitizeSettingsForSave({...s,
       seasonalIntros:cfg.seasonalIntros,
       endingPhrases:cfg.endingPhrases,
       compassDictionary:cfg.compassDictionary,
@@ -534,7 +536,7 @@ function App(){
       compassFuture:cfg.compassFuture,
       aiSettings:cfg.aiSettings,
       compassThemes:cfg.compassThemes,
-    });
+    }));
   },[D.settings]);
 
   const reload=useCallback(async()=>{
@@ -559,8 +561,9 @@ function App(){
     att:   v=>{setD(d=>({...d,att:v}));   stSave(`att-${ym}`,v);  flash("✅ 出勤記録を保存しました");},
     vconf: v=>{setD(d=>({...d,vconf:v})); stSave(`vconf-${ym}`,v);},
     sets: async v=>{
-      setD(d=>({...d,settings:v}));
-      await stSave("settings",v);
+      const clean=sanitizeSettingsForSave(v);
+      setD(d=>({...d,settings:clean}));
+      await stSave("settings",clean);
       flash("✅ 設定を保存しました");
     },
     updateSettings: v=>{setD(d=>({...d,settings:v}));}, // メモリのみ更新
@@ -2725,7 +2728,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     setTheme(selectedTheme);setPrompt(built);setAiError("");setGenerating(true);setLoadingStep(AI_LOADING_MESSAGES[0]);
     let timer=null;
     try{
-      if(ai.enabled===false||ai.callEnabled===false){
+      if(ai.enabled===false){
         await writeUsage("failed",{error:"ai_stopped",estimatedCostJpy:0});
         setAiError(AI_STOPPED_MESSAGE);flash?.(AI_STOPPED_MESSAGE);return;
       }
@@ -2769,7 +2772,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   return <div>
     {role==="admin"&&<CompassAISettingsEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
     {["admin","support"].includes(role)&&<CompassMasterEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
-    {(aiControl.enabled===false||aiControl.callEnabled===false)&&<div style={{...GC,background:C.redL,border:`1px solid ${C.red}`,fontWeight:800,color:C.red,lineHeight:1.6}}>{AI_STOPPED_MESSAGE}</div>}
+    {aiControl.enabled===false&&<div style={{...GC,background:C.redL,border:`1px solid ${C.red}`,fontWeight:800,color:C.red,lineHeight:1.6}}>{AI_STOPPED_MESSAGE}</div>}
     <div style={{...GC,background:"#fff7ed",border:`1px solid ${C.amber}`,fontWeight:800,color:"#92400e",lineHeight:1.6}}>{AI_NARRATION_WARNING}</div>
     <div style={GC}>
       <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
@@ -2788,7 +2791,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
       </div>
-      <button onClick={makeDraft} disabled={generating||aiControl.enabled===false||aiControl.callEnabled===false} style={{...Btn((generating||aiControl.enabled===false||aiControl.callEnabled===false)?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
+      <button onClick={makeDraft} disabled={generating||aiControl.enabled===false} style={{...Btn((generating||aiControl.enabled===false)?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
       {generating&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.border}`,borderRadius:8,background:"#f8fafc",fontSize:13,fontWeight:800,color:C.navy}}>{loadingStep}</div>}
       {aiError&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.red}`,borderRadius:8,background:C.redL,fontSize:13,fontWeight:800,color:C.red}}>{aiError}</div>}
     </div>
