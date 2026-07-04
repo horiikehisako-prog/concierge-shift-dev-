@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Compass · Sprint 18 · Build 20260704.1";
+const DEV_BUILD_LABEL = "Sprint 19 Build 20260704.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -403,6 +403,47 @@ const DEFAULT_AI_SETTINGS = {
   maxTokens:1200,
   apiStatus:"server_required",
   callEnabled:true,
+  enabled:true,
+  monthlyBudgetJpy:5000,
+  inputPricePer1MUsd:0.15,
+  outputPricePer1MUsd:0.60,
+  jpyUsdRate:160,
+  apiProxyPath:"/api/generate-narration",
+};
+const AI_USAGE_LOG_KEY = "aiUsageLogs";
+const AI_STOPPED_MESSAGE = "Compass AIは現在停止中です。管理者に確認してください。";
+const AI_BUDGET_LIMIT_MESSAGE = "今月のAI利用上限に達しました。管理者に確認してください。";
+const normalizeAISettings=s=>{
+  const n={...DEFAULT_AI_SETTINGS,...(s||{})};
+  const numberOr=(v,fallback)=>Number.isFinite(Number(v))&&Number(v)>=0?Number(v):fallback;
+  return {
+    ...n,
+    enabled:n.enabled!==false,
+    callEnabled:n.callEnabled!==false,
+    monthlyBudgetJpy:numberOr(n.monthlyBudgetJpy,DEFAULT_AI_SETTINGS.monthlyBudgetJpy),
+    inputPricePer1MUsd:numberOr(n.inputPricePer1MUsd,DEFAULT_AI_SETTINGS.inputPricePer1MUsd),
+    outputPricePer1MUsd:numberOr(n.outputPricePer1MUsd,DEFAULT_AI_SETTINGS.outputPricePer1MUsd),
+    jpyUsdRate:numberOr(n.jpyUsdRate,DEFAULT_AI_SETTINGS.jpyUsdRate),
+    temperature:numberOr(n.temperature,DEFAULT_AI_SETTINGS.temperature),
+    maxTokens:numberOr(n.maxTokens,DEFAULT_AI_SETTINGS.maxTokens),
+    model:String(n.model||DEFAULT_AI_SETTINGS.model),
+    apiProxyPath:String(n.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath),
+  };
+};
+const aiMonthKey=(d=new Date())=>`${d.getFullYear()}-${p2(d.getMonth()+1)}`;
+const estimateAITokens=txt=>Math.max(1,Math.ceil(String(txt||"").length/2));
+const estimateAICostJpy=(settings,inputTokens,outputTokens)=>{
+  const ai=normalizeAISettings(settings);
+  const usd=((Number(inputTokens)||0)*ai.inputPricePer1MUsd+(Number(outputTokens)||0)*ai.outputPricePer1MUsd)/1000000;
+  return Math.ceil(usd*ai.jpyUsdRate*100)/100;
+};
+const aiMonthlyLogs=(logs,monthKey=aiMonthKey())=>ensureArray(logs).filter(l=>String(l.monthKey||"")===monthKey);
+const aiMonthlyCost=(logs,monthKey=aiMonthKey())=>aiMonthlyLogs(logs,monthKey).reduce((a,l)=>l.status==="failed"?a:a+(Number(l.estimatedCostJpy)||0),0);
+const saveAIUsageLog=async log=>{
+  const current=ensureArray(await stLoad(AI_USAGE_LOG_KEY));
+  const next=[log,...current].slice(0,1000);
+  await stSave(AI_USAGE_LOG_KEY,next);
+  return next;
 };
 const DEFAULT_COMPASS_FUTURE = {
   providers:{
@@ -475,7 +516,7 @@ function App(){
     forbiddenWords:ensureArray(raw.forbiddenWords).length?ensureArray(raw.forbiddenWords):DEFAULT_FORBIDDEN_WORDS,
     compassFuture:{...DEFAULT_COMPASS_FUTURE,...(raw.compassFuture||{}),
       providers:{...DEFAULT_COMPASS_FUTURE.providers,...((raw.compassFuture||{}).providers||{})}},
-    aiSettings:{...DEFAULT_AI_SETTINGS,...(raw.aiSettings||{})},
+    aiSettings:normalizeAISettings(raw.aiSettings),
     compassThemes:ensureArray(raw.compassThemes).length?ensureArray(raw.compassThemes):DEFAULT_THEMES,
   };
 
@@ -2532,8 +2573,8 @@ const compassFormatDraft=response=>{
   };
 };
 const compassGenerateNarration=async({prompt,cfg})=>{
-  const ai={...DEFAULT_AI_SETTINGS,...(cfg.aiSettings||{})};
-  const res=await fetch("/api/generate-narration",{
+  const ai=normalizeAISettings(cfg.aiSettings);
+  const res=await fetch(ai.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath,{
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
@@ -2552,28 +2593,64 @@ const compassGenerateNarration=async({prompt,cfg})=>{
 
 function CompassAISettingsEditor({cfg,sv,flash,role}) {
   if(role!=="admin") return null;
-  const current={...DEFAULT_AI_SETTINGS,...(cfg.aiSettings||{})};
-  const [provider,setProvider]=useState(current.provider);
-  const [model,setModel]=useState(current.model||DEFAULT_AI_SETTINGS.model);
-  const [temperature,setTemperature]=useState(current.temperature??DEFAULT_AI_SETTINGS.temperature);
-  const [maxTokens,setMaxTokens]=useState(current.maxTokens||DEFAULT_AI_SETTINGS.maxTokens);
+  const current=normalizeAISettings(cfg.aiSettings);
+  const [form,setForm]=useState(current);
+  const [logs,setLogs]=useState([]);
   const [saved,setSaved]=useState(false);
+  useEffect(()=>{stLoad(AI_USAGE_LOG_KEY).then(d=>setLogs(ensureArray(d)));},[]);
+  useEffect(()=>setForm(current),[JSON.stringify(current)]);
+  const monthKey=aiMonthKey();
+  const monthLogs=aiMonthlyLogs(logs,monthKey);
+  const totalCost=aiMonthlyCost(logs,monthKey);
+  const remaining=Math.max(0,form.monthlyBudgetJpy-totalCost);
+  const modelCounts=monthLogs.reduce((a,l)=>{const m=l.model||"-";a[m]=(a[m]||0)+1;return a;},{});
+  const setField=(key,value)=>setForm(f=>({...f,[key]:value}));
+  const setNum=(key,value)=>setForm(f=>({...f,[key]:Number(value)}));
   const save=async()=>{
-    await sv.sets({...cfg,aiSettings:{provider,model,temperature:Number(temperature),maxTokens:Number(maxTokens),apiStatus:"server_env_required",callEnabled:true}});
+    const nextSettings=normalizeAISettings({...form,apiStatus:"server_env_required"});
+    await sv.sets({...cfg,aiSettings:nextSettings});
     setSaved(true);setTimeout(()=>setSaved(false),1800);flash?.("AI Settingsを保存しました。APIキーはサーバー環境変数で管理します。");
   };
+  const stat={background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:12};
+  const input={width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14};
   return <div style={GC}>
-    <h3 style={{margin:"0 0 12px",fontSize:16,color:C.navy}}>AI Settings</h3>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
-      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Provider</label><select value={provider} onChange={e=>setProvider(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14,background:"#fff"}}>
+    <h3 style={{margin:"0 0 12px",fontSize:16,color:C.navy}}>AI Settings / Usage Control</h3>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:14}}>
+      <div style={stat}><div style={{fontSize:12,color:C.muted,fontWeight:800}}>今月の利用回数</div><div style={{fontSize:24,fontWeight:900}}>{monthLogs.length}</div></div>
+      <div style={stat}><div style={{fontSize:12,color:C.muted,fontWeight:800}}>概算合計費用</div><div style={{fontSize:24,fontWeight:900}}>{Math.round(totalCost).toLocaleString("ja-JP")} JPY</div></div>
+      <div style={stat}><div style={{fontSize:12,color:C.muted,fontWeight:800}}>残り予算</div><div style={{fontSize:24,fontWeight:900,color:remaining<=0?C.red:C.green}}>{Math.round(remaining).toLocaleString("ja-JP")} JPY</div></div>
+      <div style={stat}><div style={{fontSize:12,color:C.muted,fontWeight:800}}>月額上限</div><div style={{fontSize:24,fontWeight:900}}>{Math.round(form.monthlyBudgetJpy).toLocaleString("ja-JP")} JPY</div></div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Compass AI
+        <select value={form.enabled!==false?"on":"off"} onChange={e=>setField("enabled",e.target.value==="on")} style={{...input,display:"block",marginTop:5,background:"#fff"}}>
+          <option value="on">ON</option><option value="off">OFF</option>
+        </select>
+      </label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Provider<select value={form.provider} onChange={e=>setField("provider",e.target.value)} style={{...input,display:"block",marginTop:5,background:"#fff"}}>
         <option value="openai">OpenAI</option><option value="gemini" disabled>Gemini (future)</option><option value="claude" disabled>Claude (future)</option><option value="localTemplate" disabled>Local Template (disabled)</option>
-      </select></div>
-      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Model</label><input value={model} onChange={e=>setModel(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
-      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Temperature</label><input type="number" step="0.1" min="0" max="2" value={temperature} onChange={e=>setTemperature(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
-      <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>Maximum Tokens</label><input type="number" min="1" value={maxTokens} onChange={e=>setMaxTokens(e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14}}/></div>
+      </select></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Model<input value={form.model} onChange={e=>setField("model",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Maximum Tokens<input type="number" min="1" value={form.maxTokens} onChange={e=>setNum("maxTokens",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Temperature<input type="number" step="0.1" min="0" max="2" value={form.temperature} onChange={e=>setNum("temperature",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>AI monthly budget limit<input type="number" min="0" value={form.monthlyBudgetJpy} onChange={e=>setNum("monthlyBudgetJpy",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>input price per 1M tokens<input type="number" min="0" step="0.01" value={form.inputPricePer1MUsd} onChange={e=>setNum("inputPricePer1MUsd",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>output price per 1M tokens<input type="number" min="0" step="0.01" value={form.outputPricePer1MUsd} onChange={e=>setNum("outputPricePer1MUsd",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>JPY/USD exchange rate<input type="number" min="0" step="1" value={form.jpyUsdRate} onChange={e=>setNum("jpyUsdRate",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>API proxy path<input value={form.apiProxyPath} onChange={e=>setField("apiProxyPath",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
     </div>
     <div style={{marginTop:10,fontSize:12,color:C.muted,fontWeight:700}}>API key is never saved in Firebase or frontend JavaScript. Set OPENAI_API_KEY on the serverless backend.</div>
     <button onClick={save} style={{...Btn(saved?C.green:C.navy),width:"100%",marginTop:12,padding:"12px 18px"}}>{saved?"保存しました":"AI Settingsを保存"}</button>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginTop:14}}>
+      <div style={stat}><div style={{fontSize:13,fontWeight:900,marginBottom:8}}>モデル別利用回数</div>{Object.keys(modelCounts).length?Object.entries(modelCounts).map(([m,c])=><div key={m} style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${C.border}`,padding:"7px 0",fontSize:13}}><span>{m}</span><b>{c}</b></div>):<div style={{fontSize:13,color:C.muted}}>今月の利用はありません。</div>}</div>
+      <div style={{...stat,overflowX:"auto"}}><div style={{fontSize:13,fontWeight:900,marginBottom:8}}>最新 AI usage logs</div>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:720}}>
+          <thead><tr>{["date","user / MC name","feature","model","input","output","cost JPY","status"].map(h=><th key={h} style={{textAlign:"left",borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{h}</th>)}</tr></thead>
+          <tbody>{logs.slice(0,20).map(l=><tr key={l.id||l.date}><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{String(l.date||"").slice(0,19).replace("T"," ")}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.userName||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.featureName||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.model||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.estimatedInputTokens||0}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.estimatedOutputTokens||0}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{Number(l.estimatedCostJpy||0).toFixed(2)}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px",color:l.status==="success"?C.green:C.red,fontWeight:800}}>{l.status||"-"}</td></tr>)}</tbody>
+        </table>
+        {!logs.length&&<div style={{fontSize:13,color:C.muted,paddingTop:8}}>ログはまだありません。</div>}
+      </div>
+    </div>
   </div>;
 }
 function CompassMasterEditor({cfg,sv,flash,role}) {
@@ -2625,18 +2702,48 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   const update=(key,val)=>setSheet(s=>({...s,[key]:val}));
   const selectedSeason=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
+  const aiControl=normalizeAISettings(cfg.aiSettings);
   const makeDraft=async()=>{
     const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme);
+    const ai=normalizeAISettings(cfg.aiSettings);
+    const estimatedInputTokens=estimateAITokens(built);
+    const estimatedOutputTokens=Number(ai.maxTokens||DEFAULT_AI_SETTINGS.maxTokens);
+    const estimatedCostJpy=estimateAICostJpy(ai,estimatedInputTokens,estimatedOutputTokens);
+    const writeUsage=async(status,extra={})=>saveAIUsageLog({
+      id:`ai-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      date:new Date().toISOString(),
+      monthKey:aiMonthKey(),
+      userName:uname||"",
+      featureName:"AI Narration",
+      model:ai.model||DEFAULT_AI_SETTINGS.model,
+      estimatedInputTokens,
+      estimatedOutputTokens:extra.estimatedOutputTokens??estimatedOutputTokens,
+      estimatedCostJpy:extra.estimatedCostJpy??estimatedCostJpy,
+      status,
+      error:extra.error||"",
+    });
     setTheme(selectedTheme);setPrompt(built);setAiError("");setGenerating(true);setLoadingStep(AI_LOADING_MESSAGES[0]);
     let timer=null;
     try{
+      if(ai.enabled===false||ai.callEnabled===false){
+        await writeUsage("failed",{error:"ai_stopped",estimatedCostJpy:0});
+        setAiError(AI_STOPPED_MESSAGE);flash?.(AI_STOPPED_MESSAGE);return;
+      }
+      const latestLogs=ensureArray(await stLoad(AI_USAGE_LOG_KEY));
+      if(aiMonthlyCost(latestLogs)+estimatedCostJpy>ai.monthlyBudgetJpy){
+        await writeUsage("failed",{error:"monthly_budget_exceeded"});
+        setAiError(AI_BUDGET_LIMIT_MESSAGE);flash?.(AI_BUDGET_LIMIT_MESSAGE);return;
+      }
       let i=0;
       timer=setInterval(()=>{i=Math.min(i+1,AI_LOADING_MESSAGES.length-1);setLoadingStep(AI_LOADING_MESSAGES[i]);},1200);
       const generated=await compassGenerateNarration({prompt:built,cfg});
       setDraft(generated);
       if(generated.detectedTheme) setTheme(generated.detectedTheme);
+      const actualOutputTokens=estimateAITokens(generated.full||"");
+      await writeUsage("success",{estimatedOutputTokens:actualOutputTokens,estimatedCostJpy:estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens)});
       flash?.("AIナレーション案を作成しました。内容を確認して保存してください。");
     }catch(e){
+      await writeUsage("failed",{error:String(e?.message||e)});
       const msg=e?.message==="AI_NOT_CONFIGURED"?AI_NOT_CONFIGURED_MESSAGE:AI_FAILED_MESSAGE;
       setAiError(msg);flash?.(msg);
     }finally{
@@ -2662,6 +2769,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   return <div>
     {role==="admin"&&<CompassAISettingsEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
     {["admin","support"].includes(role)&&<CompassMasterEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
+    {(aiControl.enabled===false||aiControl.callEnabled===false)&&<div style={{...GC,background:C.redL,border:`1px solid ${C.red}`,fontWeight:800,color:C.red,lineHeight:1.6}}>{AI_STOPPED_MESSAGE}</div>}
     <div style={{...GC,background:"#fff7ed",border:`1px solid ${C.amber}`,fontWeight:800,color:"#92400e",lineHeight:1.6}}>{AI_NARRATION_WARNING}</div>
     <div style={GC}>
       <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
@@ -2680,7 +2788,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
       </div>
-      <button onClick={makeDraft} disabled={generating} style={{...Btn(generating?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
+      <button onClick={makeDraft} disabled={generating||aiControl.enabled===false||aiControl.callEnabled===false} style={{...Btn((generating||aiControl.enabled===false||aiControl.callEnabled===false)?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
       {generating&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.border}`,borderRadius:8,background:"#f8fafc",fontSize:13,fontWeight:800,color:C.navy}}>{loadingStep}</div>}
       {aiError&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.red}`,borderRadius:8,background:C.redL,fontSize:13,fontWeight:800,color:C.red}}>{aiError}</div>}
     </div>
@@ -4362,6 +4470,6 @@ function MCConfigTab({ cfg, sv }) {
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
 <div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Compass DEV確認中</div>
-<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 18 Build 20260704.1</div>
+<div style="position:fixed;right:12px;bottom:38px;z-index:9999;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;">Sprint 19 Build 20260704.1</div>
 </body>
 </html>
