@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 25 Build 20260705.1";
+const DEV_BUILD_LABEL = "Sprint 26 Build 20260705.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -621,6 +621,31 @@ const DEFAULT_COMPASS_FUTURE = {
   storage:{proofreadingCollection:"compassProofreading",scoreCollection:"compassScores",practiceCollection:"readingPractice",voiceCollection:"voiceAnalysis"},
 };
 const DEFAULT_THEMES = ["家族愛","働き者","優しさ","ご縁","地域への貢献","趣味を通じた人生","教育","挑戦"];
+const COMPASS_DICTIONARIES=[
+  {id:"personality",label:"Personality Dictionary"},
+  {id:"season",label:"Season Dictionary"},
+  {id:"hobby",label:"Hobby Dictionary"},
+  {id:"occupation",label:"Occupation Dictionary"},
+  {id:"family",label:"Family Dictionary"},
+  {id:"ending",label:"Ending Dictionary"},
+  {id:"writingRules",label:"Writing Rules Dictionary"},
+];
+const COMPASS_STATUSES=["Draft","Approved","Official"];
+const makeCompassId=()=>`ckb-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+const normalizeCompassTags=v=>Array.isArray(v)?v.map(String).map(s=>s.trim()).filter(Boolean):
+  String(v||"").split(/[,\n|#]/).map(s=>s.trim()).filter(Boolean);
+const emptyCompassEntry=(dictionary="personality")=>({id:makeCompassId(),dictionary,originalWord:"",
+  compassExpression:"",explanation:"",reason:"",examples:"",tags:[],priority:3,status:"Draft",updatedAt:new Date().toISOString()});
+const normalizeCompassEntry=(raw={},dictionary="personality")=>({...emptyCompassEntry(dictionary),...raw,
+  id:raw.id||makeCompassId(),dictionary:raw.dictionary||dictionary,
+  originalWord:String(raw.originalWord||raw.original||raw.word||"").trim(),
+  compassExpression:String(raw.compassExpression||raw.expression||raw.compass||"").trim(),
+  explanation:String(raw.explanation||raw.description||"").trim(),reason:String(raw.reason||"").trim(),
+  examples:Array.isArray(raw.examples)?raw.examples.join("\n"):String(raw.examples||"").trim(),
+  tags:normalizeCompassTags(raw.tags),priority:Number(raw.priority||3),
+  status:COMPASS_STATUSES.includes(raw.status)?raw.status:"Draft",updatedAt:raw.updatedAt||new Date().toISOString()});
+const compassKeyOf=e=>`${e.dictionary||""}::${String(e.originalWord||"").trim().toLowerCase()}`;
+const getCompassAIEntries=kb=>ensureArray(kb).filter(e=>["Approved","Official"].includes(e.status));
 
 // ─── PALETTE & STYLES ─────────────────────────────────────────
 const C={
@@ -650,7 +675,7 @@ function App(){
   const [month,setMonth]=useState(now.getMonth()+1);
   const [role,setRole]  =useState(null);
   const [uname,setUname]=useState("");
-  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null});
+  const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null,compassKb:[]});
   const [busy,setBusy]  =useState(false);
   const [toast,setToast]=useState("");
 
@@ -709,14 +734,14 @@ function App(){
 
   const reload=useCallback(async()=>{
     setBusy(true);
-    const [s,sh,pr,at,vc,mcs,asts]=await Promise.all([
+    const [s,sh,pr,at,vc,mcs,asts,ckb]=await Promise.all([
       stLoad("settings"),stLoad(`shift-${ym}`),stLoad(`pref-${ym}`),
       stLoad(`att-${ym}`),stLoad(`vconf-${ym}`),
-      stLoad("mcStaff_str"),stLoad("assistStaff_str"),
+      stLoad("mcStaff_str"),stLoad("assistStaff_str"),stLoad("compassKnowledgeBase"),
     ]);
     setD({
       settings:s,shifts:sh||{},prefs:pr||{},att:at||{},vconf:vc||{},
-      mcStaff:mcs||null,assistStaff:asts||null,
+      mcStaff:mcs||null,assistStaff:asts||null,compassKb:ensureArray(ckb),
     });
     setBusy(false);
   },[ym]);
@@ -742,6 +767,12 @@ function App(){
     assistStaff: v=>{
       setD(d=>({...d,assistStaff:v.join("|")}));
       stSave("assistStaff_str",v.join("|")); // エラーが出ても止めない
+    },
+    compassKb: v=>{
+      const clean=ensureArray(v).map(e=>normalizeCompassEntry(e,e.dictionary));
+      setD(d=>({...d,compassKb:clean}));
+      stSave("compassKnowledgeBase",clean);
+      flash("Compass Knowledge Base を保存しました");
     },
   };
 
@@ -785,7 +816,7 @@ function App(){
   if(!role) return <RoleSelect cfg={cfg} onSelect={(r,n)=>{setRole(r);setUname(n);}}/>;
 
   const P={year,month,setYear,setMonth,shifts:D.shifts,prefs:D.prefs,att:D.att,vconf:D.vconf,
-    cfg,sv,generate,uname,role,busy,flash};
+    cfg,sv,generate,uname,role,busy,flash,compassKb:D.compassKb};
 
   return (
     <div style={{minHeight:"100vh",background:C.bg,
@@ -1006,6 +1037,7 @@ function AdminView(P){
     {id:"support",label:"🌱 成長カルテ"},
     {id:"library",label:"📚 ナレーションライブラリ"},
     {id:"ai",    label:"Compass AI"},
+    {id:"compassKb",label:"?? Compass Knowledge Base"},
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
@@ -1018,6 +1050,7 @@ function AdminView(P){
     {tab==="library"&&<CompassNarrationLibraryView {...P}/>}
     {tab==="ai"    &&<CompassNarrationView {...P}/>}
     {tab==="support"&&<SupportManagerView {...P}/>}
+    {tab==="compassKb"&&<CompassKnowledgeBaseAdmin {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
 }
@@ -4718,6 +4751,111 @@ function ItemSettingsTab({ cfg, sv }) {
 }
 
 // MC設定（管理者設定画面に追加）
+function CompassKnowledgeBaseAdmin({compassKb,sv,flash}){
+  const [entries,setEntries]=useState(()=>ensureArray(compassKb).map(e=>normalizeCompassEntry(e,e.dictionary)));
+  const [dictionary,setDictionary]=useState("personality");
+  const [filters,setFilters]=useState({keyword:"",tags:"",status:"all",dictionary:"all"});
+  const [selected,setSelected]=useState({});
+  const [draft,setDraft]=useState(emptyCompassEntry("personality"));
+  const [importText,setImportText]=useState("");
+  const [importFormat,setImportFormat]=useState("csv");
+  const [duplicateMode,setDuplicateMode]=useState("skip");
+  const [preview,setPreview]=useState(null);
+  const [bulk,setBulk]=useState({dictionary:"personality",priority:3,tags:""});
+  useEffect(()=>setEntries(ensureArray(compassKb).map(e=>normalizeCompassEntry(e,e.dictionary))),[compassKb]);
+  const saveAll=next=>{setEntries(next);sv.compassKb(next);};
+  const visible=entries.filter(e=>{
+    const kw=filters.keyword.trim().toLowerCase();
+    const tagTerms=normalizeCompassTags(filters.tags).map(t=>t.toLowerCase());
+    const hay=[e.originalWord,e.compassExpression,e.explanation,e.reason,e.examples,(e.tags||[]).join(" ")].join(" ").toLowerCase();
+    return (filters.dictionary==="all"||e.dictionary===filters.dictionary)
+      &&(filters.status==="all"||e.status===filters.status)
+      &&(!kw||hay.includes(kw))
+      &&(!tagTerms.length||tagTerms.every(t=>(e.tags||[]).map(x=>x.toLowerCase()).includes(t)));
+  }).sort((a,b)=>(a.dictionary||"").localeCompare(b.dictionary||"")||(a.priority||0)-(b.priority||0));
+  const updateEntry=(id,patch)=>saveAll(entries.map(e=>e.id===id?normalizeCompassEntry({...e,...patch,updatedAt:new Date().toISOString()},e.dictionary):e));
+  const addEntry=()=>{
+    const clean=normalizeCompassEntry({...draft,dictionary},dictionary);
+    if(!clean.originalWord||!clean.compassExpression){flash("Original Word と Compass Expression は必須です");return;}
+    saveAll([...entries,clean]);setDraft(emptyCompassEntry(dictionary));
+  };
+  const parseCSV=text=>{
+    const rows=[];let row=[],cell="",q=false;
+    for(let i=0;i<text.length;i++){
+      const ch=text[i],nx=text[i+1];
+      if(ch==='"'&&q&&nx==='"'){cell+='"';i++;continue;}
+      if(ch==='"'){q=!q;continue;}
+      if(ch===","&&!q){row.push(cell);cell="";continue;}
+      if((ch==="\n"||ch==="\r")&&!q){if(ch==="\r"&&nx==="\n")i++;row.push(cell);if(row.some(v=>v.trim()))rows.push(row);row=[];cell="";continue;}
+      cell+=ch;
+    }
+    row.push(cell);if(row.some(v=>v.trim()))rows.push(row);
+    if(!rows.length)return[];
+    const map={originalword:"originalWord",original:"originalWord",word:"originalWord",compassexpression:"compassExpression",expression:"compassExpression",compass:"compassExpression",explanation:"explanation",reason:"reason",examples:"examples",tags:"tags",priority:"priority",status:"status",dictionary:"dictionary"};
+    const h=rows[0].map(x=>map[x.toLowerCase().replace(/\s|_/g,"")]||x);
+    return rows.slice(1).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]||""])));
+  };
+  const parseMarkdown=text=>text.split(/\n(?=#{1,3}\s+)/).filter(Boolean).map(chunk=>{
+    const lines=chunk.split(/\r?\n/),o={originalWord:lines.shift().replace(/^#{1,3}\s*/,"").trim()};let key="explanation";
+    lines.forEach(line=>{
+      const m=line.match(/^\s*(Dictionary|Compass Expression|Expression|Explanation|Reason|Examples|Tags|Priority|Status)\s*:\s*(.*)$/i);
+      if(m){key=m[1].toLowerCase().replace(/\s+/g,"");const dest={dictionary:"dictionary",compassexpression:"compassExpression",expression:"compassExpression",explanation:"explanation",reason:"reason",examples:"examples",tags:"tags",priority:"priority",status:"status"}[key];if(dest)o[dest]=m[2].trim();}
+      else if(line.trim()){const dest={compassexpression:"compassExpression",expression:"compassExpression",explanation:"explanation",reason:"reason",examples:"examples",tags:"tags",priority:"priority",status:"status",dictionary:"dictionary"}[key]||"explanation";o[dest]=(o[dest]?o[dest]+"\n":"")+line.trim();}
+    });
+    return o;
+  });
+  const parseImport=()=>{
+    const errors=[];let raw=[];
+    try{if(importFormat==="json"){const parsed=JSON.parse(importText);raw=Array.isArray(parsed)?parsed:ensureArray(parsed.entries||parsed.items);}
+      else raw=importFormat==="markdown"?parseMarkdown(importText):parseCSV(importText);
+    }catch(e){errors.push("Parse error: "+(e.message||e));}
+    const existing=new Map(entries.map(e=>[compassKeyOf(e),e])),seen=new Set();
+    const items=raw.map((r,i)=>{const item=normalizeCompassEntry(r,r.dictionary||dictionary),key=compassKeyOf(item);
+      if(!item.originalWord)errors.push(`${i+1}: Original Word missing`);
+      if(!item.compassExpression)errors.push(`${i+1}: Compass Expression missing`);
+      const previewType=seen.has(key)?"duplicate":existing.has(key)?"updated":"new";seen.add(key);return {...item,previewType};
+    }).filter(x=>x.originalWord&&x.compassExpression);
+    setPreview({items,errors,newCount:items.filter(x=>x.previewType==="new").length,updatedCount:items.filter(x=>x.previewType==="updated").length,duplicateCount:items.filter(x=>x.previewType==="duplicate").length});
+  };
+  const applyImport=()=>{
+    if(!preview)return;let next=[...entries];const find=()=>new Map(next.map((e,i)=>[compassKeyOf(e),i]));
+    preview.items.forEach(item=>{const idx=find().get(compassKeyOf(item));const clean=normalizeCompassEntry({...item,previewType:undefined},item.dictionary);
+      if(idx===undefined)next.push(clean);else if(duplicateMode==="overwrite")next[idx]=normalizeCompassEntry({...clean,id:next[idx].id},clean.dictionary);
+      else if(duplicateMode==="merge")next[idx]=normalizeCompassEntry({...next[idx],...clean,id:next[idx].id,tags:Array.from(new Set([...(next[idx].tags||[]),...(clean.tags||[])]))},next[idx].dictionary);
+    });
+    saveAll(next);setPreview(null);setImportText("");
+  };
+  const exportRows=()=>[["dictionary","originalWord","compassExpression","explanation","reason","examples","tags","priority","status"],...entries.map(e=>[e.dictionary,e.originalWord,e.compassExpression,e.explanation,e.reason,e.examples,(e.tags||[]).join("|"),e.priority,e.status])];
+  const downloadJSON=(name,data)=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);};
+  const bulkApply=action=>{
+    const ids=Object.keys(selected).filter(id=>selected[id]);if(!ids.length){flash("対象を選択してください");return;}
+    let next=action==="delete"?entries.filter(e=>!selected[e.id]):entries.map(e=>!selected[e.id]?e:action==="approve"?{...e,status:"Approved",updatedAt:new Date().toISOString()}:action==="move"?{...e,dictionary:bulk.dictionary,updatedAt:new Date().toISOString()}:action==="priority"?{...e,priority:Number(bulk.priority)||3,updatedAt:new Date().toISOString()}:action==="tags"?{...e,tags:normalizeCompassTags(bulk.tags),updatedAt:new Date().toISOString()}:e);
+    setSelected({});saveAll(next);
+  };
+  return <div>
+    <div style={{...GC,display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+      <div><h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy}}>🧭 Compass Knowledge Base</h3><div style={{fontSize:12,color:C.muted}}>AI 使用対象: Approved / Official のみ ({getCompassAIEntries(entries).length}件)</div></div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button style={Btn(C.green)} onClick={()=>downloadCSV("compass_knowledge_base.csv",exportRows())}>CSV Export</button><button style={Btn(C.blue)} onClick={()=>downloadJSON("compass_knowledge_base.json",entries)}>JSON Export</button><button style={Btn(C.amber)} onClick={()=>downloadJSON("compass_kb_backup_"+new Date().toISOString().slice(0,10)+".json",{build:"Sprint 26 Build 20260705.1",createdAt:new Date().toISOString(),entries})}>Backup</button></div>
+    </div>
+    <div style={GC}><h3 style={{margin:"0 0 12px",fontSize:14}}>Entry Editor</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}><select value={dictionary} onChange={e=>{setDictionary(e.target.value);setDraft({...draft,dictionary:e.target.value});}}>{COMPASS_DICTIONARIES.map(d=><option key={d.id} value={d.id}>{d.label}</option>)}</select><input placeholder="Original Word" value={draft.originalWord} onChange={e=>setDraft({...draft,originalWord:e.target.value})}/><input placeholder="Compass Expression" value={draft.compassExpression} onChange={e=>setDraft({...draft,compassExpression:e.target.value})}/><select value={draft.status} onChange={e=>setDraft({...draft,status:e.target.value})}>{COMPASS_STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginTop:10}}>{["explanation","reason","examples","tags"].map(k=><textarea key={k} placeholder={k} value={Array.isArray(draft[k])?draft[k].join(", "):draft[k]} rows={3} onChange={e=>setDraft({...draft,[k]:k==="tags"?normalizeCompassTags(e.target.value):e.target.value})}/>)}</div>
+      <div style={{display:"flex",gap:10,marginTop:10,alignItems:"center",flexWrap:"wrap"}}><span style={{fontSize:12,color:C.muted}}>Priority</span><input type="number" value={draft.priority} onChange={e=>setDraft({...draft,priority:Number(e.target.value)||3})} style={{width:80}}/><button style={Btn(C.navy)} onClick={addEntry}>Add</button></div>
+    </div>
+    <div style={GC}><h3 style={{margin:"0 0 12px",fontSize:14}}>Import Preview</h3>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><select value={importFormat} onChange={e=>setImportFormat(e.target.value)}><option value="csv">CSV</option><option value="json">JSON</option><option value="markdown">Markdown</option></select><select value={duplicateMode} onChange={e=>setDuplicateMode(e.target.value)}><option value="skip">Duplicate: Skip</option><option value="overwrite">Duplicate: Overwrite</option><option value="merge">Duplicate: Merge</option></select><button style={Btn(C.blue)} onClick={parseImport}>Preview</button>{preview&&<button style={Btn(C.green)} onClick={applyImport}>Import</button>}</div>
+      <textarea value={importText} onChange={e=>setImportText(e.target.value)} rows={6} placeholder="Paste CSV / JSON / Markdown" style={{width:"100%",fontFamily:"inherit"}}/>
+      {preview&&<div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:12}}>{[["New entries",preview.newCount,C.green],["Updated entries",preview.updatedCount,C.blue],["Duplicate entries",preview.duplicateCount,C.amber],["Errors",preview.errors.length,C.red]].map(([l,v,c])=><div key={l} style={{background:"#fff",border:"1px solid "+c,borderRadius:8,padding:"8px 12px",minWidth:120}}><b style={{color:c}}>{v}</b><div style={{fontSize:11,color:C.muted}}>{l}</div></div>)}</div>}
+      {preview?.errors.length>0&&<div style={{marginTop:10,color:C.red,fontSize:12}}>{preview.errors.map(e=><div key={e}>{e}</div>)}</div>}
+    </div>
+    <div style={GC}><h3 style={{margin:"0 0 12px",fontSize:14}}>Search / Bulk Actions</h3>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:12}}><input placeholder="Keyword" value={filters.keyword} onChange={e=>setFilters({...filters,keyword:e.target.value})}/><input placeholder="Tags" value={filters.tags} onChange={e=>setFilters({...filters,tags:e.target.value})}/><select value={filters.status} onChange={e=>setFilters({...filters,status:e.target.value})}><option value="all">All Status</option>{COMPASS_STATUSES.map(s=><option key={s}>{s}</option>)}</select><select value={filters.dictionary} onChange={e=>setFilters({...filters,dictionary:e.target.value})}><option value="all">All Dictionary</option>{COMPASS_DICTIONARIES.map(d=><option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}><button style={Btn(C.green)} onClick={()=>bulkApply("approve")}>Approve</button><button style={Btn(C.red)} onClick={()=>bulkApply("delete")}>Delete</button><select value={bulk.dictionary} onChange={e=>setBulk({...bulk,dictionary:e.target.value})}>{COMPASS_DICTIONARIES.map(d=><option key={d.id} value={d.id}>{d.label}</option>)}</select><button style={Btn(C.blue)} onClick={()=>bulkApply("move")}>Move</button><input type="number" value={bulk.priority} onChange={e=>setBulk({...bulk,priority:e.target.value})} style={{width:70}}/><button style={Btn(C.amber)} onClick={()=>bulkApply("priority")}>Change Priority</button><input placeholder="new tags" value={bulk.tags} onChange={e=>setBulk({...bulk,tags:e.target.value})}/><button style={Btn(C.purple)} onClick={()=>bulkApply("tags")}>Change Tags</button></div>
+    </div>
+    <div style={{...GC,overflowX:"auto",padding:0}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:1000}}><thead><tr style={{background:"#f8f9fb"}}><th style={TH}><input type="checkbox" checked={visible.length>0&&visible.every(e=>selected[e.id])} onChange={e=>{const n={...selected};visible.forEach(x=>n[x.id]=e.target.checked);setSelected(n);}}/></th><th style={TH}>Dictionary</th><th style={TH}>Original Word</th><th style={TH}>Compass Expression</th><th style={TH}>Explanation</th><th style={TH}>Reason</th><th style={TH}>Examples</th><th style={TH}>Tags</th><th style={TH}>Priority</th><th style={TH}>Status</th><th style={TH}>Action</th></tr></thead><tbody>{visible.map(e=><tr key={e.id}><td style={TD}><input type="checkbox" checked={!!selected[e.id]} onChange={ev=>setSelected({...selected,[e.id]:ev.target.checked})}/></td><td style={TD}><select value={e.dictionary} onChange={ev=>updateEntry(e.id,{dictionary:ev.target.value})}>{COMPASS_DICTIONARIES.map(d=><option key={d.id} value={d.id}>{d.label}</option>)}</select></td><td style={TD}><input value={e.originalWord} onChange={ev=>updateEntry(e.id,{originalWord:ev.target.value})}/></td><td style={TD}><input value={e.compassExpression} onChange={ev=>updateEntry(e.id,{compassExpression:ev.target.value})}/></td>{["explanation","reason","examples"].map(k=><td key={k} style={TD}><textarea value={e[k]} onChange={ev=>updateEntry(e.id,{[k]:ev.target.value})} rows={2}/></td>)}<td style={TD}><input value={(e.tags||[]).join(", ")} onChange={ev=>updateEntry(e.id,{tags:normalizeCompassTags(ev.target.value)})}/></td><td style={TD}><input type="number" value={e.priority} onChange={ev=>updateEntry(e.id,{priority:Number(ev.target.value)||3})} style={{width:60}}/></td><td style={TD}><select value={e.status} onChange={ev=>updateEntry(e.id,{status:ev.target.value})}>{COMPASS_STATUSES.map(s=><option key={s}>{s}</option>)}</select></td><td style={TD}><button style={{...Btn(C.red),fontSize:11,padding:"4px 8px"}} onClick={()=>saveAll(entries.filter(x=>x.id!==e.id))}>Delete</button></td></tr>)}</tbody></table>{visible.length===0&&<div style={{padding:20,textAlign:"center",color:C.muted}}>No entries</div>}</div>
+  </div>;
+}
+
 function MCConfigTab({ cfg, sv }) {
   const { staff } = cfg;
   const clients=getClients(cfg);
@@ -4833,6 +4971,6 @@ function MCConfigTab({ cfg, sv }) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
-<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">DEV<br>Sprint 25<br>Build 20260705.1</div>
+<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">DEV<br>Sprint 26<br>Build 20260705.1</div>
 </body>
 </html>
