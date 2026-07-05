@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 23 Build 20260705.1";
+const DEV_BUILD_LABEL = "Sprint 24 Build 20260705.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -434,6 +434,78 @@ const COMPASS_LIBRARY_TAG_GROUPS = {
   Community:["Volunteer","Neighborhood","Temple","School"],
 };
 const DEFAULT_COMPASS_LIBRARY_FUTURE = {aiRating:null,similarityScore:null,bestRanking:null,mostUsedCount:0,lastUsedAt:""};
+const DEFAULT_COMPASS_LIBRARY_SEEDS = [
+  {
+    id:"seed-s24-family-love",
+    title:"家族愛",
+    openingNarration:"やわらかな季節の気配の中で、故人様が歩んでこられた日々を思います。ご家族を何より大切にされ、日々の小さな出来事にも心を寄せてこられたお姿は、皆様の記憶の中にあたたかく残っています。食卓を囲む時間、何気ない声かけ、そっと見守るまなざし。その一つひとつが、ご家族にとってかけがえのない支えであり、故人様らしい愛情の形でございました。",
+    closingNarration:"今、ご家族の胸に残っているのは、特別な言葉だけではなく、日々の中にあったやさしい時間なのだと思います。そばにいてくれたこと、見守ってくれたこと、何も言わずに支えてくれたこと。そのぬくもりは、これからも皆様の心の奥で静かに息づいてまいります。ありがとうの思いを胸に、故人様をお見送りいたします。",
+    theme:"家族愛",
+    tags:["Family","Children","Grandchildren","家族愛"],
+    writingNotes:"家族へのまなざしを中心に、説明よりも心に残る日常の温度を大切にする。",
+    favorite:true,
+    approvedForAI:true,
+    approvedForCompassAI:true,
+    createdAt:"2026-07-05T00:00:00.000Z",
+    updatedAt:"2026-07-05T00:00:00.000Z",
+  },
+  {
+    id:"seed-s24-hard-worker",
+    title:"働き者",
+    openingNarration:"季節が静かに移ろう中、故人様のまっすぐな歩みが思い起こされます。目の前の務めに誠実に向き合い、家族のため、周りの方々のために力を尽くしてこられました。多くを語らずとも、背中で示してくださった責任感。日々の積み重ねを大切にするそのお姿は、身近な皆様にとって、大きな励ましであり、確かな道しるべでございました。",
+    closingNarration:"ご家族の心には、懸命に歩まれた故人様のお姿が、今も深く残っています。忙しい日々の中にも家族を思い、誰かのために手を動かし続けた時間。その積み重ねは、言葉にしきれない感謝となって、皆様の胸に受け継がれていくことでしょう。静かな敬意とありがとうの思いを込めて、故人様をお見送りいたします。",
+    theme:"働き者",
+    tags:["Hard worker","Occupation","Family","働き者"],
+    writingNotes:"仕事や努力を功績紹介にしすぎず、家族が見ていた背中と感謝へつなげる。",
+    favorite:true,
+    approvedForAI:true,
+    approvedForCompassAI:true,
+    createdAt:"2026-07-05T00:00:00.000Z",
+    updatedAt:"2026-07-05T00:00:00.000Z",
+  },
+  {
+    id:"seed-s24-kindness",
+    title:"優しさ",
+    openingNarration:"穏やかな季節の光に包まれるように、故人様のやさしいお人柄が偲ばれます。人の気持ちにそっと寄り添い、相手を思いやる言葉を自然にかけてくださる方でした。大げさではなく、押しつけることもなく、ただ静かにそばにいてくださる。そのやわらかな存在は、ご家族や親しい方々の心を幾度となく支えてこられたことでしょう。",
+    closingNarration:"今、皆様の胸に残るのは、故人様がくださったやさしさの余韻です。困った時に向けてくれたまなざし、何気なくかけてくれた一言、そっと差し伸べられた手。その記憶は、悲しみの中にもあたたかな灯りとして残っていきます。故人様らしい静かなやさしさに感謝を込めて、心よりお見送りいたします。",
+    theme:"優しさ",
+    tags:["Gentle","Kind","Family","優しさ"],
+    writingNotes:"優しさを抽象語で重ねず、まなざし・一言・そばにいる感じで表す。",
+    favorite:true,
+    approvedForAI:true,
+    approvedForCompassAI:true,
+    createdAt:"2026-07-05T00:00:00.000Z",
+    updatedAt:"2026-07-05T00:00:00.000Z",
+  },
+  {
+    id:"seed-s24-hobby-life",
+    title:"趣味と人生",
+    openingNarration:"季節の風がやさしく感じられる頃、故人様が大切にされてきた楽しみの時間が思い出されます。好きなことに向き合う時の表情、夢中になって過ごされたひととき、その話をされる時の声。趣味は単なる楽しみではなく、故人様の人生を豊かにし、ご家族との会話や思い出を育ててきた大切な時間でございました。",
+    closingNarration:"ご家族の心には、故人様が好きなことを楽しんでおられた時の穏やかな表情が残っています。その姿を思い出すたび、共に過ごした時間のあたたかさもよみがえることでしょう。好きなものを大切にし、自分らしく歩まれた日々。その余韻を胸に、皆様とともに故人様を静かにお見送りいたします。",
+    theme:"趣味を通じた人生",
+    tags:["Hobby","Travel","Gardening","Music","趣味と人生"],
+    writingNotes:"趣味の説明で終えず、その時間が家族の思い出や故人らしさになったことを書く。",
+    favorite:true,
+    approvedForAI:true,
+    approvedForCompassAI:true,
+    createdAt:"2026-07-05T00:00:00.000Z",
+    updatedAt:"2026-07-05T00:00:00.000Z",
+  },
+  {
+    id:"seed-s24-grandchildren-family",
+    title:"孫・家族の思い出",
+    openingNarration:"やさしい季節の気配とともに、故人様を囲むご家族の時間が思い浮かびます。お孫様やご家族に向けられたあたたかな笑顔、成長を喜び、何気ない出来事を大切に受け止めてくださったお姿。共に過ごした日々は、華やかな出来事ばかりではなく、日常の中の小さな幸せとして、皆様の心に刻まれていることでしょう。",
+    closingNarration:"お孫様やご家族の胸には、故人様と過ごした何気ない時間が、これからも大切に残っていきます。名前を呼んでくれた声、笑って見守ってくれた表情、そばにいるだけで安心できたぬくもり。その一つひとつが、ご家族にとって消えることのない宝物です。深い愛情に包まれた記憶とともに、故人様をお見送りいたします。",
+    theme:"家族愛",
+    tags:["Grandchildren","Family","Children","孫","家族の思い出"],
+    writingNotes:"孫や家族との記憶を、かわいらしさだけでなく残された心の支えとして結ぶ。",
+    favorite:true,
+    approvedForAI:true,
+    approvedForCompassAI:true,
+    createdAt:"2026-07-05T00:00:00.000Z",
+    updatedAt:"2026-07-05T00:00:00.000Z",
+  },
+];
 const normalizeCompassLibraryEntry=(entry={},i=0)=>({
   id:entry.id||`library-${Date.now()}-${i}`,
   title:String(entry.title||""),
@@ -442,13 +514,24 @@ const normalizeCompassLibraryEntry=(entry={},i=0)=>({
   theme:String(entry.theme||""),
   tags:ensureArray(entry.tags).map(String).map(s=>s.trim()).filter(Boolean),
   favorite:!!entry.favorite,
-  approvedForAI:!!entry.approvedForAI,
+  approvedForAI:!!(entry.approvedForAI||entry.approvedForCompassAI),
+  approvedForCompassAI:!!(entry.approvedForCompassAI||entry.approvedForAI),
   writingNotes:String(entry.writingNotes||""),
   createdAt:entry.createdAt||"",
   updatedAt:entry.updatedAt||"",
   future:{...DEFAULT_COMPASS_LIBRARY_FUTURE,...(entry.future||{})},
 });
 const normalizeCompassNarrationLibrary=v=>ensureArray(v).map(normalizeCompassLibraryEntry).filter(e=>e.title||e.openingNarration||e.closingNarration);
+const mergeCompassNarrationLibrarySeeds=v=>{
+  const normalized=normalizeCompassNarrationLibrary(v);
+  const ids=new Set(normalized.map(e=>e.id));
+  const seeded=DEFAULT_COMPASS_LIBRARY_SEEDS.filter(e=>!ids.has(e.id)).map(normalizeCompassLibraryEntry);
+  return [...seeded,...normalized];
+};
+const compassLibraryHasAllSeeds=v=>{
+  const ids=new Set(normalizeCompassNarrationLibrary(v).map(e=>e.id));
+  return DEFAULT_COMPASS_LIBRARY_SEEDS.every(e=>ids.has(e.id));
+};
 const compassTextScore=(entry,sheet,theme,season)=>{
   const hay=[entry.title,entry.theme,...entry.tags,entry.openingNarration,entry.closingNarration,entry.writingNotes].join(" ").toLowerCase();
   const needles=[theme,SEASON_LABELS[season],season,sheet.personality,sheet.hobbies,sheet.familyMemories,sheet.memorableEvents,sheet.travelAnniversaryEffort,sheet.favoritePhrases,sheet.valuedThings,sheet.familyFeelings]
@@ -458,14 +541,14 @@ const compassTextScore=(entry,sheet,theme,season)=>{
   if(entry.tags.includes(SEASON_LABELS[season])||entry.tags.map(t=>t.toLowerCase()).includes(season)) score+=5;
   needles.forEach(n=>{if(hay.includes(n)) score+=1;});
   if(entry.favorite) score+=2;
-  if(entry.approvedForAI) score+=2;
+  if(entry.approvedForAI||entry.approvedForCompassAI) score+=2;
   return score;
 };
 const compassSelectLibraryReferences=(sheet,cfg,theme,limit=5)=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   return normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary)
-    .filter(e=>e.favorite&&e.approvedForAI)
+    .filter(e=>e.favorite&&(e.approvedForAI||e.approvedForCompassAI))
     .map(e=>({...e,_score:compassTextScore(e,sheet,selectedTheme,season)}))
     .sort((a,b)=>(b._score-a._score)||String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))
     .slice(0,Math.max(3,Math.min(5,limit)))
@@ -592,7 +675,7 @@ function App(){
     compassDictionary:{...DEFAULT_COMPASS_DICTIONARY,...(raw.compassDictionary||{})},
     forbiddenWords:mergeForbiddenWords(raw.forbiddenWords),
     narrationSamples:normalizeNarrationSamples(ensureArray(raw.narrationSamples).length?raw.narrationSamples:DEFAULT_NARRATION_SAMPLES),
-    compassNarrationLibrary:normalizeCompassNarrationLibrary(raw.compassNarrationLibrary),
+    compassNarrationLibrary:mergeCompassNarrationLibrarySeeds(raw.compassNarrationLibrary),
     compassFuture:{...DEFAULT_COMPASS_FUTURE,...(raw.compassFuture||{}),
       providers:{...DEFAULT_COMPASS_FUTURE.providers,...((raw.compassFuture||{}).providers||{})}},
     aiSettings:normalizeAISettings(raw.aiSettings),
@@ -604,7 +687,7 @@ function App(){
   useEffect(()=>{
     const s=D.settings;
     if(!s) return;
-    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.narrationSamples||!s.compassNarrationLibrary||!s.compassFuture||!s.aiSettings||!s.compassThemes;
+    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.narrationSamples||!s.compassNarrationLibrary||!compassLibraryHasAllSeeds(s.compassNarrationLibrary)||!s.compassFuture||!s.aiSettings||!s.compassThemes;
     const hasLegacyAIFlag=!!(s.aiSettings&&Object.prototype.hasOwnProperty.call(s.aiSettings,"callEnabled"));
     if(missingCompass||hasLegacyAIFlag) stSave("settings",sanitizeSettingsForSave({...s,
       seasonalIntros:cfg.seasonalIntros,
@@ -2585,13 +2668,18 @@ const compassDetectTheme=(sheet,cfg={})=>{
   return rules.find(([,rx])=>rx.test(text))?.[0]||ensureArray(cfg.compassThemes)[0]||"家族愛";
 };
 const compassEmptySheet=()=>({deceasedName:"",age:"",deceasedDate:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
-  travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",familyFeelings:"",ceremonyType:"通夜",venue:"",notes:""});
+  travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",familyFeelings:"",ceremonyType:"通夜",notes:""});
 const compassEmptyDraft=()=>({full:""});
 const clean=v=>(v||"").trim();
+const compassSanitizeHearingSheet=sheet=>{
+  const {venue,company,workplace,location,...rest}=sheet||{};
+  return rest;
+};
 const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   const ai=cfg.aiSettings||DEFAULT_AI_SETTINGS;
+  const hearingSheet=compassSanitizeHearingSheet(sheet);
   const selectedSamples=ensureArray(selectedLibraryReferences).map(({id,title,theme,tags,openingNarration,closingNarration,writingNotes})=>({id,title,theme,tags,openingNarration,closingNarration,writingNotes}));
   const payload={
     workflow:"Hearing Sheet -> Prompt Builder -> Serverless API -> OpenAI API -> Draft -> MC edits -> Save",
@@ -2603,13 +2691,13 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])
       openingStyle:"季節の言葉は使ってよい。ただし会場名や参列者への挨拶を書かず、すぐに故人様のお人柄・歩み・職業・趣味・ご家族との記憶・具体的なエピソードへ入る。",
       openingFocus:["お人柄","人生の歩み","お仕事","趣味","家族との思い出","具体的なエピソード","人間的な温かさ"],
       closingPurpose:"閉式後ナレーションの目的は、人生を語り直すことではなく、ご家族の思い、残された記憶、故人様の人生の意味、これからも続く思い出を伝え、静かにお別れへ導くこと。",
-      closingStyle:"閉式後は故人様の生涯を再度説明しない。開式前で使ったエピソードを描写し直さず、その出来事がなぜ大切だったのか、家族の心に何が残ったのかを短く深く言葉にする。",
-      closingFocus:["ご家族の感謝","残された思い出","故人様の人生の意味","思い出が続いていく希望","静かで美しい結び"],
+      closingStyle:"閉式後は故人様の生涯を再度説明しない。開式前で使ったエピソードを描写し直さず、その出来事がなぜ大切だったのか、家族の心に何が残ったのかを短く深く言葉にする。閉式後ナレーションは季節の言葉で始めない。",
+      closingFocus:["ご家族の思い","心に残るもの","静かな別れ","余韻","残された思い出"],
       mainFocus:["故人様のお人柄","趣味","家族との思い出","口癖","大切にしていたこと","具体的なエピソード"],
       endingStyle:"定型的な葬儀挨拶ではなく、ご家族の思いと、故人様が残したものを受け止める静かな結びにする。",
       lengthTargets:{openingNarration:"600〜900日本語文字程度",closingNarration:"500〜700日本語文字程度"},
       sentenceRhythm:"記事ではなく読み上げ用の台本として書く。短い文、自然な間、息継ぎしやすい行のリズムを優先する。多くの文は30〜45日本語文字程度にする。",
-      venueNameRule:"会場名はナレーション本文に絶対に入れない。Hearing Sheetのvenueは運用メモであり、本文には使わない。",
+      venueNameRule:"会場はCompass AIヒアリングシートの対象外。会場名を推測、保存、送信、本文記載しない。",
       genericGreetingRule:"ご参列・ご来場・お集まりへのお礼など、一般的な葬儀の開会挨拶を書かない。",
       repetitionRule:"openingNarrationで描いたエピソード、場面、思い出をclosingNarrationで再説明しない。同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
       styleReferenceRule:"selectedLibraryStyleReferencesは文体・構成・リズム・あたたかさ・結び方だけを学ぶ。サンプル文を直接コピー、部分転用、言い換えコピーしない。",
@@ -2625,20 +2713,22 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])
       sourceLimit:"Use only Compass Hearing Sheet fields. If a field is blank or unclear, omit it naturally. Never invent facts and never ask follow-up questions.",
       spokenPriority:["rhythm","breathing","emotional pacing","warmth","quiet dignity"],
       openingJob:"Introduce the deceased and help attendees remember the person's life through personality, life work, hobbies, family memories, concrete episodes, values, favorite phrases, and warm human details.",
-      closingJob:"Do not summarize the life again. Express the family's feelings, the afterglow left in their hearts, the memories that remain, the meaning carried forward, and a quiet goodbye.",
+      closingJob:"Do not summarize the life again. Express the family's feelings, what remains in their hearts, the emotional aftertaste, and a quiet farewell. Do not start with seasonal language.",
       style:"Plain, natural Japanese funeral MC script that can be read aloud. Prefer short sentences, natural pauses, and one feeling or memory per paragraph.",
       avoid:["literary flourish","novel-like description","generic AI phrases","dramatic metaphors","repeated gratitude wording","closing that repeats the opening"],
     },
     selectedLibraryStyleReferences:selectedSamples,
-    hearingSheet:sheet,
+    hearingSheet,
     outputRules:[
       "日本語の葬儀司会ナレーション下書きを作成する",
       "開式前ナレーション、閉式後ナレーション、detectedTheme、improvementNotesをJSONで返す",
       "openingNarrationは600〜900日本語文字程度、closingNarrationは500〜700日本語文字程度で、短く終わらせない",
       "書き始める前に人生のテーマを一つだけ決め、detectedThemeに入れる",
       "会場名、会場に集まったことへの挨拶、本日はご参列ありがとうございます等の定型挨拶は書かない",
+      "会場は入力・保存・送信対象ではない。会場名を推測して書かない",
       "開式前は故人様を紹介し、参列者が人生を思い出せるように、お人柄・歩み・職業・趣味・家族の記憶・具体的なエピソードへ進む",
-      "閉式後は人生を語り直さない。ご家族の気持ち、残された記憶、故人様の人生の意味、思い出が続く希望、静かな別れを中心に書く",
+      "季節の言葉は開式前ナレーションのみで使う。閉式後ナレーションは季節の言葉から始めない",
+      "閉式後は人生を語り直さない。ご家族の気持ち、心に残るもの、静かな別れ、余韻を中心に書く",
       "開式前で使ったエピソードを閉式後で再描写しない。閉式後では、その出来事がなぜ心に残るのか、何が家族に残ったのかを書く",
       "記事や作文ではなく、読み上げる台本として短い文と自然な行のリズムで書く。多くの文は30〜45日本語文字程度にする",
       "感謝という語の連続使用や、同じ意味の表現の反復を避ける",
@@ -2656,6 +2746,8 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])
     "Quality Check before returning: no venue names, no attendee greetings, no repeated expressions, and openingNarration and closingNarration must have different content.",
     "Strictly forbidden expressions: 飛鳥会館にお集まりいただき; ○○会館にお集まりいただき; 本日はご参列いただき; 本日はご会葬賜り; ご来場ありがとうございます; ご参列ありがとうございます; ご会葬ありがとうございます; 本日はありがとうございます.",
     "Opening narration must begin with season, then the deceased, then life. Never begin with venue, attendees, or greetings.",
+    "Closing narration must not begin with seasonal language. Seasonal language is allowed only in openingNarration.",
+    "Closing narration must focus on family feelings, what remains in their hearts, quiet farewell, emotional aftertaste, and must not re-explain the deceased's life.",
     "",
     JSON.stringify(payload,null,2),
   ].join("\n");
@@ -2995,13 +3087,13 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     }
   };
   const reset=()=>{setActiveId(null);setSheet(compassEmptySheet());setDraft(compassEmptyDraft());setPrompt("");setTheme("");setSelectedLibraryReferences([]);setAiError("");setLoadingStep("");};
-  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...(rec.hearingSheet||{})});setDraft({...compassEmptyDraft(),...(rec.generatedDraft||{}),...(rec.editedDraft||{}),full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setPrompt(rec.generatedPrompt||rec.aiMeta?.prompt||"");setTheme(rec.theme||rec.aiMeta?.theme||rec.aiMeta?.detectedTheme||"");setSelectedLibraryReferences(ensureArray(rec.aiMeta?.selectedLibraryReferences));setAiError("");};
+  const openRecord=rec=>{setActiveId(rec.id);setSheet({...compassEmptySheet(),...compassSanitizeHearingSheet(rec.hearingSheet||{})});setDraft({...compassEmptyDraft(),...(rec.generatedDraft||{}),...(rec.editedDraft||{}),full:rec.editedDraft?.full||rec.generatedDraft?.full||rec.editedDraft?.opening||""});setPrompt(rec.generatedPrompt||rec.aiMeta?.prompt||"");setTheme(rec.theme||rec.aiMeta?.theme||rec.aiMeta?.detectedTheme||"");setSelectedLibraryReferences(ensureArray(rec.aiMeta?.selectedLibraryReferences));setAiError("");};
   const save=async()=>{
     const now=new Date().toISOString();
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
-      mcName:uname||"未入力",hearingSheet:sheet,generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
+      mcName:uname||"未入力",hearingSheet:compassSanitizeHearingSheet(sheet),generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint23-20260705.1",templateVersion:"sprint23-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint24-20260705.1",templateVersion:"sprint24-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -3028,7 +3120,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
         <div style={{fontSize:13,color:C.text}}>Compass AIは、承認済みかつFavoriteのライブラリから内容に近い3〜5件を自動選定します。文章のコピーではなく、Tone、Rhythm、Sentence flow、Warmth、Opening style、Ending styleのみを参照します。</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-        {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["venue","会場","text"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
+        {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>{label}</label>
           {type==="textarea"?<textarea value={sheet[key]} onChange={e=>update(key,e.target.value)} rows={3} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,resize:"vertical"}}/>:
           type==="select"?<select value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:"#fff"}}><option>通夜</option><option>葬儀</option></select>:
@@ -4726,6 +4818,6 @@ function MCConfigTab({ cfg, sv }) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
-<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">Compass<br>Sprint 23<br>Build 20260705.1</div>
+<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">Compass<br>Sprint 24<br>Build 20260705.1</div>
 </body>
 </html>
