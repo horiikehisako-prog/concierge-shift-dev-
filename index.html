@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 24 Build 20260705.1";
+const DEV_BUILD_LABEL = "Sprint 25 Build 20260705.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -434,6 +434,7 @@ const COMPASS_LIBRARY_TAG_GROUPS = {
   Community:["Volunteer","Neighborhood","Temple","School"],
 };
 const DEFAULT_COMPASS_LIBRARY_FUTURE = {aiRating:null,similarityScore:null,bestRanking:null,mostUsedCount:0,lastUsedAt:""};
+const DEFAULT_COMPASS_OFFICIAL_FIELDS = {officialVersion:"",officialScore:null,mostReferenced:0,aiLearningWeight:null};
 const DEFAULT_COMPASS_LIBRARY_SEEDS = [
   {
     id:"seed-s24-family-love",
@@ -516,7 +517,13 @@ const normalizeCompassLibraryEntry=(entry={},i=0)=>({
   favorite:!!entry.favorite,
   approvedForAI:!!(entry.approvedForAI||entry.approvedForCompassAI),
   approvedForCompassAI:!!(entry.approvedForCompassAI||entry.approvedForAI),
+  compassOfficial:entry.compassOfficial===true||String(entry.id||"").startsWith("seed-s24-"),
   writingNotes:String(entry.writingNotes||""),
+  approvalReason:String(entry.approvalReason||entry.reasonForApproval||((entry.compassOfficial===true||String(entry.id||"").startsWith("seed-s24-"))?entry.writingNotes||"Compass Official writing standard.":"")),
+  officialVersion:String(entry.officialVersion||entry.future?.officialVersion||DEFAULT_COMPASS_OFFICIAL_FIELDS.officialVersion),
+  officialScore:entry.officialScore??entry.future?.officialScore??DEFAULT_COMPASS_OFFICIAL_FIELDS.officialScore,
+  mostReferenced:entry.mostReferenced??entry.future?.mostReferenced??DEFAULT_COMPASS_OFFICIAL_FIELDS.mostReferenced,
+  aiLearningWeight:entry.aiLearningWeight??entry.future?.aiLearningWeight??DEFAULT_COMPASS_OFFICIAL_FIELDS.aiLearningWeight,
   createdAt:entry.createdAt||"",
   updatedAt:entry.updatedAt||"",
   future:{...DEFAULT_COMPASS_LIBRARY_FUTURE,...(entry.future||{})},
@@ -533,25 +540,23 @@ const compassLibraryHasAllSeeds=v=>{
   return DEFAULT_COMPASS_LIBRARY_SEEDS.every(e=>ids.has(e.id));
 };
 const compassTextScore=(entry,sheet,theme,season)=>{
-  const hay=[entry.title,entry.theme,...entry.tags,entry.openingNarration,entry.closingNarration,entry.writingNotes].join(" ").toLowerCase();
+  const hay=[entry.title,entry.theme,...entry.tags,entry.openingNarration,entry.closingNarration,entry.writingNotes,entry.approvalReason].join(" ").toLowerCase();
   const needles=[theme,SEASON_LABELS[season],season,sheet.personality,sheet.hobbies,sheet.familyMemories,sheet.memorableEvents,sheet.travelAnniversaryEffort,sheet.favoritePhrases,sheet.valuedThings,sheet.familyFeelings]
     .join(" ").toLowerCase().split(/[\s,、。・/]+/).map(s=>s.trim()).filter(s=>s.length>1);
   let score=0;
   if(entry.theme&&theme&&entry.theme===theme) score+=12;
   if(entry.tags.includes(SEASON_LABELS[season])||entry.tags.map(t=>t.toLowerCase()).includes(season)) score+=5;
   needles.forEach(n=>{if(hay.includes(n)) score+=1;});
-  if(entry.favorite) score+=2;
-  if(entry.approvedForAI||entry.approvedForCompassAI) score+=2;
   return score;
 };
-const compassSelectLibraryReferences=(sheet,cfg,theme,limit=5)=>{
+const compassSelectLibraryReferences=(sheet,cfg,theme,limit=3)=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   return normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary)
-    .filter(e=>e.favorite&&(e.approvedForAI||e.approvedForCompassAI))
+    .filter(e=>e.compassOfficial)
     .map(e=>({...e,_score:compassTextScore(e,sheet,selectedTheme,season)}))
     .sort((a,b)=>(b._score-a._score)||String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))
-    .slice(0,Math.max(3,Math.min(5,limit)))
+    .slice(0,Math.max(0,Math.min(3,limit)))
     .map(({_score,...e})=>e);
 };
 const mergeForbiddenWords=v=>Array.from(new Set([...ensureArray(v),...DEFAULT_FORBIDDEN_WORDS])).filter(Boolean);
@@ -2680,7 +2685,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   const ai=cfg.aiSettings||DEFAULT_AI_SETTINGS;
   const hearingSheet=compassSanitizeHearingSheet(sheet);
-  const selectedSamples=ensureArray(selectedLibraryReferences).map(({id,title,theme,tags,openingNarration,closingNarration,writingNotes})=>({id,title,theme,tags,openingNarration,closingNarration,writingNotes}));
+  const selectedSamples=ensureArray(selectedLibraryReferences).map(({id,title,theme,tags,openingNarration,closingNarration,writingNotes,approvalReason,compassOfficial,officialVersion,officialScore,mostReferenced,aiLearningWeight})=>({id,title,theme,tags,openingNarration,closingNarration,writingNotes,approvalReason,compassOfficial,officialVersion,officialScore,mostReferenced,aiLearningWeight}));
   const payload={
     workflow:"Hearing Sheet -> Prompt Builder -> Serverless API -> OpenAI API -> Draft -> MC edits -> Save",
     provider:{selected:ai.provider||"openai",model:ai.model||DEFAULT_AI_SETTINGS.model,apiCallEnabled:true},
@@ -2700,7 +2705,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])
       venueNameRule:"会場はCompass AIヒアリングシートの対象外。会場名を推測、保存、送信、本文記載しない。",
       genericGreetingRule:"ご参列・ご来場・お集まりへのお礼など、一般的な葬儀の開会挨拶を書かない。",
       repetitionRule:"openingNarrationで描いたエピソード、場面、思い出をclosingNarrationで再説明しない。同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
-      styleReferenceRule:"selectedLibraryStyleReferencesは文体・構成・リズム・あたたかさ・結び方だけを学ぶ。サンプル文を直接コピー、部分転用、言い換えコピーしない。",
+      styleReferenceRule:"Use only Compass Official narrations as writing style references. Do not copy, reuse, translate, or paraphrase the sample text. Learn only tone, rhythm, flow, warmth, sentence length, opening style, closing style, Writing Notes, and Reason for Approval.",
       professionalMcStandard:"一般的なAI文章ではなく、経験ある葬儀司会者が読み上げる原稿の水準にする。抽象語を重ねず、具体的な記憶から温度を出す。",
       writingDictionary:cfg.compassDictionary||DEFAULT_COMPASS_DICTIONARY,
       forbiddenWords:cfg.forbiddenWords||DEFAULT_FORBIDDEN_WORDS,
@@ -2941,16 +2946,17 @@ function CompassMasterEditor({cfg,sv,flash,role}) {
 function CompassNarrationLibraryView({cfg,sv,flash}) {
   const themes=ensureArray(cfg.compassThemes).length?ensureArray(cfg.compassThemes):DEFAULT_THEMES;
   const library=normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary);
-  const empty=()=>normalizeCompassLibraryEntry({id:`library-${Date.now()}`,title:"",theme:themes[0]||"",tags:[],favorite:false,approvedForAI:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+  const empty=()=>normalizeCompassLibraryEntry({id:`library-${Date.now()}`,title:"",theme:themes[0]||"",tags:[],favorite:false,approvedForAI:false,compassOfficial:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
   const [items,setItems]=useState(library);
   const [activeId,setActiveId]=useState(library[0]?.id||"");
-  const [query,setQuery]=useState({theme:"",season:"",tag:"",keyword:""});
+  const [query,setQuery]=useState({theme:"",season:"",tag:"",keyword:"",official:""});
   useEffect(()=>{const next=normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary);setItems(next);setActiveId(id=>id||next[0]?.id||"");},[JSON.stringify(cfg.compassNarrationLibrary)]);
   const active=items.find(i=>i.id===activeId)||items[0]||empty();
   const allTags=Array.from(new Set([...Object.values(COMPASS_LIBRARY_TAG_GROUPS).flat(),...items.flatMap(i=>i.tags)])).filter(Boolean).sort((a,b)=>a.localeCompare(b,"ja"));
   const filtered=items.filter(item=>{
     const text=[item.title,item.openingNarration,item.closingNarration,item.theme,item.writingNotes,...item.tags].join(" ").toLowerCase();
     return (!query.theme||item.theme===query.theme)
+      &&(!query.official||(query.official==="official"?item.compassOfficial:!item.compassOfficial))
       &&(!query.season||item.tags.includes(query.season))
       &&(!query.tag||item.tags.includes(query.tag))
       &&(!query.keyword||text.includes(query.keyword.toLowerCase()));
@@ -2969,11 +2975,12 @@ function CompassNarrationLibraryView({cfg,sv,flash}) {
         <div><h3 style={{margin:"0 0 4px",fontSize:18,color:C.navy}}>📚 ナレーションライブラリ</h3><div style={{fontSize:12,color:C.muted,fontWeight:700}}>Compass AIの文章知識ベース。承認済み・お気に入りのみが文体参照に使われます。</div></div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={add} style={{...Btn(C.green),padding:"11px 16px"}}>＋ 新規</button><button onClick={()=>saveAll(items)} style={{...Btn(C.navy),padding:"11px 16px"}}>保存</button></div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>{stat("登録",items.length)}{stat("Favorite",items.filter(i=>i.favorite).length,C.amber)}{stat("Approved",items.filter(i=>i.approvedForAI).length,C.green)}{stat("AI参照対象",items.filter(i=>i.favorite&&i.approvedForAI).length,C.blue)}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>{stat("登録",items.length)}{stat("Compass Official",items.filter(i=>i.compassOfficial).length,C.amber)}{stat("Favorite",items.filter(i=>i.favorite).length,C.amber)}{stat("Approved",items.filter(i=>i.approvedForAI).length,C.green)}{stat("AI reference",items.filter(i=>i.compassOfficial).length,C.blue)}</div>
     </div>
     <div style={GC}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
         <select value={query.theme} onChange={e=>setQuery(q=>({...q,theme:e.target.value}))} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",background:"#fff"}}><option value="">Themeすべて</option>{themes.map(t=><option key={t} value={t}>{t}</option>)}</select>
+        <select value={query.official} onChange={e=>setQuery(q=>({...q,official:e.target.value}))} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",background:"#fff"}}><option value="">Official / Normal</option><option value="official">Compass Official</option><option value="normal">Normal narration</option></select>
         <select value={query.season} onChange={e=>setQuery(q=>({...q,season:e.target.value}))} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",background:"#fff"}}><option value="">Seasonすべて</option>{COMPASS_LIBRARY_TAG_GROUPS.Season.map(t=><option key={t} value={t}>{t}</option>)}</select>
         <select value={query.tag} onChange={e=>setQuery(q=>({...q,tag:e.target.value}))} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",background:"#fff"}}><option value="">Tagすべて</option>{allTags.map(t=><option key={t} value={t}>{t}</option>)}</select>
         <input value={query.keyword} onChange={e=>setQuery(q=>({...q,keyword:e.target.value}))} placeholder="Keyword" style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px"}}/>
@@ -2986,7 +2993,7 @@ function CompassNarrationLibraryView({cfg,sv,flash}) {
         {filtered.map(item=><button key={item.id} onClick={()=>setActiveId(item.id)} style={{width:"100%",textAlign:"left",border:`1px solid ${active.id===item.id?C.blue:C.border}`,borderRadius:8,padding:10,marginBottom:8,background:active.id===item.id?C.blueL:"#fff",cursor:"pointer"}}>
           <div style={{fontWeight:900,color:C.navy,fontSize:14,overflowWrap:"anywhere"}}>{item.title||"無題"}</div>
           <div style={{fontSize:11,color:C.muted,marginTop:4}}>{item.theme||"Themeなし"}</div>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>{item.favorite&&<span style={{fontSize:11,color:C.amber,fontWeight:900}}>⭐ Favorite</span>}{item.approvedForAI&&<span style={{fontSize:11,color:C.green,fontWeight:900}}>✅ Approved</span>}</div>
+          <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>{item.compassOfficial&&<span style={{fontSize:11,color:C.amber,fontWeight:900}}>Compass Official</span>}{item.favorite&&<span style={{fontSize:11,color:C.amber,fontWeight:900}}>Favorite</span>}{item.approvedForAI&&<span style={{fontSize:11,color:C.green,fontWeight:900}}>Approved</span>}</div>
         </button>)}
       </div>
       <div style={GC}>
@@ -2998,6 +3005,7 @@ function CompassNarrationLibraryView({cfg,sv,flash}) {
           <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:12}}>
             <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:900,color:C.amber}}><input type="checkbox" checked={active.favorite} onChange={e=>update(active.id,{favorite:e.target.checked})}/>⭐ Favorite</label>
             <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:900,color:C.green}}><input type="checkbox" checked={active.approvedForAI} onChange={e=>update(active.id,{approvedForAI:e.target.checked})}/>✅ Approved for Compass AI</label>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:900,color:C.amber}}><input type="checkbox" checked={active.compassOfficial} onChange={e=>update(active.id,{compassOfficial:e.target.checked})}/>Compass Official</label>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr",gap:10}}>
             <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Opening narration<textarea value={active.openingNarration} onChange={e=>update(active.id,{openingNarration:e.target.value})} rows={7} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14,lineHeight:1.6}}/></label>
@@ -3010,6 +3018,13 @@ function CompassNarrationLibraryView({cfg,sv,flash}) {
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>{active.tags.map(tag=><span key={tag} style={{fontSize:12,border:`1px solid ${C.border}`,borderRadius:999,padding:"4px 8px",background:C.blueL,fontWeight:800}}>{tag}</span>)}</div>
           </div>
           <label style={{display:"block",fontSize:12,color:C.muted,fontWeight:800,marginTop:12}}>Writing Notes<textarea value={active.writingNotes} onChange={e=>update(active.id,{writingNotes:e.target.value})} rows={4} placeholder="Beautiful opening / Excellent ending / Very natural rhythm" style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14,lineHeight:1.6}}/></label>
+          <label style={{display:"block",fontSize:12,color:C.muted,fontWeight:800,marginTop:12}}>Reason for Approval<textarea value={active.approvalReason} onChange={e=>update(active.id,{approvalReason:e.target.value})} rows={3} placeholder="Beautiful seasonal opening / Excellent emotional ending / Natural rhythm" style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:14,lineHeight:1.6}}/></label>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:12}}>
+            <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Official Version<input value={active.officialVersion} onChange={e=>update(active.id,{officialVersion:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/></label>
+            <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Official Score<input type="number" value={active.officialScore??""} onChange={e=>update(active.id,{officialScore:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/></label>
+            <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Most Referenced<input type="number" value={active.mostReferenced??0} onChange={e=>update(active.id,{mostReferenced:Number(e.target.value)||0})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/></label>
+            <label style={{fontSize:12,color:C.muted,fontWeight:800}}>AI Learning Weight<input type="number" value={active.aiLearningWeight??""} onChange={e=>update(active.id,{aiLearningWeight:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/></label>
+          </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}><button onClick={()=>copy(active)} style={{...Btn(C.blue),padding:"10px 14px"}}>複製</button><button onClick={()=>remove(active.id)} style={{...Btn(C.red),padding:"10px 14px"}}>削除</button></div>
         </>}
       </div>
@@ -3037,7 +3052,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
   const selectedSamples=selectedLibraryReferences;
   const aiControl=normalizeAISettings(cfg.aiSettings);
   const makeDraft=async()=>{
-    const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,5);
+    const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,3);
     setSelectedLibraryReferences(libraryRefs);
     const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme,libraryRefs);
     const ai=normalizeAISettings(cfg.aiSettings);
@@ -3093,7 +3108,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:compassSanitizeHearingSheet(sheet),generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint24-20260705.1",templateVersion:"sprint24-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint25-20260705.1",templateVersion:"sprint25-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -3117,7 +3132,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
       </div>
       <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fffaf7",marginBottom:12,lineHeight:1.6}}>
         <div style={{fontSize:12,color:C.muted,fontWeight:800,marginBottom:4}}>ナレーションライブラリ自動参照</div>
-        <div style={{fontSize:13,color:C.text}}>Compass AIは、承認済みかつFavoriteのライブラリから内容に近い3〜5件を自動選定します。文章のコピーではなく、Tone、Rhythm、Sentence flow、Warmth、Opening style、Ending styleのみを参照します。</div>
+        <div style={{fontSize:13,color:C.text}}>Compass AI first searches the Compass Official Library and selects the best matching 3 narrations. They are used only for writing style, tone, rhythm, flow, warmth, and sentence length. Do not copy.</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
         {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
@@ -3136,7 +3151,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:10,marginBottom:10}}>
         <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
           <div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:6}}>Selected narration library references</div>
-          {selectedSamples.length?selectedSamples.map(s=><div key={s.id} style={{fontSize:13,lineHeight:1.5,borderTop:`1px solid ${C.border}`,padding:"6px 0"}}><b>{s.title}</b><br/><span style={{color:C.muted}}>{ensureArray(s.tags).join(" / ")}</span></div>):<div style={{fontSize:13,color:C.muted}}>未選択</div>}
+          {selectedSamples.length?selectedSamples.map(s=><div key={s.id} style={{fontSize:13,lineHeight:1.5,borderTop:`1px solid ${C.border}`,padding:"6px 0"}}><b>{s.title}</b> <span style={{color:C.amber,fontWeight:900}}>Compass Official</span><br/><span style={{color:C.muted}}>{ensureArray(s.tags).join(" / ")}</span><br/><span style={{color:C.text}}>Reason: {s.approvalReason||"-"}</span></div>):<div style={{fontSize:13,color:C.muted}}>Not selected</div>}
         </div>
         <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
           <div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:6}}>Forbidden phrases</div>
@@ -4818,6 +4833,6 @@ function MCConfigTab({ cfg, sv }) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
-<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">Compass<br>Sprint 24<br>Build 20260705.1</div>
+<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">DEV<br>Sprint 25<br>Build 20260705.1</div>
 </body>
 </html>
