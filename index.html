@@ -642,7 +642,9 @@ const normalizeCompassEntry=(raw={},dictionary="personality")=>({...emptyCompass
   compassExpression:String(raw.compassExpression||raw.expression||raw.compass||"").trim(),
   explanation:String(raw.explanation||raw.description||"").trim(),reason:String(raw.reason||"").trim(),
   examples:Array.isArray(raw.examples)?raw.examples.join("\n"):String(raw.examples||"").trim(),
-  tags:normalizeCompassTags(raw.tags),priority:Number(raw.priority||3),
+  tags:normalizeCompassTags(raw.tags),
+  priority:String(raw.priority||"").toLowerCase()==="normal"?3:Number(raw.priority||3),
+  priorityLabel:raw.priorityLabel||(String(raw.priority||"").toLowerCase()==="normal"?"normal":""),
   status:COMPASS_STATUSES.includes(raw.status)?raw.status:"Draft",updatedAt:raw.updatedAt||new Date().toISOString()});
 const compassKeyOf=e=>`${e.dictionary||""}::${String(e.originalWord||"").trim().toLowerCase()}`;
 const getCompassAIEntries=kb=>ensureArray(kb).filter(e=>["Approved","Official"].includes(e.status));
@@ -1137,10 +1139,16 @@ const AI_TYPE_LABELS={
   writingRules:"Writing Rules",
   knowledgeBase:"Knowledge Base"
 };
+const AI_DICTIONARY_TYPE_MAP={personality:"personality",season:"season",hobby:"hobby",occupation:"occupation",family:"family",ending:"ending",writingRules:"writingRules",knowledgeBase:"personality"};
 const aiClean=s=>String(s||"").replace(/^[\s\-*・#]+/,"").trim();
 const aiKey=s=>aiClean(s).toLowerCase().replace(/\s+/g," ");
 function aiDetectType(text){
   const t=String(text||"").toLowerCase();
+  const json=aiExtractJson(text);
+  const hinted=aiClean(ensureArray(json)[0]?.type||ensureArray(json)[0]?.dictionary||"").toLowerCase().replace(/\s+/g,"");
+  const hintedMap={compassofficial:"compassOfficial",official:"compassOfficial",narration:"compassOfficial",personality:"personality",season:"season",hobby:"hobby",occupation:"occupation",family:"family",ending:"ending",writingrules:"writingRules",writingrule:"writingRules",knowledgebase:"knowledgeBase"};
+  if(hintedMap[hinted]) return hintedMap[hinted];
+  if(/openingnarration|closingnarration|compass official|ナレーション/.test(t)) return "compassOfficial";
   const score={
     compassOfficial:(t.match(/compass official|ナレーション|narration|favorite|approved/g)||[]).length,
     personality:(t.match(/personality|性格|人格|personality dictionary/g)||[]).length,
@@ -1158,7 +1166,7 @@ function aiDetectType(text){
 function aiExtractJson(text){
   try{
     const parsed=JSON.parse(text);
-    return Array.isArray(parsed)?parsed:(Array.isArray(parsed.entries)?parsed.entries:[parsed]);
+    return Array.isArray(parsed)?parsed:(Array.isArray(parsed.entries)?parsed.entries:Array.isArray(parsed.items)?parsed.items:[parsed]);
   }catch(e){return null;}
 }
 function aiParseEntries(text,type){
@@ -1175,13 +1183,53 @@ function aiParseEntries(text,type){
   });
   return base.map((x,i)=>{
     const title=aiClean(x.title||x.name||x.keyword||x.term||x.label||`Entry ${i+1}`);
-    const body=aiClean(x.body||x.text||x.content||x.value||x.description||title);
-    const common={id:`ai-${Date.now()}-${i}`,type,title,body,source:"ChatGPT paste",createdAt:now,updatedAt:now};
+    const openingNarration=aiClean(x.openingNarration||x.opening||x.openingText||"");
+    const closingNarration=aiClean(x.closingNarration||x.closing||x.endingNarration||"");
+    const body=aiClean(x.body||x.text||x.content||x.value||x.description||x.compassExpression||x.expression||[openingNarration,closingNarration].filter(Boolean).join("\n\n")||title);
+    const common={id:`ai-${Date.now()}-${i}`,type,title,body,source:"ChatGPT paste",createdAt:now,updatedAt:now,
+      originalWord:aiClean(x.originalWord||x.original||x.word||x.keyword||x.term||title),
+      compassExpression:aiClean(x.compassExpression||x.expression||x.compass||x.value||body),
+      explanation:aiClean(x.explanation||x.description||body),reason:aiClean(x.reason||"ChatGPT pasteからAI受信箱で取り込み"),
+      examples:Array.isArray(x.examples)?x.examples.join("\n"):aiClean(x.examples||""),tags:normalizeCompassTags(x.tags),
+      openingNarration,closingNarration,theme:aiClean(x.theme||""),writingNotes:aiClean(x.writingNotes||x.notes||"")};
     if(type==="compassOfficial")return {...common,favorite:true,approved:true,compassOfficial:true};
-    return {...common,status:"Approved",priority:"normal"};
+    return {...common,status:"Approved",priority:"normal",priorityLabel:"normal"};
   });
 }
-function AIInboxView({flash}){
+const aiEntryTargetKey=e=>e.type==="compassOfficial"
+  ?aiKey(`official:${e.title}:${e.openingNarration||e.body}:${e.closingNarration||""}`)
+  :aiKey(`${e.type}:${e.originalWord||e.title}:${e.compassExpression||e.body}`);
+const aiExistingKeys=({type,cfg,compassKb,imported})=>{
+  const keys=new Set(ensureArray(imported).map(aiEntryTargetKey));
+  if(type==="compassOfficial") normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary).forEach(e=>
+    keys.add(aiKey(`official:${e.title}:${e.openingNarration}:${e.closingNarration}`)));
+  else ensureArray(compassKb).map(e=>normalizeCompassEntry(e,e.dictionary)).forEach(e=>
+    keys.add(aiKey(`${type}:${e.originalWord}:${e.compassExpression}`)));
+  if(type==="writingRules") ensureArray(cfg.compassDictionary?.writingStyle).forEach(v=>keys.add(aiKey(`writingRules:${v}:${v}`)));
+  if(type==="ending") ensureArray(cfg.endingPhrases).forEach(v=>keys.add(aiKey(`ending:${v}:${v}`)));
+  return keys;
+};
+const aiToLibraryEntry=(e,i)=>normalizeCompassLibraryEntry({
+  id:`official-${Date.now()}-${i}`,
+  title:e.title,
+  openingNarration:e.openingNarration||e.body,
+  closingNarration:e.closingNarration||"",
+  theme:e.theme||e.title,
+  tags:Array.from(new Set(["Compass Official","ChatGPT paste",...(e.tags||[])])),
+  writingNotes:e.writingNotes||"AI受信箱から取り込み",
+  favorite:true,approvedForAI:true,approvedForCompassAI:true,compassOfficial:true,
+  approvalReason:"ChatGPT pasteからAI受信箱で取り込み。Compass Officialとして承認済み。",
+  officialVersion:DEV_BUILD_LABEL,createdAt:e.createdAt,updatedAt:e.updatedAt,
+});
+const aiToCompassKbEntry=(e,type)=>normalizeCompassEntry({
+  id:makeCompassId(),dictionary:AI_DICTIONARY_TYPE_MAP[type]||e.dictionary||"personality",
+  originalWord:e.originalWord||e.title,compassExpression:e.compassExpression||e.body,
+  explanation:e.explanation||e.body,reason:e.reason||"ChatGPT pasteからAI受信箱で取り込み",
+  examples:e.examples||"",tags:Array.from(new Set([AI_TYPE_LABELS[type]||type,"ChatGPT paste",...(e.tags||[])])),
+  status:"Approved",priority:"normal",priorityLabel:"normal",source:"ChatGPT paste",updatedAt:new Date().toISOString(),
+},AI_DICTIONARY_TYPE_MAP[type]||e.dictionary||"personality");
+const aiAppendUnique=(list,values)=>Array.from(new Set([...ensureArray(list).map(String).filter(Boolean),...values.map(String).map(s=>s.trim()).filter(Boolean)]));
+function AIInboxView({cfg,compassKb,sv,flash}){
   const [text,setText]=useState("");
   const [entries,setEntries]=useState([]);
   const [detected,setDetected]=useState("compassOfficial");
@@ -1202,10 +1250,10 @@ function AIInboxView({flash}){
     const raw=val!==undefined?val:text;
     const type=aiDetectType(raw);
     const parsed=aiParseEntries(raw,type).filter(e=>e.title||e.body);
-    const existing=new Set(imported.map(e=>aiKey(`${e.type}:${e.title}:${e.body}`)));
+    const existing=aiExistingKeys({type,cfg,compassKb,imported});
     const seen=new Set(),d=[],err=[];
     parsed.forEach((e,i)=>{
-      const key=aiKey(`${e.type}:${e.title}:${e.body}`);
+      const key=aiEntryTargetKey(e);
       if(!e.body)err.push(`${i+1}件目: 本文が空です`);
       if(seen.has(key)||existing.has(key))d.push({index:i,title:e.title});
       seen.add(key);
@@ -1219,14 +1267,42 @@ function AIInboxView({flash}){
     setSaving(true);
     const current=ensureArray(await stLoad("aiInboxEntries"));
     const cleanEntries=entries.map(e=>({...e,id:e.id||`ai-${Date.now()}-${Math.random()}`}));
+    const existing=aiExistingKeys({type:detected,cfg,compassKb,imported:current});
+    const seen=new Set();
+    const importable=cleanEntries.filter(e=>{const key=aiEntryTargetKey(e);const ok=!seen.has(key)&&!existing.has(key);seen.add(key);return ok;});
+    if(!importable.length){setSaving(false);flash("重複候補のみのため、取り込みはありませんでした");return;}
+    const settingsRaw=await stLoad("settings")||{};
+    const liveKb=ensureArray(await stLoad("compassKnowledgeBase")).map(e=>normalizeCompassEntry(e,e.dictionary));
+    let nextSettings={...settingsRaw},nextKb=[...liveKb],settingsChanged=false,kbChanged=false;
+    if(detected==="compassOfficial"){
+      nextSettings.compassNarrationLibrary=[...normalizeCompassNarrationLibrary(nextSettings.compassNarrationLibrary||cfg.compassNarrationLibrary),...importable.map(aiToLibraryEntry)];
+      settingsChanged=true;
+    }else{
+      const kbAdd=importable.map(e=>aiToCompassKbEntry(e,detected));
+      const kbKeys=new Set(nextKb.map(compassKeyOf));
+      kbAdd.forEach(e=>{if(!kbKeys.has(compassKeyOf(e))){nextKb.push(e);kbKeys.add(compassKeyOf(e));kbChanged=true;}});
+      if(detected==="writingRules"){
+        const cd={...DEFAULT_COMPASS_DICTIONARY,...(nextSettings.compassDictionary||cfg.compassDictionary)};
+        cd.writingStyle=aiAppendUnique(cd.writingStyle,importable.map(e=>e.body));
+        nextSettings.compassDictionary=cd;settingsChanged=true;
+      }
+      if(detected==="ending"){
+        nextSettings.endingPhrases=aiAppendUnique(nextSettings.endingPhrases||cfg.endingPhrases,importable.map(e=>e.body));
+        const cd={...DEFAULT_COMPASS_DICTIONARY,...(nextSettings.compassDictionary||cfg.compassDictionary)};
+        cd.endingPhrases=aiAppendUnique(cd.endingPhrases,importable.map(e=>e.body));
+        nextSettings.compassDictionary=cd;settingsChanged=true;
+      }
+    }
     const hist=ensureArray(await stLoad("aiInboxHistory"));
-    const rec={id:`hist-${Date.now()}`,importedAt:new Date().toISOString(),type:detected,count:cleanEntries.length,source:"ChatGPT paste"};
+    const rec={id:`hist-${Date.now()}`,importedAt:new Date().toISOString(),type:detected,count:importable.length,source:"ChatGPT paste"};
+    if(settingsChanged){const clean=sanitizeSettingsForSave(nextSettings);await stSave("settings",clean);sv.updateSettings(clean);}
+    if(kbChanged)sv.compassKb(nextKb);
     await stSave("aiInboxEntries",[...current,...cleanEntries]);
     await stSave("aiInboxHistory",[rec,...hist].slice(0,100));
     setImported([...current,...cleanEntries]);
     setHistory([rec,...history].slice(0,100));
     setText("");setEntries([]);setDupes([]);setErrors([]);setSaving(false);
-    flash(`✅ ${cleanEntries.length}件をAI受信箱から取り込みました`);
+    flash(`✅ ${importable.length}件をCompassへ取り込みました`);
   };
 
   return <div>
@@ -5000,7 +5076,7 @@ function CompassKnowledgeBaseAdmin({compassKb,sv,flash}){
   return <div>
     <div style={{...GC,display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
       <div><h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy}}>🧭 Compass Knowledge Base</h3><div style={{fontSize:12,color:C.muted}}>AI 使用対象: Approved / Official のみ ({getCompassAIEntries(entries).length}件)</div></div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button style={Btn(C.green)} onClick={()=>downloadCSV("compass_knowledge_base.csv",exportRows())}>CSV Export</button><button style={Btn(C.blue)} onClick={()=>downloadJSON("compass_knowledge_base.json",entries)}>JSON Export</button><button style={Btn(C.amber)} onClick={()=>downloadJSON("compass_kb_backup_"+new Date().toISOString().slice(0,10)+".json",{build:"Sprint 26 Build 20260705.1",createdAt:new Date().toISOString(),entries})}>Backup</button></div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button style={Btn(C.green)} onClick={()=>downloadCSV("compass_knowledge_base.csv",exportRows())}>CSV Export</button><button style={Btn(C.blue)} onClick={()=>downloadJSON("compass_knowledge_base.json",entries)}>JSON Export</button><button style={Btn(C.amber)} onClick={()=>downloadJSON("compass_kb_backup_"+new Date().toISOString().slice(0,10)+".json",{build:DEV_BUILD_LABEL,createdAt:new Date().toISOString(),entries})}>Backup</button></div>
     </div>
     <div style={GC}><h3 style={{margin:"0 0 12px",fontSize:14}}>Entry Editor</h3>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}><select value={dictionary} onChange={e=>{setDictionary(e.target.value);setDraft({...draft,dictionary:e.target.value});}}>{COMPASS_DICTIONARIES.map(d=><option key={d.id} value={d.id}>{d.label}</option>)}</select><input placeholder="Original Word" value={draft.originalWord} onChange={e=>setDraft({...draft,originalWord:e.target.value})}/><input placeholder="Compass Expression" value={draft.compassExpression} onChange={e=>setDraft({...draft,compassExpression:e.target.value})}/><select value={draft.status} onChange={e=>setDraft({...draft,status:e.target.value})}>{COMPASS_STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>
@@ -5136,6 +5212,6 @@ function MCConfigTab({ cfg, sv }) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
-<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">DEV<br>Sprint 26<br>Build 20260705.1</div>
+<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">DEV<br>Sprint 27<br>Build 20260705.1</div>
 </body>
 </html>
