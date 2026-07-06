@@ -355,6 +355,7 @@ function TopBar({role,uname,onBack,year,month}){
       gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(180,80,20,.25)"}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:"rgba(255,255,255,.7)",cursor:"pointer",fontSize:22,padding:0}}>‹</button>
       <img src={LOGO_SRC} alt="logo" style={{height:28,filter:"brightness(0) invert(1)"}}/>
+      <span style={{fontSize:11,background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.32)",borderRadius:999,padding:"3px 9px",fontWeight:800}}>DEV Sprint 27 / Build 20260705.1</span>
       <span style={{fontSize:15,fontWeight:800}}>コンシェルシフト</span>
       <span style={{marginLeft:"auto",fontSize:13,color:"rgba(255,255,255,.75)",fontWeight:600}}>
         {year}年{month}月 · {lbl[role]}
@@ -397,6 +398,7 @@ function Tabs({tabs,active,onChange}){
 function AdminView(P){
   const [tab,setTab]=useState("pref");
   const tabs=[
+    {id:"aiInbox",label:"📥 AI受信箱"},
     {id:"pref",  label:"📋 希望一覧"},
     {id:"shift", label:"📅 シフト確定"},
     {id:"att",   label:"🕐 出勤記録"},
@@ -404,11 +406,175 @@ function AdminView(P){
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="aiInbox"&&<AIInboxView {...P}/>}
     {tab==="pref"  &&<AdminPrefView  {...P}/>}
     {tab==="shift" &&<AdminShiftView {...P}/>}
     {tab==="att"   &&<AdminAttView   {...P}/>}
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
+  </div>;
+}
+
+const AI_TYPE_LABELS={
+  compassOfficial:"Compass Official ナレーション",
+  personality:"Personality Dictionary",
+  season:"Season Dictionary",
+  hobby:"Hobby Dictionary",
+  occupation:"Occupation Dictionary",
+  family:"Family Dictionary",
+  ending:"Ending Dictionary",
+  writingRules:"Writing Rules",
+  knowledgeBase:"Knowledge Base"
+};
+const aiClean=s=>String(s||"").replace(/^[\s\-*・#]+/,"").trim();
+const aiKey=s=>aiClean(s).toLowerCase().replace(/\s+/g," ");
+function aiDetectType(text){
+  const t=String(text||"").toLowerCase();
+  const score={
+    compassOfficial:(t.match(/compass official|ナレーション|narration|favorite|approved/g)||[]).length,
+    personality:(t.match(/personality|性格|人格|personality dictionary/g)||[]).length,
+    season:(t.match(/season|季節|春|夏|秋|冬|season dictionary/g)||[]).length,
+    hobby:(t.match(/hobby|趣味|hobby dictionary/g)||[]).length,
+    occupation:(t.match(/occupation|職業|仕事|職種|occupation dictionary/g)||[]).length,
+    family:(t.match(/family|家族|続柄|family dictionary/g)||[]).length,
+    ending:(t.match(/ending|結び|締め|エンディング|ending dictionary/g)||[]).length,
+    writingRules:(t.match(/writing rules|writing rule|文体|表記|禁止|ルール|書き方/g)||[]).length,
+    knowledgeBase:(t.match(/knowledge base|kb|辞書|用語|dictionary/g)||[]).length
+  };
+  const best=Object.entries(score).sort((a,b)=>b[1]-a[1])[0];
+  return best&&best[1]>0?best[0]:"compassOfficial";
+}
+function aiExtractJson(text){
+  try{
+    const parsed=JSON.parse(text);
+    return Array.isArray(parsed)?parsed:(Array.isArray(parsed.entries)?parsed.entries:[parsed]);
+  }catch(e){return null;}
+}
+function aiParseEntries(text,type){
+  const now=new Date().toISOString();
+  const json=aiExtractJson(text);
+  const base=json||String(text||"").split(/\n\s*\n/).flatMap(block=>{
+    const lines=block.split("\n").map(aiClean).filter(Boolean);
+    if(!lines.length)return [];
+    if(type==="compassOfficial")return [{title:lines[0].slice(0,60),body:lines.join("\n")}];
+    return lines.map(line=>{
+      const m=line.match(/^([^:：=]+)[:：=]\s*(.+)$/);
+      return m?{title:m[1].trim(),body:m[2].trim()}:{title:line.slice(0,60),body:line};
+    });
+  });
+  return base.map((x,i)=>{
+    const title=aiClean(x.title||x.name||x.keyword||x.term||x.label||`Entry ${i+1}`);
+    const body=aiClean(x.body||x.text||x.content||x.value||x.description||title);
+    const common={id:`ai-${Date.now()}-${i}`,type,title,body,source:"ChatGPT paste",createdAt:now,updatedAt:now};
+    if(type==="compassOfficial")return {...common,favorite:true,approved:true,compassOfficial:true};
+    return {...common,status:"Approved",priority:"normal"};
+  });
+}
+function AIInboxView({flash}){
+  const [text,setText]=useState("");
+  const [entries,setEntries]=useState([]);
+  const [detected,setDetected]=useState("compassOfficial");
+  const [errors,setErrors]=useState([]);
+  const [dupes,setDupes]=useState([]);
+  const [history,setHistory]=useState([]);
+  const [imported,setImported]=useState([]);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    Promise.all([stLoad("aiInboxEntries"),stLoad("aiInboxHistory")]).then(([e,h])=>{
+      setImported(ensureArray(e));
+      setHistory(ensureArray(h));
+    });
+  },[]);
+
+  const analyze=val=>{
+    const raw=val!==undefined?val:text;
+    const type=aiDetectType(raw);
+    const parsed=aiParseEntries(raw,type).filter(e=>e.title||e.body);
+    const existing=new Set(imported.map(e=>aiKey(`${e.type}:${e.title}:${e.body}`)));
+    const seen=new Set(),d=[],err=[];
+    parsed.forEach((e,i)=>{
+      const key=aiKey(`${e.type}:${e.title}:${e.body}`);
+      if(!e.body)err.push(`${i+1}件目: 本文が空です`);
+      if(seen.has(key)||existing.has(key))d.push({index:i,title:e.title});
+      seen.add(key);
+    });
+    setDetected(type);setEntries(parsed);setErrors(err);setDupes(d);
+  };
+  const updateEntry=(i,field,val)=>setEntries(prev=>prev.map((e,idx)=>idx===i?{...e,[field]:val,updatedAt:new Date().toISOString()}:e));
+  const removeEntry=i=>setEntries(prev=>prev.filter((_,idx)=>idx!==i));
+  const importNow=async()=>{
+    if(!entries.length||errors.length)return;
+    setSaving(true);
+    const current=ensureArray(await stLoad("aiInboxEntries"));
+    const cleanEntries=entries.map(e=>({...e,id:e.id||`ai-${Date.now()}-${Math.random()}`}));
+    const hist=ensureArray(await stLoad("aiInboxHistory"));
+    const rec={id:`hist-${Date.now()}`,importedAt:new Date().toISOString(),type:detected,count:cleanEntries.length,source:"ChatGPT paste"};
+    await stSave("aiInboxEntries",[...current,...cleanEntries]);
+    await stSave("aiInboxHistory",[rec,...hist].slice(0,100));
+    setImported([...current,...cleanEntries]);
+    setHistory([rec,...history].slice(0,100));
+    setText("");setEntries([]);setDupes([]);setErrors([]);setSaving(false);
+    flash(`✅ ${cleanEntries.length}件をAI受信箱から取り込みました`);
+  };
+
+  return <div>
+    <div style={{...GC,background:"#fffaf5",border:`1px solid #e8784a`}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+        <h3 style={{margin:0,fontSize:18,color:"#7c2d0a"}}>📥 AI受信箱</h3>
+        <span style={{background:"#7c2d0a",color:"#fff",borderRadius:999,padding:"4px 10px",fontSize:11,fontWeight:800}}>DEV Sprint 27 / Build 20260705.1</span>
+      </div>
+      <textarea value={text} onChange={e=>{setText(e.target.value);analyze(e.target.value);}}
+        placeholder={"ChatGPTで作った文章をここに貼り付けてください。\nCompass Official、辞書、Writing Rulesを自動判定します。"}
+        rows={12}
+        style={{width:"100%",border:`2px solid ${C.border}`,borderRadius:10,padding:14,fontSize:14,lineHeight:1.6,boxSizing:"border-box",resize:"vertical"}}/>
+      <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap"}}>
+        <button onClick={()=>analyze()} style={Btn(C.navy)}>内容を確認する</button>
+        <button onClick={()=>{setText("");setEntries([]);setErrors([]);setDupes([]);}} style={{...Btn("#fff",C.muted),border:`1px solid ${C.border}`}}>クリア</button>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:14}}>
+      {[["検出タイプ",AI_TYPE_LABELS[detected]||detected,C.navy],["取り込み候補",`${entries.length}件`,C.blue],["エラー",`${errors.length}件`,errors.length?C.red:C.green],["重複候補",`${dupes.length}件`,dupes.length?C.amber:C.green]].map(([l,v,c])=>
+        <div key={l} style={{...GC,marginBottom:0,padding:"12px 14px"}}>
+          <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{l}</div>
+          <div style={{fontSize:15,fontWeight:800,color:c}}>{v}</div>
+        </div>
+      )}
+    </div>
+    {(errors.length>0||dupes.length>0)&&<div style={{...GC,background:errors.length?C.redL:C.amberL,border:`1px solid ${errors.length?C.red:C.amber}`}}>
+      {errors.map(e=><div key={e} style={{fontSize:13,color:C.red,fontWeight:700,marginBottom:4}}>⚠️ {e}</div>)}
+      {dupes.map(d=><div key={`${d.index}-${d.title}`} style={{fontSize:13,color:"#92400e",fontWeight:700,marginBottom:4}}>重複候補: {d.title}</div>)}
+    </div>}
+    {entries.length>0&&<div style={GC}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:12,flexWrap:"wrap"}}>
+        <h3 style={{margin:0,fontSize:15}}>取り込み前プレビュー・編集</h3>
+        <button onClick={importNow} disabled={saving||errors.length>0} style={{...Btn(errors.length?C.muted:C.green),padding:"11px 18px",fontSize:14}}>
+          {saving?"取り込み中...":"この内容を取り込む"}
+        </button>
+      </div>
+      {entries.map((e,i)=><div key={e.id} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,background:"#fff"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+          <span style={{fontSize:12,fontWeight:800,color:C.navy}}>#{i+1}</span>
+          <input value={e.title} onChange={ev=>updateEntry(i,"title",ev.target.value)}
+            style={{flex:1,border:`1px solid ${C.border}`,borderRadius:7,padding:"7px 9px",fontSize:13,fontWeight:700}}/>
+          <button onClick={()=>removeEntry(i)} style={{...Btn("#fff",C.red),border:`1px solid ${C.border}`,padding:"7px 10px"}}>削除</button>
+        </div>
+        <textarea value={e.body} onChange={ev=>updateEntry(i,"body",ev.target.value)} rows={3}
+          style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 10px",fontSize:13,lineHeight:1.5,boxSizing:"border-box"}}/>
+        <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap",fontSize:12,color:C.muted}}>
+          {e.type==="compassOfficial"?<><span>Favorite: true</span><span>Approved: true</span><span>Compass Official: true</span></>:<><span>Status: Approved</span><span>Priority: normal</span></>}
+        </div>
+      </div>)}
+    </div>}
+    <div style={GC}>
+      <h3 style={{margin:"0 0 12px",fontSize:15}}>取り込み履歴</h3>
+      {history.length===0&&<p style={{fontSize:13,color:C.muted,margin:0}}>まだ取り込み履歴はありません。</p>}
+      {history.slice(0,10).map(h=><div key={h.id} style={{display:"flex",gap:8,alignItems:"center",borderBottom:`1px solid ${C.border}`,padding:"8px 0",fontSize:13,flexWrap:"wrap"}}>
+        <span style={{fontWeight:700}}>{new Date(h.importedAt).toLocaleString("ja-JP")}</span>
+        <span style={{color:C.navy,fontWeight:700}}>{AI_TYPE_LABELS[h.type]||h.type}</span>
+        <span style={{color:C.muted}}>{h.count}件 / {h.source}</span>
+      </div>)}
+    </div>
   </div>;
 }
 
