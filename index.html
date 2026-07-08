@@ -715,16 +715,17 @@ const DEFAULT_AI_SETTINGS = {
   apiStatus:"server_required",
   enabled:true,
   monthlyBudgetJpy:5000,
-  inputPricePer1MUsd:0.15,
-  outputPricePer1MUsd:0.60,
+  inputPricePer1MUsd:5,
+  outputPricePer1MUsd:30,
   jpyUsdRate:160,
   apiProxyPath:"/api/generate-narration",
 };
 const OPENAI_MODEL_OPTIONS=[
-  {id:"gpt-5.5",label:"GPT-5.5"},
-  {id:"gpt-4.1-mini",label:"GPT-4.1 mini"},
-  {id:"gpt-4.1",label:"GPT-4.1"},
+  {id:"gpt-5.5",label:"GPT-5.5",inputPricePer1MUsd:5,outputPricePer1MUsd:30},
+  {id:"gpt-4.1-mini",label:"GPT-4.1 mini",inputPricePer1MUsd:0.15,outputPricePer1MUsd:0.60},
+  {id:"gpt-4.1",label:"GPT-4.1",inputPricePer1MUsd:2,outputPricePer1MUsd:8},
 ];
+const aiModelPricingFor=model=>OPENAI_MODEL_OPTIONS.find(m=>m.id===String(model||"").trim())||OPENAI_MODEL_OPTIONS[0];
 const AI_USAGE_LOG_KEY = "aiUsageLogs";
 const AI_STOPPED_MESSAGE = "Compass AIは現在停止中です。管理者に確認してください。";
 const AI_BUDGET_LIMIT_MESSAGE = "今月のAI利用上限に達しました。管理者に確認してください。";
@@ -733,16 +734,24 @@ const normalizeAISettings=s=>{
   const n={...DEFAULT_AI_SETTINGS,...incoming};
   const numberOr=(v,fallback)=>Number.isFinite(Number(v))&&Number(v)>=0?Number(v):fallback;
   const enabled=n.enabled!==false;
+  const model=String(n.model||DEFAULT_AI_SETTINGS.model);
+  const pricing=aiModelPricingFor(model);
+  let inputPrice=numberOr(n.inputPricePer1MUsd,pricing.inputPricePer1MUsd);
+  let outputPrice=numberOr(n.outputPricePer1MUsd,pricing.outputPricePer1MUsd);
+  if(model==="gpt-5.5"&&inputPrice===0.15&&outputPrice===0.60){
+    inputPrice=pricing.inputPricePer1MUsd;
+    outputPrice=pricing.outputPricePer1MUsd;
+  }
   return {
     ...n,
     enabled,
     monthlyBudgetJpy:numberOr(n.monthlyBudgetJpy,DEFAULT_AI_SETTINGS.monthlyBudgetJpy),
-    inputPricePer1MUsd:numberOr(n.inputPricePer1MUsd,DEFAULT_AI_SETTINGS.inputPricePer1MUsd),
-    outputPricePer1MUsd:numberOr(n.outputPricePer1MUsd,DEFAULT_AI_SETTINGS.outputPricePer1MUsd),
+    inputPricePer1MUsd:inputPrice,
+    outputPricePer1MUsd:outputPrice,
     jpyUsdRate:numberOr(n.jpyUsdRate,DEFAULT_AI_SETTINGS.jpyUsdRate),
     temperature:numberOr(n.temperature,DEFAULT_AI_SETTINGS.temperature),
     maxTokens:numberOr(n.maxTokens,DEFAULT_AI_SETTINGS.maxTokens),
-    model:String(n.model||DEFAULT_AI_SETTINGS.model),
+    model,
     apiProxyPath:String(n.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath),
   };
 };
@@ -3337,7 +3346,8 @@ const compassFormatDraft=response=>{
       "",
       "【Improvement notes】",
       notes||"特記事項なし",
-    ].join("\n")
+    ].join("\n"),
+    generationSource:response?.generationSource||response?.source||"openai",
   };
 };
 const compassFirstFilled=(sheet,keys)=>keys.map(k=>clean(sheet?.[k]||"")).find(Boolean)||"";
@@ -3386,6 +3396,7 @@ const compassLocalNarrationDraft=({sheet,cfg,theme,reason,compassKb=[]})=>{
     closingNarration:closing,
     detectedTheme:theme||compassDetectTheme(s,cfg),
     improvementNotes:`AI接続が利用できなかったため、入力内容から予備の司会原稿を作成しました。必要に応じてHisakoさんの言葉に整えてください。\n原因: ${reason||"API unavailable"}`,
+    generationSource:"localDraft",
   });
 };
 const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
@@ -3405,7 +3416,7 @@ const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
     try{data=await res.json();}catch(e){}
     if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:"OPENAI_API_KEY missing"});
     if(!res.ok) return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:data?.error||`API ${res.status}`});
-    return compassFormatDraft(data);
+    return compassFormatDraft({...data,generationSource:"openai"});
   }catch(e){
     return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:e?.message||"network error"});
   }
@@ -3425,6 +3436,10 @@ function CompassAISettingsEditor({cfg,sv,flash,role}) {
   const remaining=Math.max(0,form.monthlyBudgetJpy-totalCost);
   const modelCounts=monthLogs.reduce((a,l)=>{const m=l.model||"-";a[m]=(a[m]||0)+1;return a;},{});
   const setField=(key,value)=>setForm(f=>({...f,[key]:value}));
+  const setModel=value=>setForm(f=>{
+    const pricing=aiModelPricingFor(value);
+    return {...f,model:value,inputPricePer1MUsd:pricing.inputPricePer1MUsd,outputPricePer1MUsd:pricing.outputPricePer1MUsd};
+  });
   const setNum=(key,value)=>setForm(f=>({...f,[key]:Number(value)}));
   const save=async()=>{
     const nextSettings=normalizeAISettings({...form,apiStatus:"server_env_required"});
@@ -3451,7 +3466,7 @@ function CompassAISettingsEditor({cfg,sv,flash,role}) {
         <option value="openai">OpenAI</option><option value="gemini" disabled>Gemini (future)</option><option value="claude" disabled>Claude (future)</option><option value="localTemplate" disabled>Local Template (disabled)</option>
       </select></label>
       <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Model
-        <select value={form.model} onChange={e=>setField("model",e.target.value)} style={{...input,display:"block",marginTop:5,background:"#fff"}}>
+        <select value={form.model} onChange={e=>setModel(e.target.value)} style={{...input,display:"block",marginTop:5,background:"#fff"}}>
           {OPENAI_MODEL_OPTIONS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
         </select>
       </label>
@@ -3468,9 +3483,9 @@ function CompassAISettingsEditor({cfg,sv,flash,role}) {
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,marginTop:14}}>
       <div style={stat}><div style={{fontSize:13,fontWeight:900,marginBottom:8}}>モデル別利用回数</div>{Object.keys(modelCounts).length?Object.entries(modelCounts).map(([m,c])=><div key={m} style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${C.border}`,padding:"7px 0",fontSize:13}}><span>{m}</span><b>{c}</b></div>):<div style={{fontSize:13,color:C.muted}}>今月の利用はありません。</div>}</div>
       <div style={{...stat,overflowX:"auto"}}><div style={{fontSize:13,fontWeight:900,marginBottom:8}}>最新 AI usage logs</div>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:720}}>
-          <thead><tr>{["date","user / MC name","feature","model","input","output","cost JPY","status"].map(h=><th key={h} style={{textAlign:"left",borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{h}</th>)}</tr></thead>
-          <tbody>{logs.slice(0,20).map(l=><tr key={l.id||l.date}><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{String(l.date||"").slice(0,19).replace("T"," ")}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.userName||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.featureName||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.model||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.estimatedInputTokens||0}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.estimatedOutputTokens||0}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{Number(l.estimatedCostJpy||0).toFixed(2)}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px",color:l.status==="success"?C.green:C.red,fontWeight:800}}>{l.status||"-"}</td></tr>)}</tbody>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:820}}>
+          <thead><tr>{["date","user / MC name","feature","model","source","input","output","cost JPY","status"].map(h=><th key={h} style={{textAlign:"left",borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{h}</th>)}</tr></thead>
+          <tbody>{logs.slice(0,20).map(l=><tr key={l.id||l.date}><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{String(l.date||"").slice(0,19).replace("T"," ")}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.userName||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.featureName||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.model||"-"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.billingSource||"OpenAI"}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.estimatedInputTokens||0}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{l.estimatedOutputTokens||0}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px"}}>{Number(l.estimatedCostJpy||0).toFixed(2)}</td><td style={{borderBottom:`1px solid ${C.border}`,padding:"6px",color:l.status==="success"?C.green:C.red,fontWeight:800}}>{l.status||"-"}</td></tr>)}</tbody>
         </table>
         {!logs.length&&<div style={{fontSize:13,color:C.muted,paddingTop:8}}>ログはまだありません。</div>}
       </div>
@@ -3673,6 +3688,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       estimatedInputTokens,
       estimatedOutputTokens:extra.estimatedOutputTokens??estimatedOutputTokens,
       estimatedCostJpy:extra.estimatedCostJpy??estimatedCostJpy,
+      billingSource:extra.billingSource||"OpenAI",
       status,
       error:extra.error||"",
     });
@@ -3694,7 +3710,12 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       setDraft(generated);
       if(generated.detectedTheme) setTheme(generated.detectedTheme);
       const actualOutputTokens=estimateAITokens(generated.full||"");
-      await writeUsage("success",{estimatedOutputTokens:actualOutputTokens,estimatedCostJpy:estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens)});
+      const usedOpenAI=generated.generationSource==="openai";
+      await writeUsage("success",{
+        estimatedOutputTokens:actualOutputTokens,
+        estimatedCostJpy:usedOpenAI?estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens):0,
+        billingSource:usedOpenAI?"OpenAI":"無料下書き",
+      });
       flash?.("AIナレーション案を作成しました。内容を確認して保存してください。");
     }catch(e){
       await writeUsage("failed",{error:String(e?.message||e)});
