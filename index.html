@@ -515,6 +515,51 @@ const DEFAULT_COMPASS_LIBRARY_SEEDS = [
     createdAt:"2026-07-05T00:00:00.000Z",
     updatedAt:"2026-07-05T00:00:00.000Z",
   },
+  {
+    id:"seed-s27-hisako-chieno-bright-life",
+    title:"Hisako Official｜明るく前向きに歩まれた人生",
+    openingNarration:`夏の陽射しがまぶしく降り注ぎ、色鮮やかな花々がその美しさを競う七月。
+生命の力強さを感じるこの季節に、九十一年という尊いご生涯を歩まれた堀池チエノ様とのお別れの時を迎えました。
+
+いつも明るく前向きに、そして誰に対しても分け隔てなく優しく接してこられたチエノ様。
+その笑顔に励まされた方は数知れず、人と語り合うひとときを何よりも楽しみにされ、どこへ行かれても自然と人の輪が広がっていきました。
+
+野菜や草花を慈しみ、小さな命の成長を喜ばれた日々。
+若い頃には編み物や縫い物を楽しみ、歌を口ずさみながら軽やかに踊る、その少女のような愛らしさは、年齢を重ねても変わることはありませんでした。
+
+「人の悪口を言ってはいけない。」
+その何気ない一言には、どんな時も人を思いやり、温かな心で接してこられたチエノ様のお人柄が表れていました。
+
+振り返れば、ご家族の記憶に残るのは、悲しい表情ではなく、いつも楽しそうに笑っていたお母様のお姿ばかり。
+親子三代で巡られた六甲や小倉、下関、博多への旅。
+十月、お二人のお誕生日を祝って出かけたその旅も、ご家族にとって何ものにも代えがたい大切な思い出として、今も心に刻まれています。
+
+明るく生きることの尊さを、その人生そのもので教えてくださったチエノ様。
+その温かな面影を胸に、まもなく開式のお時間でございます。`,
+    closingNarration:`笑顔あふれる日々は、時が流れても色あせることなく、ご家族のお心の中に生き続けています。
+
+どんな出来事にも前向きに向き合い、人を思いやる優しさを忘れず、人生を楽しむことを教えてくださったチエノ様。
+そのお姿は、ご家族にとって、これからも歩み続ける人生の大きな支えとなることでしょう。
+
+「私も、お母さんのように明るく前向きに歩んでいきたい。」
+その想いこそが、何よりのお母様への贈り物であり、これからも受け継がれていく宝物なのだと思います。
+
+楽しい思い出も、たくさんの笑い声も、ご家族で過ごされたかけがえのない時間も、決して消えることはありません。
+これからも皆様のお心の中で、優しく微笑み続けるチエノ様を思い浮かべながら、感謝の気持ちとともに、在りし日をお送りいたします。`,
+    theme:"明るく前向きに生きる力",
+    tags:["Hisako Official","Compass Official","Family","Hobby","Travel","Summer","明るい","前向き","家族の思い出","開式前","閉式後"],
+    writingNotes:"開式前は季節から入り、故人様の人柄、趣味、口癖、家族旅行の具体的な記憶へ進む。閉式後は生涯を再説明せず、家族に受け継がれる思いと余韻に絞る。説明文ではなく、思い出を語る流れを重視する。",
+    approvalReason:"Hisakoさん提供の正解サンプル。説明ではなく、故人様を思い出せる語りとしてCompass AIの文体・構成参照に使う。",
+    compassOfficial:true,
+    favorite:true,
+    approvedForAI:true,
+    approvedForCompassAI:true,
+    officialVersion:"Sprint 27 Build 20260705.1",
+    officialScore:100,
+    aiLearningWeight:10,
+    createdAt:"2026-07-08T00:00:00.000Z",
+    updatedAt:"2026-07-08T00:00:00.000Z",
+  },
 ];
 const normalizeCompassLibraryEntry=(entry={},i=0)=>({
   id:entry.id||`library-${Date.now()}-${i}`,
@@ -526,9 +571,9 @@ const normalizeCompassLibraryEntry=(entry={},i=0)=>({
   favorite:!!entry.favorite,
   approvedForAI:!!(entry.approvedForAI||entry.approvedForCompassAI),
   approvedForCompassAI:!!(entry.approvedForCompassAI||entry.approvedForAI),
-  compassOfficial:entry.compassOfficial===true||String(entry.id||"").startsWith("seed-s24-"),
+  compassOfficial:entry.compassOfficial===true||String(entry.id||"").startsWith("seed-"),
   writingNotes:String(entry.writingNotes||""),
-  approvalReason:String(entry.approvalReason||entry.reasonForApproval||((entry.compassOfficial===true||String(entry.id||"").startsWith("seed-s24-"))?entry.writingNotes||"Compass Official writing standard.":"")),
+  approvalReason:String(entry.approvalReason||entry.reasonForApproval||((entry.compassOfficial===true||String(entry.id||"").startsWith("seed-"))?entry.writingNotes||"Compass Official writing standard.":"")),
   officialVersion:String(entry.officialVersion||entry.future?.officialVersion||DEFAULT_COMPASS_OFFICIAL_FIELDS.officialVersion),
   officialScore:entry.officialScore??entry.future?.officialScore??DEFAULT_COMPASS_OFFICIAL_FIELDS.officialScore,
   mostReferenced:entry.mostReferenced??entry.future?.mostReferenced??DEFAULT_COMPASS_OFFICIAL_FIELDS.mostReferenced,
@@ -554,6 +599,8 @@ const compassTextScore=(entry,sheet,theme,season)=>{
     .join(" ").toLowerCase().split(/[\s,、。・/]+/).map(s=>s.trim()).filter(s=>s.length>1);
   let score=0;
   if(entry.theme&&theme&&entry.theme===theme) score+=12;
+  if(entry.tags.includes("Hisako Official")) score+=10;
+  if(entry.aiLearningWeight) score+=Math.min(10,Number(entry.aiLearningWeight)||0);
   if(entry.tags.includes(SEASON_LABELS[season])||entry.tags.map(t=>t.toLowerCase()).includes(season)) score+=5;
   needles.forEach(n=>{if(hay.includes(n)) score+=1;});
   return score;
