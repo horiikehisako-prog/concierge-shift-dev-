@@ -3097,23 +3097,68 @@ const compassFormatDraft=response=>{
     ].join("\n")
   };
 };
-const compassGenerateNarration=async({prompt,cfg})=>{
-  const ai=normalizeAISettings(cfg.aiSettings);
-  const res=await fetch(ai.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath,{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      prompt,
-      model:ai.model||DEFAULT_AI_SETTINGS.model,
-      temperature:Number(ai.temperature??DEFAULT_AI_SETTINGS.temperature),
-      maxTokens:Number(ai.maxTokens||DEFAULT_AI_SETTINGS.maxTokens),
-    }),
+const compassFirstFilled=(sheet,keys)=>keys.map(k=>clean(sheet?.[k]||"")).find(Boolean)||"";
+const compassTrimSentence=(text,max=72)=>{
+  const value=clean(text).replace(/\s+/g," ");
+  if(value.length<=max)return value;
+  return value.slice(0,max).replace(/[、，][^、，]*$/,"");
+};
+const compassLocalNarrationDraft=({sheet,cfg,theme,reason})=>{
+  const s=compassSanitizeHearingSheet(sheet||{});
+  const name=clean(s.deceasedName)||"故人様";
+  const honorName=/様$/.test(name)?name:`${name}様`;
+  const season=compassSeasonFromDate(s.deceasedDate);
+  const seasonOpeners={
+    spring:"やわらかな春の気配が、静かに心へ届く季節となりました。",
+    summer:"夏の光が、日々の記憶をそっと照らす季節となりました。",
+    autumn:"澄んだ秋の空に、歩まれた日々が静かに思い起こされます。",
+    winter:"冬の静けさの中に、あたたかな記憶が深く心へ残ります。",
+  };
+  const personality=compassTrimSentence(s.personality||"日々を丁寧に重ね、まわりの方を大切にしてこられた方");
+  const memory=compassTrimSentence(compassFirstFilled(s,["memorableEvents","familyMemories","travelAnniversaryEffort","hobbies","valuedThings"]));
+  const family=compassTrimSentence(s.familyFeelings||s.familyMemories||"ご家族の心には、共に過ごした時間のぬくもりが残されています");
+  const phrase=compassTrimSentence(s.favoritePhrases);
+  const valued=compassTrimSentence(s.valuedThings||s.hobbies);
+  const opening=[
+    seasonOpeners[season]||seasonOpeners.winter,
+    `${honorName}は、${personality}でした。`,
+    memory?`そのお姿を思い返す時、${memory}という記憶が、ご家族の胸に静かによみがえります。`:"",
+    valued?`${honorName}が大切にしてこられたものは、今もご家族の日々の中に、やさしく息づいています。`:"",
+    phrase?`そして、${phrase}という言葉もまた、これから先も皆様の心を支えてくれることでしょう。`:"",
+  ].filter(Boolean).join("\n\n");
+  const closing=[
+    `いま、${honorName}とのお別れの時を迎え、ご家族の胸には、${family}。`,
+    memory?`先ほど思い起こされたその記憶は、ただ過ぎ去った出来事ではなく、これからもご家族をつなぐ大切な灯りです。`:"",
+    `${honorName}が残してくださった思いを胸に、どうぞ静かに、最後のお別れへとお進みください。`,
+  ].filter(Boolean).join("\n\n");
+  return compassFormatDraft({
+    openingNarration:opening,
+    closingNarration:closing,
+    detectedTheme:theme||compassDetectTheme(s,cfg),
+    improvementNotes:`AI接続が利用できなかったため、入力内容から予備の司会原稿を作成しました。必要に応じてHisakoさんの言葉に整えてください。\n原因: ${reason||"API unavailable"}`,
   });
-  let data=null;
-  try{data=await res.json();}catch(e){}
-  if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") throw new Error("AI_NOT_CONFIGURED");
-  if(!res.ok) throw new Error(data?.error||"AI_FAILED");
-  return compassFormatDraft(data);
+};
+const compassGenerateNarration=async({prompt,cfg,sheet,theme})=>{
+  const ai=normalizeAISettings(cfg.aiSettings);
+  try{
+    const res=await fetch(ai.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        prompt,
+        model:ai.model||DEFAULT_AI_SETTINGS.model,
+        temperature:Number(ai.temperature??DEFAULT_AI_SETTINGS.temperature),
+        maxTokens:Number(ai.maxTokens||DEFAULT_AI_SETTINGS.maxTokens),
+      }),
+    });
+    let data=null;
+    try{data=await res.json();}catch(e){}
+    if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") return compassLocalNarrationDraft({sheet,cfg,theme,reason:"OPENAI_API_KEY missing"});
+    if(!res.ok) return compassLocalNarrationDraft({sheet,cfg,theme,reason:data?.error||`API ${res.status}`});
+    return compassFormatDraft(data);
+  }catch(e){
+    return compassLocalNarrationDraft({sheet,cfg,theme,reason:e?.message||"network error"});
+  }
 };
 
 function CompassAISettingsEditor({cfg,sv,flash,role}) {
@@ -3391,7 +3436,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
       }
       let i=0;
       timer=setInterval(()=>{i=Math.min(i+1,AI_LOADING_MESSAGES.length-1);setLoadingStep(AI_LOADING_MESSAGES[i]);},1200);
-      const generated=await compassGenerateNarration({prompt:built,cfg});
+      const generated=await compassGenerateNarration({prompt:built,cfg,sheet,theme:selectedTheme});
       setDraft(generated);
       if(generated.detectedTheme) setTheme(generated.detectedTheme);
       const actualOutputTokens=estimateAITokens(generated.full||"");
