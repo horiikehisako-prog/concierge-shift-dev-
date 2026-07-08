@@ -2942,7 +2942,7 @@ function MCStaffView(P) {
   );
 }
 
-function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
+function MCStaffRecord({ year, month, uname, role, cfg, flash, shifts, att, vconf }) {
   const jobRole = role==="mc"?"司会":"アシスタント";
   const today = new Date();
   const clients=getClients(cfg);
@@ -2959,6 +2959,7 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
     date:`${year}-${p2(month)}-${p2(today.getDate())}`,
   });
   const [saving, setSaving] = useState(false);
+  const [showShiftPrint,setShowShiftPrint]=useState(false);
 
   const storageKey = `mc-${year}-${p2(month)}-${uname}`;
 
@@ -2989,8 +2990,14 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
   const canSave = form.venue && (actualRole==="パントリー" ? true : !!form.type);
 
   return (
+    <div>
     <div style={GC}>
-      <h3 style={{margin:"0 0 16px",fontSize:15}}>🤝 {uname}さんの出勤を記録</h3>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16}}>
+        <h3 style={{margin:0,fontSize:15}}>🤝 {uname}さんの出勤を記録</h3>
+        <button onClick={()=>setShowShiftPrint(v=>!v)} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"9px 12px",fontSize:13}}>
+          🖨️ 全体シフト印刷
+        </button>
+      </div>
 
       {/* 日付 */}
       <div style={{marginBottom:16}}>
@@ -3115,6 +3122,8 @@ function MCStaffRecord({ year, month, uname, role, cfg, flash }) {
           {saving?"保存中…":"✅ この内容で記録する"}
         </button>
       )}
+    </div>
+    {showShiftPrint&&<PrintableSheet year={year} month={month} shifts={shifts||{}} att={att||{}} vconf={vconf||{}} cfg={cfg}/>}
     </div>
   );
 }
@@ -3806,7 +3815,7 @@ const AI_NARRATION_WARNING = "Compass AIが作成した文章は下書きです�
 
 
 const MC_COMPANIES = {
-  "飛鳥会館": ["小さな多治米","小さな蔵王","春日","花園","多治米"],
+  "飛鳥会館": ["小さな多治米","小さな蔵王","春日","花園","多治米","タスカニー"],
   "あしべの杜": ["あしべの杜","追憶の杜","別邸","府中"],
 };
 const MC_ROLES = ["司会","アシスタント","パントリー"];
@@ -3861,7 +3870,7 @@ const getBillingAmount = (billing, company, role, type) => {
 const makeId = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
 const DEFAULT_ITEM_SETTINGS = {
   clients:[
-    {id:"asuka",label:"飛鳥会館",shortLabel:"飛鳥",venues:["小さな多治米","小さな蔵王","春日","花園","多治米"]},
+    {id:"asuka",label:"飛鳥会館",shortLabel:"飛鳥",venues:MC_COMPANIES["飛鳥会館"]},
     {id:"ashibe",label:"あしべの杜",shortLabel:"あしべ",venues:["あしべの杜","追憶の杜","別邸","府中"]},
   ],
   ceremonyTypes:[
@@ -3904,8 +3913,12 @@ function normalizeItemSettings(settings){
   const legacyRoles=roles.length?roles:ensureArray([...new Set(legacyColumns.map(c=>c.role).filter(Boolean))]).map((name,i)=>({
     id:`role-${i}-${makeSlug(name)}`,label:name,usesCeremony:name!=="パントリー"&&name!=="研修",training:name==="研修"
   }));
+  const completeClientVenues=c=>{
+    const defaults=MC_COMPANIES[c.label]||[];
+    return {...c,venues:Array.from(new Set([...ensureArray(c.venues),...defaults]))};
+  };
   return {
-    clients:(legacyClients.length?legacyClients:base.clients).map(c=>({...c,venues:ensureArray(c.venues)})),
+    clients:(legacyClients.length?legacyClients:base.clients).map(completeClientVenues),
     ceremonyTypes:ceremonyTypes.length?ceremonyTypes:base.ceremonyTypes,
     roles:legacyRoles.length?legacyRoles:base.roles,
   };
@@ -4887,7 +4900,7 @@ function StudySessionView({year,month,openAINarration}){
 }
 
 // MC記録タブ（スタッフ画面に追加）
-function MCRecordTab({ year, month, cfg, uname, flash }) {
+function MCRecordTab({ year, month, cfg, uname, flash, shifts, att, vconf }) {
   const clients=getClients(cfg);
   const ceremonyTypes=getCeremonyTypes(cfg).map(t=>t.label);
   const roles=getRoles(cfg).filter(r=>!r.training).map(r=>r.label);
@@ -4901,6 +4914,7 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
     date:`${year}/${p2(month)}/${p2(new Date().getDate())}`,
   });
   const [saving, setSaving] = useState(false);
+  const [showShiftPrint,setShowShiftPrint]=useState(false);
 
   const storageKey = `mc-${year}-${p2(month)}-${uname}`;
 
@@ -4936,7 +4950,12 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
   return (
     <div>
       <div style={GC}>
-        <h3 style={{margin:"0 0 14px",fontSize:15}}>📝 出勤を記録する</h3>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:14}}>
+          <h3 style={{margin:0,fontSize:15}}>📝 出勤を記録する</h3>
+          <button onClick={()=>setShowShiftPrint(v=>!v)} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"9px 12px",fontSize:13}}>
+            🖨️ 全体シフト印刷
+          </button>
+        </div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {/* 日付 */}
           <div>
@@ -5017,6 +5036,7 @@ function MCRecordTab({ year, month, cfg, uname, flash }) {
           </button>
         </div>
       </div>
+      {showShiftPrint&&<PrintableSheet year={year} month={month} shifts={shifts||{}} att={att||{}} vconf={vconf||{}} cfg={cfg}/>}
 
       {/* 履歴 */}
       <div style={GC}>
