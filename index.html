@@ -405,6 +405,7 @@ const DEFAULT_COMPASS_DICTIONARY = {
   futureNarrationExamples:[],
 };
 const DEFAULT_FORBIDDEN_WORDS = [
+  "在りし日を",
   "ますます","重ね重ね","再び","死ぬ","死亡",
   "飛鳥会館にお集まりいただき","会場にお集まりいただき","本日はご参列ありがとうございます",
   "ご来場ありがとうございます","お越しいただきありがとうございます","ご参列ありがとうございます",
@@ -3203,6 +3204,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
     "Sprint 27 Hisako quality rule: specific memory first, quiet feeling second. If the hearing sheet is sparse, write shorter and dignified instead of padding.",
     "Opening and closing must use different emotional jobs: opening introduces the life; closing leaves aftertaste and farewell.",
     "Use Hisako Replacement Dictionary before writing. Convert raw hearing words such as stubborn, short-tempered, quiet, shy, or natural into Compass expressions. Do not expose negative labels directly.",
+    "Do not use the phrase 在りし日を. It is reserved for other manuscripts and should not appear in generated narration.",
     "Before returning, do one final Hisako-style polish pass for spoken rhythm, restraint, warmth, and natural Japanese funeral MC wording.",
     "",
     JSON.stringify(payload,null,2),

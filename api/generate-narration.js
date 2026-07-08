@@ -2,6 +2,7 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
+  "在りし日を",
   "飛鳥会館にお集まりいただき",
   "本日はご参列いただき",
   "本日はご会葬賜り",
@@ -207,6 +208,7 @@ const buildSystemPrompt = extraInstruction => [
   "Shape the text so an MC can breathe between thoughts. One paragraph should carry one feeling or memory. Do not pack too many facts into one sentence.",
   "Target length: openingNarration about 600-900 Japanese characters; closingNarration about 500-700 Japanese characters.",
   "Avoid generic AI phrases, repetitive wording, unnecessary greetings, overused abstract words, and repeated gratitude wording. Use concrete memories first, then quiet feeling.",
+  "Do not use the phrase 在りし日を because it is reserved for other manuscripts and would duplicate Hisako's wording.",
   "Do not overuse words equivalent to gratitude, warmth, bonds, irreplaceable, eternal, or watching over. Use them only when the Hearing Sheet supports them.",
   "Use any sample references only for tone, structure, rhythm, warmth, and ending style. Do not copy sample text directly.",
   extraInstruction || "",
