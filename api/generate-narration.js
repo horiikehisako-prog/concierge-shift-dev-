@@ -146,6 +146,24 @@ const closingStartsWithSeasonalLanguage = closing => {
   return SEASONAL_STARTERS.some(word => beginning.startsWith(normalizeText(word)));
 };
 
+const hasWeakGenericNarration = text => {
+  const compact = normalizeText(text);
+  const weakWords = [
+    "温かいお人柄",
+    "たくさんの思い出",
+    "感謝の気持ち",
+    "かけがえのない",
+    "大切な思い出",
+    "優しい笑顔",
+    "見守って",
+  ].map(normalizeText);
+  let hits = 0;
+  weakWords.forEach(word => {
+    if (compact.includes(word)) hits += 1;
+  });
+  return hits >= 4;
+};
+
 const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) => {
   const opening = String(openingNarration || "");
   const closing = String(closingNarration || "");
@@ -156,6 +174,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasVenueName(full, venueNames)) failures.push("venue name");
   if (hasForbiddenExpression(full)) failures.push("attendee greeting");
   if (hasRepeatedExpressions(full)) failures.push("repeated expression");
+  if (hasWeakGenericNarration(full)) failures.push("weak generic narration");
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
@@ -176,6 +195,11 @@ const buildSystemPrompt = extraInstruction => [
   "Opening narration and closing narration have different jobs. Do not make the closing a shorter summary of the opening.",
   "Opening narration introduces the deceased and gently helps attendees remember the person's life. Focus on personality, occupation or life work if provided, hobbies, family memories, concrete episodes, favorite phrases, values, human warmth, and life story.",
   "Closing narration must not retell the life story. It should express the family's feelings, what remains in their hearts, emotional aftertaste, and a quiet farewell.",
+  "Use this opening structure: 1) seasonal atmosphere in one quiet sentence, 2) deceased name and main life theme, 3) concrete memories from the hearing sheet, 4) the human meaning of those memories.",
+  "Use this closing structure: 1) do not mention season, 2) do not summarize the life again, 3) name what remains in the family's hearts, 4) move gently toward farewell with restraint.",
+  "If the hearing sheet is sparse, write a shorter dignified narration instead of padding. Never fill missing details with generic praise.",
+  "Specific memory is stronger than a beautiful adjective. Prefer one true detail from the hearing sheet over abstract phrases such as warmth, bonds, gratitude, precious, irreplaceable, or watching over.",
+  "Final polish pass: revise as Hisako's funeral MC manuscript. Calm, readable aloud, not sentimental, not over-written, no AI-like closing, and no sentence that a family could not recognize as their own.",
   "Never describe the same episode twice. If an episode is used in openingNarration, closingNarration may explain why it mattered or what remains in the family's hearts, but must not summarize or narrate that episode again.",
   "Write as a script to be read aloud, not as an article. Prioritize rhythm, breathing, emotional pacing, warmth, and quiet dignity over beautiful literary style.",
   "Use plain, natural Japanese funeral MC wording. Avoid ornate metaphors, dramatic expressions, clever conclusions, sales-like polish, and phrases that sound like AI.",
@@ -257,8 +281,8 @@ module.exports = async (req, res) => {
     const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 1800, 100, 4000));
     const attempts = [
       "",
-      "The previous draft failed Compass quality checks. Regenerate completely. Do not reuse the failed wording. Start openingNarration with season, then the deceased, then life. Do not use venue names or attendee greetings. Do not start closingNarration with seasonal language.",
-      `${QUALITY_CHECK_FAILED_MESSAGE} Regenerate again from scratch. Return only a narration that passes every quality check: no venue names, no attendee greetings, no repeated expressions, opening and closing with different content, opening order season -> deceased -> life, and closingNarration not starting with seasonal language.`,
+      "The previous draft failed Compass quality checks. Regenerate completely. Do not reuse the failed wording. Start openingNarration with season, then the deceased, then life. Do not use venue names or attendee greetings. Do not start closingNarration with seasonal language. Replace generic praise with one concrete memory from the hearing sheet.",
+      `${QUALITY_CHECK_FAILED_MESSAGE} Regenerate again from scratch. Return only a narration that passes every quality check: no venue names, no attendee greetings, no repeated expressions, no generic filler, opening and closing with different content, opening order season -> deceased -> life, and closingNarration not starting with seasonal language. Apply the Hisako-style final polish pass before returning JSON.`,
     ];
     let parsed = null;
     let lastCheck = null;

@@ -2956,6 +2956,17 @@ const compassDetectTheme=(sheet,cfg={})=>{
 };
 const compassEmptySheet=()=>({deceasedName:"",age:"",deceasedDate:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
   travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",familyFeelings:"",ceremonyType:"通夜",notes:""});
+const COMPASS_HEARING_PLACEHOLDERS={
+  personality:"例：口数は多くないけれど、困った人を見ると黙って手を貸す方でした。",
+  hobbies:"例：庭の花の手入れが好きで、季節ごとに家族へ咲いた花を見せていました。",
+  memorableEvents:"例：退職後も地域の集まりには欠かさず顔を出し、準備を手伝っていました。",
+  familyMemories:"例：お孫様が来る日は、好きなお菓子を用意して待っていました。",
+  familyFeelings:"例：もっと話したかった、でも最後まで家族を思ってくれたことに感謝している。",
+  travelAnniversaryEffort:"例：結婚記念日には毎年同じ場所へ出かけることを大切にしていました。",
+  favoritePhrases:"例：『大丈夫、なんとかなる』とよく声をかけてくれました。",
+  valuedThings:"例：家族が集まって食卓を囲む時間を何より大切にしていました。",
+  notes:"宗派・弔電・喪主挨拶・触れない方がよい内容など"
+};
 const compassEmptyDraft=()=>({full:""});
 const clean=v=>(v||"").trim();
 const compassSanitizeHearingSheet=sheet=>{
@@ -3004,6 +3015,15 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])
       style:"Plain, natural Japanese funeral MC script that can be read aloud. Prefer short sentences, natural pauses, and one feeling or memory per paragraph.",
       avoid:["literary flourish","novel-like description","generic AI phrases","dramatic metaphors","repeated gratitude wording","closing that repeats the opening"],
     },
+    sprint27HisakoQualityRules:{
+      finalGoal:"Write as a calm funeral MC manuscript that Hisako can read aloud with dignity. The family should feel the words came from their own memories, not from a generic AI.",
+      openingStructure:["seasonal atmosphere in one quiet sentence","deceased name and one life theme","specific memories from the hearing sheet","the human meaning of those memories"],
+      closingStructure:["do not begin with season","do not retell the life story","name what remains in the family's hearts","move gently toward farewell with restraint"],
+      sparseInputRule:"If there are not enough concrete memories, make the narration shorter and dignified instead of padding it with generic praise.",
+      concreteMemoryRule:"One true detail is better than many beautiful adjectives. Use concrete memory first, then quiet feeling.",
+      weakPhraseAvoidance:["温かいお人柄","たくさんの思い出","感謝の気持ち","かけがえのない","大切な思い出","優しい笑顔","見守って"],
+      finalPolish:"Before returning JSON, revise once for Hisako style: natural breath, short spoken sentences, no sentimental over-writing, no AI-like ending, and opening/closing clearly different.",
+    },
     selectedLibraryStyleReferences:selectedSamples,
     hearingSheet,
     outputRules:[
@@ -3035,6 +3055,9 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[])
     "Opening narration must begin with season, then the deceased, then life. Never begin with venue, attendees, or greetings.",
     "Closing narration must not begin with seasonal language. Seasonal language is allowed only in openingNarration.",
     "Closing narration must focus on family feelings, what remains in their hearts, quiet farewell, emotional aftertaste, and must not re-explain the deceased's life.",
+    "Sprint 27 Hisako quality rule: specific memory first, quiet feeling second. If the hearing sheet is sparse, write shorter and dignified instead of padding.",
+    "Opening and closing must use different emotional jobs: opening introduces the life; closing leaves aftertaste and farewell.",
+    "Before returning, do one final Hisako-style polish pass for spoken rhythm, restraint, warmth, and natural Japanese funeral MC wording.",
     "",
     JSON.stringify(payload,null,2),
   ].join("\n");
@@ -3390,7 +3413,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:compassSanitizeHearingSheet(sheet),generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint25-20260705.1",templateVersion:"sprint25-20260705.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint27-hisako-quality-20260708.1",templateVersion:"sprint27-hisako-quality-20260708.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -3419,7 +3442,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash}) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
         {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>{label}</label>
-          {type==="textarea"?<textarea value={sheet[key]} onChange={e=>update(key,e.target.value)} rows={3} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,resize:"vertical"}}/>:
+          {type==="textarea"?<textarea value={sheet[key]} onChange={e=>update(key,e.target.value)} rows={3} placeholder={COMPASS_HEARING_PLACEHOLDERS[key]||""} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,resize:"vertical"}}/>:
           type==="select"?<select value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:"#fff"}}><option>通夜</option><option>葬儀</option></select>:
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
