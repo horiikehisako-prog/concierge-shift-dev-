@@ -3815,8 +3815,15 @@ const AI_NARRATION_WARNING = "Compass AIが作成した文章は下書きです�
 
 
 const MC_COMPANIES = {
-  "飛鳥会館": ["小さな多治米","小さな蔵王","春日","花園","多治米","タスカニー"],
-  "あしべの杜": ["あしべの杜","追憶の杜","別邸","府中"],
+  "飛鳥会館": ["東手城","春日","花園","多治米","小さな蔵王","小さな多治米"],
+  "あしべの杜": ["あしべの杜","追憶","府中","別邸"],
+};
+const MC_REMOVED_VENUES = {
+  "飛鳥会館": ["タスカニー"],
+  "あしべの杜": ["追憶の杜"],
+};
+const MC_VENUE_ALIASES = {
+  "あしべの杜": {"追憶の杜":"追憶"},
 };
 const MC_ROLES = ["司会","アシスタント","パントリー"];
 const MC_TYPES = ["通夜","葬儀"];
@@ -3871,7 +3878,7 @@ const makeId = prefix => `${prefix}-${Date.now()}-${Math.random().toString(36).s
 const DEFAULT_ITEM_SETTINGS = {
   clients:[
     {id:"asuka",label:"飛鳥会館",shortLabel:"飛鳥",venues:MC_COMPANIES["飛鳥会館"]},
-    {id:"ashibe",label:"あしべの杜",shortLabel:"あしべ",venues:["あしべの杜","追憶の杜","別邸","府中"]},
+    {id:"ashibe",label:"あしべの杜",shortLabel:"あしべ",venues:MC_COMPANIES["あしべの杜"]},
   ],
   ceremonyTypes:[
     {id:"type-wake",label:"通夜"},
@@ -3915,7 +3922,12 @@ function normalizeItemSettings(settings){
   }));
   const completeClientVenues=c=>{
     const defaults=MC_COMPANIES[c.label]||[];
-    return {...c,venues:Array.from(new Set([...ensureArray(c.venues),...defaults]))};
+    const removed=new Set(MC_REMOVED_VENUES[c.label]||[]);
+    const aliases=MC_VENUE_ALIASES[c.label]||{};
+    const existing=ensureArray(c.venues)
+      .map(v=>aliases[v]||v)
+      .filter(v=>v&&!removed.has(v));
+    return {...c,venues:Array.from(new Set([...defaults,...existing]))};
   };
   return {
     clients:(legacyClients.length?legacyClients:base.clients).map(completeClientVenues),
