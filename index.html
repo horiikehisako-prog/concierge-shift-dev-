@@ -2246,10 +2246,14 @@ function actualMonthlyVenue(cfg, vconf, d, vName){
   return vName;
 }
 
+function getMonthlyRecordStaffNames(cfg){
+  return [...new Set([...(cfg.staff||[]),...(cfg.mcStaff||[]),...(cfg.assistStaff||[])].filter(Boolean))];
+}
+
 function useMonthlyMCRecords(year, month, cfg){
   const [state,setState]=useState({loading:true,records:[]});
   useEffect(()=>{
-    const names=[...new Set([...(cfg.staff||[]),...(cfg.mcStaff||[]),...(cfg.assistStaff||[])].filter(Boolean))];
+    const names=getMonthlyRecordStaffNames(cfg);
     let alive=true;
     setState({loading:true,records:[]});
     Promise.all(names.map(name=>
@@ -2284,9 +2288,119 @@ function buildConciergeMonthlyRows({year,month,att,shifts,vconf,cfg,approvedOnly
   return rows;
 }
 
+function inferBillingCompanyFromVenue(cfg, venue){
+  const name=String(venue||"");
+  const clients=getClients(cfg);
+  const found=clients.find(c=>c.label===name||ensureArray(c.venues).includes(name));
+  if(found) return found.label;
+  if(["春日","花園","多治米","東手城","小さな蔵王","小さな多治米"].includes(name)) return "飛鳥会館";
+  if(["あしべの杜","追憶","府中","別邸"].includes(name)) return "あしべの杜";
+  if(name.includes("ふかしな")) return "ふかしな葬祭";
+  return "未設定";
+}
+
+function buildConciergeBillingRows({year,month,att,shifts,vconf,cfg,approvedOnly=false}){
+  return buildConciergeMonthlyRows({year,month,att,shifts,vconf,cfg,approvedOnly}).map(r=>{
+    const sub=Math.round((r.hours||0)*RATE_BILL);
+    const tax=Math.round(sub*TAX_RATE);
+    return {
+      source:"concierge",date:r.date,d:r.d,staff:r.staff,company:inferBillingCompanyFromVenue(cfg,r.location),
+      venue:r.location,role:"コンシェルジュ",workType:"コンシェルジュ",type:"時間",
+      hours:r.hours||0,count:0,unit:RATE_BILL,sub,tax,total:sub+tax,status:r.status
+    };
+  });
+}
+
+function buildMCBillingRows(records,cfg){
+  const billing=cfg.mcBilling||DEFAULT_MC_BILLING;
+  return records.map(r=>{
+    const ceremony=normalizeCeremonyLabel(r.role==="パントリー"?(getCeremonyTypes(cfg)[0]?.label||"通夜"):(r.type||"通夜"));
+    const sub=getBillingAmount(billing,r.company,r.role,ceremony);
+    const tax=Math.round(sub*TAX_RATE);
+    return {
+      source:"mc",date:r.date||"",d:Number(String(r.date||"").split(/[/-]/)[2]||0),staff:r.staff||"",
+      company:r.company||"未設定",venue:r.venue||"",role:r.role||"",workType:r.role==="パントリー"?r.role:`${ceremony}${r.role||""}`,
+      type:ceremony,hours:0,count:1,unit:sub,sub,tax,total:sub+tax,status:"登録済"
+    };
+  });
+}
+
+function MonthlyInvoiceList(P){
+  const {year,month,cfg}=P;
+  const {loading,records}=useMonthlyMCRecords(year,month,cfg);
+  const rows=[...buildConciergeBillingRows({...P,approvedOnly:true}),...buildMCBillingRows(records,cfg)]
+    .sort((a,b)=>String(a.company).localeCompare(String(b.company),"ja")||String(a.venue).localeCompare(String(b.venue),"ja")||(a.d-b.d));
+  const companySummary=Object.values(rows.reduce((map,r)=>{
+    const key=r.company||"未設定";
+    if(!map[key]) map[key]={company:key,count:0,hours:0,sub:0,tax:0,total:0};
+    map[key].count+=r.count||1;
+    map[key].hours+=r.hours||0;
+    map[key].sub+=r.sub||0;
+    map[key].tax+=r.tax||0;
+    map[key].total+=r.total||0;
+    return map;
+  },{})).map(r=>({...r,hours:Math.round(r.hours*100)/100}));
+  const venueSummary=Object.values(rows.reduce((map,r)=>{
+    const key=`${r.company}__${r.venue}__${r.workType}`;
+    if(!map[key]) map[key]={company:r.company,venue:r.venue,workType:r.workType,count:0,hours:0,sub:0,tax:0,total:0};
+    map[key].count+=r.count||1;
+    map[key].hours+=r.hours||0;
+    map[key].sub+=r.sub||0;
+    map[key].tax+=r.tax||0;
+    map[key].total+=r.total||0;
+    return map;
+  },{})).map(r=>({...r,hours:Math.round(r.hours*100)/100}))
+    .sort((a,b)=>String(a.company).localeCompare(String(b.company),"ja")||String(a.venue).localeCompare(String(b.venue),"ja")||String(a.workType).localeCompare(String(b.workType),"ja"));
+  const total=rows.reduce((a,r)=>a+(r.total||0),0);
+  const exportCSV=()=>{
+    const out=[
+      [`${year}年${month}月 会社別請求書用明細`],[""],
+      ["会社","会場","勤務日","スタッフ","仕事内容","種別","時間","件数","単価","小計(税抜)","消費税","請求額(税込)","状態"],
+      ...rows.map(r=>[r.company,r.venue,r.date,r.staff,r.workType,r.type,r.hours||"",r.count||"",r.unit,r.sub,r.tax,r.total,r.status]),
+      ["合計","","","","","","","","",rows.reduce((a,r)=>a+r.sub,0),rows.reduce((a,r)=>a+r.tax,0),total,""]
+    ];
+    downloadCSV(`会社別請求書用明細_${year}-${p2(month)}.csv`,out);
+  };
+  return <div>
+    <div className="no-print" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+      <div style={{fontSize:12,color:C.muted}}>請求書作成用です。会社ごと・会場ごと・仕事内容ごとに確認できます。</div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={exportCSV} style={{...Btn(C.green),fontSize:12,padding:"8px 14px"}}>CSV出力</button>
+        <button onClick={()=>window.print()} style={{...Btn(C.navy),fontSize:12,padding:"8px 14px"}}>印刷</button>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginBottom:14}}>
+      <div style={{...GC,marginBottom:0,textAlign:"center"}}><div style={{fontSize:20,fontWeight:900,color:C.purple}}>{yen(total)}</div><div style={{fontSize:12,color:C.muted}}>請求合計(税込)</div></div>
+      <div style={{...GC,marginBottom:0,textAlign:"center"}}><div style={{fontSize:20,fontWeight:900,color:C.blue}}>{rows.length}</div><div style={{fontSize:12,color:C.muted}}>明細件数</div></div>
+    </div>
+    <div className="print-card" style={GC}>
+      <h3 className="print-title" style={{margin:"0 0 12px",fontSize:16}}>会社ごとの請求合計 {year}年{month}月</h3>
+      {loading&&<p style={{color:C.muted,fontSize:13}}>読み込み中...</p>}
+      {!loading&&companySummary.length===0&&<p style={{color:C.muted,fontSize:13}}>請求データはありません。</p>}
+      {companySummary.length>0&&<div style={{overflowX:"auto"}}><table className="print-table" style={{width:"100%",borderCollapse:"collapse",minWidth:650}}>
+        <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>会社</th><th style={TH}>件数</th><th style={TH}>時間</th><th style={TH}>小計(税抜)</th><th style={TH}>消費税</th><th style={TH}>請求額(税込)</th></tr></thead>
+        <tbody>{companySummary.map(r=><tr key={r.company}><td style={{...TD,fontWeight:800}}>{r.company}</td><td style={{...TD,textAlign:"center"}}>{r.count}</td><td style={{...TD,textAlign:"center"}}>{r.hours?r.hours+"h":"-"}</td><td style={{...TD,textAlign:"right"}}>{yen(r.sub)}</td><td style={{...TD,textAlign:"right"}}>{yen(r.tax)}</td><td style={{...TD,textAlign:"right",fontWeight:900,color:C.purple}}>{yen(r.total)}</td></tr>)}</tbody>
+      </table></div>}
+    </div>
+    <div className="print-card" style={GC}>
+      <h3 className="print-title" style={{margin:"0 0 12px",fontSize:16}}>会場・仕事内容別の請求内訳</h3>
+      {venueSummary.length>0&&<div style={{overflowX:"auto"}}><table className="print-table" style={{width:"100%",borderCollapse:"collapse",minWidth:760}}>
+        <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>会社</th><th style={TH}>会場</th><th style={TH}>仕事内容</th><th style={TH}>時間</th><th style={TH}>件数</th><th style={TH}>請求額(税込)</th></tr></thead>
+        <tbody>{venueSummary.map(r=><tr key={`${r.company}-${r.venue}-${r.workType}`}><td style={TD}>{r.company}</td><td style={{...TD,fontWeight:800}}>{r.venue}</td><td style={TD}>{r.workType}</td><td style={{...TD,textAlign:"center"}}>{r.hours?r.hours+"h":"-"}</td><td style={{...TD,textAlign:"center"}}>{r.count||"-"}</td><td style={{...TD,textAlign:"right",fontWeight:900,color:C.purple}}>{yen(r.total)}</td></tr>)}</tbody>
+      </table></div>}
+    </div>
+    <div className="print-card" style={GC}>
+      <h3 className="print-title" style={{margin:"0 0 12px",fontSize:16}}>請求明細</h3>
+      {rows.length>0&&<div style={{overflowX:"auto"}}><table className="print-table" style={{width:"100%",borderCollapse:"collapse",minWidth:980}}>
+        <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>日付</th><th style={TH}>会社</th><th style={TH}>会場</th><th style={TH}>スタッフ</th><th style={TH}>仕事内容</th><th style={TH}>時間/件数</th><th style={TH}>請求額(税込)</th></tr></thead>
+        <tbody>{rows.map((r,i)=><tr key={`${r.source}-${r.date}-${r.staff}-${i}`}><td style={{...TD,whiteSpace:"nowrap"}}>{r.date}</td><td style={TD}>{r.company}</td><td style={{...TD,fontWeight:700}}>{r.venue}</td><td style={TD}>{r.staff}</td><td style={TD}>{r.workType}</td><td style={{...TD,textAlign:"center"}}>{r.hours?`${r.hours}h`:`${r.count}件`}</td><td style={{...TD,textAlign:"right",fontWeight:900,color:C.purple}}>{yen(r.total)}</td></tr>)}</tbody>
+      </table></div>}
+    </div>
+  </div>;
+}
+
 function normalizeMonthlyMCRecord(r,cfg){
-  const rateKey=r.training?"遐比ｿｮ":r.role;
-  const rate=(cfg.mcRates||{})[r.staff]?.[r.company]?.[rateKey]||0;
+  const rate=getStaffPayRate(cfg,r.staff,r);
   const parts=String(r.date||"").split(/[/-]/).map(Number);
   return {
     source:"mc",date:r.date||"",d:parts[2]||0,staff:r.staff,role:r.role||"",
@@ -2453,8 +2567,9 @@ function MonthlyAttendanceList(P){
 }
 
 function OfficeView(P){
-  const [tab,setTab]=useState("calc");
+  const [tab,setTab]=useState("invoice");
   const tabs=[
+    {id:"invoice", label:"月次請求"},
     {id:"payroll", label:"月次給与"},
     {id:"monthly", label:"月次勤怠"},
     {id:"calc",    label:"💴 コンシェル"},
@@ -2475,6 +2590,7 @@ function OfficeView(P){
     </div>
     <MonthSel {...P}/>
     <Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="invoice"&&<MonthlyInvoiceList {...P}/>}
     {tab==="payroll"&&<MonthlyPayrollList {...P}/>}
     {tab==="monthly"&&<MonthlyAttendanceList {...P}/>}
     {tab==="calc"   &&<AccountingView {...P}/>}
@@ -4871,10 +4987,11 @@ function SupportGrowthChart({card,templates,trainers,onChange}){
 // ═══════════════════════════════════════════════════════════════
 // 勉強会管理
 // ═══════════════════════════════════════════════════════════════
-function StudySessionView({year,month,openAINarration}){
+function StudySessionView({year,month,openAINarration,cfg}){
   const [sessions,setSessions]=useState([]);
   const [loading,setLoading]=useState(true);
-  const [form,setForm]=useState({date:`${year}-${p2(month)}-01`,start:"16:00",end:"18:00"});
+  const teachers=ensureArray(cfg?.mcStaff).length?ensureArray(cfg.mcStaff):DEFAULT_MC_STAFF;
+  const [form,setForm]=useState({date:`${year}-${p2(month)}-01`,start:"16:00",end:"18:00",teacher:teachers[0]||""});
   const [saving,setSaving]=useState(false);
 
   useEffect(()=>{
@@ -4888,7 +5005,7 @@ function StudySessionView({year,month,openAINarration}){
     const h=Math.round(((eh*60+em)-(sh*60+sm))/60*100)/100;
     const sub=Math.round(h*STUDY_RATE);
     const tax=Math.round(sub*TAX_RATE);
-    const newRec={id:Date.now(),date:form.date.replace(/-/g,"/"),start:form.start,end:form.end,hours:h,sub,tax,total:sub+tax};
+    const newRec={id:Date.now(),date:form.date.replace(/-/g,"/"),start:form.start,end:form.end,teacher:form.teacher||"",hours:h,sub,tax,total:sub+tax};
     const updated=[...sessions,newRec];
     await stSave(`study-${year}-${p2(month)}`,updated);
     setSessions(updated);setSaving(false);
@@ -4902,6 +5019,21 @@ function StudySessionView({year,month,openAINarration}){
 
   const totalH=Math.round(sessions.reduce((a,s)=>a+s.hours,0)*100)/100;
   const totalTotal=sessions.reduce((a,s)=>a+s.total,0);
+  const teacherSummary=Object.values(sessions.reduce((map,s)=>{
+    const key=s.teacher||"未設定";
+    if(!map[key]) map[key]={teacher:key,hours:0,sub:0,tax:0,total:0,count:0};
+    map[key].hours+=s.hours||0; map[key].sub+=s.sub||0; map[key].tax+=s.tax||0; map[key].total+=s.total||0; map[key].count++;
+    return map;
+  },{})).map(r=>({...r,hours:Math.round(r.hours*100)/100}));
+  const exportCSV=()=>{
+    const rows=[
+      [`${year}年${month}月 司会勉強会 講師料明細`],[""],
+      ["先生","日付","開始","終了","時間","単価","小計(税抜)","消費税","合計(税込)"],
+      ...sessions.map(s=>[s.teacher||"未設定",s.date,s.start,s.end,s.hours,STUDY_RATE,s.sub,s.tax,s.total]),
+      ["合計","","","",totalH,STUDY_RATE,sessions.reduce((a,s)=>a+s.sub,0),sessions.reduce((a,s)=>a+s.tax,0),totalTotal]
+    ];
+    downloadCSV(`司会勉強会_講師料_${year}-${p2(month)}.csv`,rows);
+  };
 
   return <div>
     <div style={GC}>
@@ -4927,6 +5059,14 @@ function StudySessionView({year,month,openAINarration}){
           <input type="time" value={form.end} onChange={e=>setForm({...form,end:e.target.value})}
             style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14}}/>
         </div>
+        <div style={{flex:"1 1 160px"}}>
+          <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>先生（司会）</label>
+          <select value={form.teacher} onChange={e=>setForm({...form,teacher:e.target.value})}
+            style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14,boxSizing:"border-box"}}>
+            <option value="">未設定</option>
+            {teachers.map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
       </div>
       <div style={{fontSize:13,color:C.green,fontWeight:700,marginBottom:10}}>
         費用: {yen(Math.round(((new Date(`2000-01-01T${form.end}`)-new Date(`2000-01-01T${form.start}`))/3600000)*STUDY_RATE))}（税抜）
@@ -4936,20 +5076,29 @@ function StudySessionView({year,month,openAINarration}){
       </button>
     </div>
     <div style={GC}>
-      <div style={{display:"flex",gap:20,marginBottom:14,flexWrap:"wrap"}}>
+      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
         {[["合計時間",`${totalH}h`,C.blue],["合計費用(税込)",yen(totalTotal),C.purple]].map(([l,v,c])=>(
           <div key={l} style={{textAlign:"center"}}>
             <div style={{fontSize:22,fontWeight:800,color:c}}>{v}</div>
             <div style={{fontSize:11,color:C.muted}}>{l}</div>
           </div>
         ))}
+        </div>
+        <button onClick={exportCSV} style={{...Btn(C.green),fontSize:12,padding:"8px 14px"}}>CSV出力</button>
       </div>
+      {teacherSummary.length>0&&<div style={{overflowX:"auto",marginBottom:14}}>
+        <table style={{width:"100%",borderCollapse:"collapse",minWidth:520}}>
+          <thead><tr style={{background:"#f8f9fb"}}><th style={TH}>先生</th><th style={TH}>回数</th><th style={TH}>時間</th><th style={TH}>講師料(税込)</th></tr></thead>
+          <tbody>{teacherSummary.map(t=><tr key={t.teacher}><td style={{...TD,fontWeight:800}}>{t.teacher}</td><td style={{...TD,textAlign:"center"}}>{t.count}回</td><td style={{...TD,textAlign:"center"}}>{t.hours}h</td><td style={{...TD,textAlign:"right",fontWeight:900,color:C.purple}}>{yen(t.total)}</td></tr>)}</tbody>
+        </table>
+      </div>}
       {loading&&<p style={{color:C.muted,fontSize:13}}>読み込み中…</p>}
       {!loading&&sessions.length===0&&<p style={{color:C.muted,fontSize:13}}>記録がありません</p>}
       {[...sessions].sort((a,b)=>a.date>b.date?1:-1).map(s=>(
         <div key={s.id} style={{display:"flex",alignItems:"center",gap:8,borderBottom:`1px solid ${C.border}`,padding:"10px 0",flexWrap:"wrap"}}>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,fontSize:14}}>{s.date}　{s.start}〜{s.end}　{s.hours}時間</div>
+            <div style={{fontWeight:700,fontSize:14}}>{s.date}　{s.start}〜{s.end}　{s.hours}時間　先生: {s.teacher||"未設定"}</div>
             <div style={{fontSize:12,color:C.muted,marginTop:2}}>
               {yen(s.sub)}（税抜）+ 税 {yen(s.tax)} = <strong style={{color:C.purple}}>{yen(s.total)}</strong>
             </div>
@@ -5126,7 +5275,7 @@ function MCRecordTab({ year, month, cfg, uname, flash, shifts, att, vconf }) {
 
 // MC集計（事務・管理者用）
 function MCAccountingView({ year, month, cfg }) {
-  const { staff } = cfg;
+  const staff = getMonthlyRecordStaffNames(cfg);
   const clients=getClients(cfg);
   const [allRecords, setAllRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5139,7 +5288,7 @@ function MCAccountingView({ year, month, cfg }) {
       setAllRecords(all.flat());
       setLoading(false);
     });
-  }, [year, month, staff]);
+  }, [year, month, cfg.staff, cfg.mcStaff, cfg.assistStaff]);
 
   if (loading) return <div style={{padding:40,textAlign:"center",color:C.muted}}>読み込み中…</div>;
 
