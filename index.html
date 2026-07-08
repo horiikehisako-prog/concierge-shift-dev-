@@ -60,18 +60,18 @@ const SUPPORT_RATINGS = [
   {id:"pass", mark:"\u5408\u683c", label:"\u5408\u683c", score:3, color:"#16a34a"},
 ];
 const TRAINING_STAGES = SUPPORT_RATINGS;
-const SUPPORT_LEGACY_RATING_SCORES = {"observe":0,"together":1,"solo":2,"pass":3,"\uff83\u30fb":0,"\u7b06\uff73":1,"\u7b33\u30fb":2,"\u00d7":0};
+const SUPPORT_LEGACY_RATING_SCORES = {"observe":0,"together":1,"solo":2,"pass":3,"見学":0,"一緒に実施":1,"一人で実施":2,"合格":3,"◎":3,"○":2,"△":1,"×":0};
 const SUPPORT_MATERIAL_FIELDS = [
-  {key:"manual",label:"Manual"},
-  {key:"importantPoints",label:"Important Points"},
-  {key:"commonMistakes",label:"Common Mistakes"},
-  {key:"tips",label:"Trainer Tips"},
-  {key:"timing",label:"Timing"},
-  {key:"emotionalGuidance",label:"Emotional Guidance"},
-  {key:"readingPractice",label:"Reading practice"},
-  {key:"aiNarration",label:"AI narration connection"},
-  {key:"futureCompatibility",label:"Future Compatibility"},
-  {key:"memo",label:"Memo"},
+  {key:"manual",label:"教え方・手順"},
+  {key:"importantPoints",label:"大事なポイント"},
+  {key:"commonMistakes",label:"よくあるミス"},
+  {key:"tips",label:"教える人へのコツ"},
+  {key:"timing",label:"タイミング"},
+  {key:"emotionalGuidance",label:"気持ちの寄り添い方"},
+  {key:"readingPractice",label:"読み練習"},
+  {key:"aiNarration",label:"AIナレーション連携"},
+  {key:"futureCompatibility",label:"今後増やしたい内容"},
+  {key:"memo",label:"メモ"},
 ];
 const SUPPORT_MEDIA_TYPES = ["pdf","images","video","audio","readingPractice","aiNarration"];
 let DEFAULT_TRAINING_TEMPLATES = [
@@ -4575,7 +4575,7 @@ function StaffManagementPanel({staffList,onChange}){
         </select>
         <input value={s.location||""} onChange={e=>update(s.id,{location:e.target.value})} placeholder="勤務場所" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13,minWidth:0}}/>
         <label style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><input type="checkbox" checked={!!s.trainingTarget} onChange={e=>update(s.id,{trainingTarget:e.target.checked})}/>研修対象</label>
-        <label style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><input type="checkbox" checked={!!s.trainer} onChange={e=>update(s.id,{trainer:e.target.checked})}/>Trainer</label>
+        <label style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><input type="checkbox" checked={!!s.trainer} onChange={e=>update(s.id,{trainer:e.target.checked})}/>教える人</label>
         <button onClick={()=>del(s.id)} style={{...Btn(C.red),padding:"7px 10px"}}>削除</button>
       </div>)}
     </div>
@@ -4629,7 +4629,7 @@ function SupportManagerView({cfg,sv,flash}){
   const selectedCard=cards.find(c=>c.id===selected)||cards[0];
   const followCount=cards.filter(c=>supportStatus(c,templates)==="要フォロー"||supportProgress(c,templates)<60).length;
   const rookieCount=cards.filter(c=>supportStatus(c,templates)==="研修中").length;
-  const debutCount=cards.filter(c=>c.debutMonth||supportStatus(c,templates)==="独り立ちOK").length;
+  const debutCount=cards.filter(c=>c.debutMonth).length;
   const trainingCount=cards.filter(c=>c.trainingThisWeek).length;
   const recent=[...cards].sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||""))).slice(0,3);
   const trainers=supportTrainers(managedStaff);
@@ -4649,7 +4649,7 @@ function SupportManagerView({cfg,sv,flash}){
       </div>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:14}}>
-      {[["cards","教育マスター"],["templates","テンプレート"],["ai","Compass AI"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{...Btn(tab===id?C.green:"#fff",tab===id?"#fff":C.text),border:`2px solid ${tab===id?C.green:C.border}`,padding:"13px 12px",fontSize:15}}>{label}</button>)}
+      {[["cards","カルテ"],["templates","教育テンプレート"],["ai","AIナレーション"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{...Btn(tab===id?C.green:"#fff",tab===id?"#fff":C.text),border:`2px solid ${tab===id?C.green:C.border}`,padding:"13px 12px",fontSize:15}}>{label}</button>)}
     </div>
     {tab==="ai"&&<CompassNarrationView cfg={cfg} sv={sv} flash={flash} uname="業務サポートマネージャー" role="support"/>}
     {tab==="templates"&&<TrainingTemplateManager templates={templates} staffList={managedStaff} onSave={saveTemplates}/>}
@@ -4754,7 +4754,7 @@ function TrainingTemplateManager({templates,staffList,onSave}){
         </div>
         <input value={selected.title} onChange={e=>updateTemplate(selected.id,{title:e.target.value})} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 12px",fontSize:15,fontWeight:800,marginBottom:10}}/>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-          <button onClick={()=>copyTemplate(selected)} style={{...Btn(C.blue),padding:"11px 16px"}}>Copy Template</button>
+          <button onClick={()=>copyTemplate(selected)} style={{...Btn(C.blue),padding:"11px 16px"}}>テンプレート複製</button>
           <button onClick={addCategory} style={{...Btn(C.green),padding:"11px 16px"}}>カテゴリ追加</button>
           <button onClick={()=>deleteTemplate(selected.id)} style={{...Btn(C.red),padding:"11px 16px"}}>削除</button>
         </div>
@@ -4775,14 +4775,14 @@ function TrainingTemplateManager({templates,staffList,onSave}){
                   <button onClick={()=>deleteItem(cat.id,item.id)} style={{...Btn(C.red),padding:"10px 12px"}}>削除</button>
                 </div>
                 <div style={{marginTop:10,paddingTop:10,borderTop:`1px dashed ${C.border}`}}>
-                  <div style={{fontSize:13,fontWeight:900,color:"#14532d",marginBottom:8}}>Training Material</div>
+                  <div style={{fontSize:13,fontWeight:900,color:"#14532d",marginBottom:8}}>教育内容</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
                     {SUPPORT_MATERIAL_FIELDS.map(f=><label key={f.key} style={{fontSize:12,fontWeight:800,color:C.muted}}>{f.label}
                       <textarea value={normalizeTrainingMaterial(item.material)[f.key]} onChange={e=>updateItemMaterial(cat.id,item.id,{[f.key]:e.target.value})} rows={f.key==="manual"?5:3} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13,boxSizing:"border-box"}}/>
                     </label>)}
                   </div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
-                    {SUPPORT_MEDIA_TYPES.map(type=><span key={type} style={{border:`1px solid ${C.border}`,borderRadius:999,padding:"5px 9px",fontSize:11,fontWeight:800,color:C.muted,background:"#f9fafb"}}>{type.toUpperCase()} ready</span>)}
+                    {SUPPORT_MEDIA_TYPES.map(type=><span key={type} style={{border:`1px solid ${C.border}`,borderRadius:999,padding:"5px 9px",fontSize:11,fontWeight:800,color:C.muted,background:"#f9fafb"}}>{type.toUpperCase()} 対応予定</span>)}
                   </div>
                 </div>
               </div>)}
@@ -4816,46 +4816,54 @@ function SupportGrowthChart({card,templates,trainers,onChange}){
   const skillGroups=supportTemplateSkillGroups(template);
   const p=supportProgress(card,templates),color=supportProgressColor(p);
   const today=new Date().toISOString().slice(0,10);
-  const completedDate=card.trainingCompletedDate||(p>=100?today:"");
+  const completedDate=card.trainingCompletedDate||"";
   const updateComment=(key,patch)=>onChange({itemComments:{...(card.itemComments||{}),[key]:{...((card.itemComments||{})[key]||{}),...patch}}});
   const setSkill=(key,mark)=>onChange({skills:{...(card.skills||{}),[key]:mark},lastTrainingDate:today});
   const addHistory=()=>{if(!historyComment.trim())return;onChange({history:[...(card.history||[]),{id:Date.now(),date:historyDate.replace(/-/g,"/"),comment:historyComment.trim()}]});setHistoryComment("");};
   return <div style={GC}>
     <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
-      <div><h3 style={{margin:"0 0 4px",fontSize:20}}>{card.name} Training</h3><div style={{fontSize:13,color:C.muted}}>{card.role} / {supportStatus(card,templates)} / {template?.title||"Training"}</div></div>
-      <div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color}}>{p}%</div><div style={{fontSize:11,color:C.muted,fontWeight:700}}>Overall progress</div></div>
+      <div><h3 style={{margin:"0 0 4px",fontSize:20}}>{card.name}さんの成長カルテ</h3><div style={{fontSize:13,color:C.muted}}>{card.role} / {supportStatus(card,templates)} / {template?.title||"研修"}</div></div>
+      <div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color}}>{p}%</div><div style={{fontSize:11,color:C.muted,fontWeight:700}}>全体進捗</div></div>
     </div>
     <div style={{height:12,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"14px 0 14px"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Last training date<input type="date" value={card.lastTrainingDate||""} onChange={e=>onChange({lastTrainingDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Trainer<select value={card.trainerId||""} onChange={e=>onChange({trainerId:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}><option value="">Not set</option>{trainers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Next target<input value={card.nextTarget||""} onChange={e=>onChange({nextTarget:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>Training completed date<input type="date" value={completedDate} onChange={e=>onChange({trainingCompletedDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>最終研修日<input type="date" value={card.lastTrainingDate||""} onChange={e=>onChange({lastTrainingDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>教える人<select value={card.trainerId||""} onChange={e=>onChange({trainerId:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}><option value="">未設定</option>{trainers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>次の目標<input value={card.nextTarget||""} onChange={e=>onChange({nextTarget:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
+      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>研修完了日<input type="date" value={completedDate} onChange={e=>onChange({trainingCompletedDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
+    </div>
+    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
+      <label style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 11px",fontSize:13,fontWeight:900,background:card.trainingThisWeek?"#ecfdf5":"#fff",color:card.trainingThisWeek?C.green:C.text}}>
+        <input type="checkbox" checked={!!card.trainingThisWeek} onChange={e=>onChange({trainingThisWeek:e.target.checked})}/>今週研修予定
+      </label>
+      <label style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 11px",fontSize:13,fontWeight:900,background:card.debutMonth?"#ecfdf5":"#fff",color:card.debutMonth?C.green:C.text}}>
+        <input type="checkbox" checked={!!card.debutMonth} onChange={e=>onChange({debutMonth:e.target.checked})}/>今月デビュー予定
+      </label>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:16}}>
       {skillGroups.map(group=>{const gp=supportCategoryProgress(card,group),gc=supportProgressColor(gp);return <div key={group.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:12,fontWeight:900,color:C.muted}}>{group.title}</div><div style={{fontSize:22,fontWeight:900,color:gc}}>{gp}%</div><div style={{height:7,background:"#f3f4f6",borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:`${gp}%`,background:gc}}/></div></div>;})}
     </div>
     {skillGroups.map(group=><div key={group.id} style={{marginBottom:18}}><h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4><div style={{display:"flex",flexDirection:"column",gap:10}}>
       {group.items.map(item=>{const key=item.key,current=supportStageFromValue(card.skills?.[key]||"observe").mark;const material=normalizeTrainingMaterial(item.material);const comments=(card.itemComments||{})[key]||{};return <div key={key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,background:"#fff"}}>
-        <div style={{fontSize:12,color:C.green,fontWeight:900,marginBottom:4}}>Training Item</div>
+        <div style={{fontSize:12,color:C.green,fontWeight:900,marginBottom:4}}>研修項目</div>
         <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>{item.label}</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginBottom:10}}>
-          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>Manual</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.manual||"-"}</div></section>
-          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>Important Points</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.importantPoints||"-"}</div></section>
-          {(material.commonMistakes||material.tips||material.timing||material.emotionalGuidance||material.readingPractice||material.aiNarration||material.futureCompatibility||material.memo)&&<section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>Learning material</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8}}>{[["Common Mistakes",material.commonMistakes],["Trainer Tips",material.tips],["Timing",material.timing],["Emotional Guidance",material.emotionalGuidance],["Reading practice",material.readingPractice],["AI narration connection",material.aiNarration],["Future Compatibility",material.futureCompatibility],["Memo",material.memo]].map(([label,value])=>value?<div key={label} style={{whiteSpace:"pre-wrap",lineHeight:1.55,fontSize:13,background:"#f9fafb",borderRadius:8,padding:9}}><strong>{label}</strong><br/>{value}</div>:null)}</div></section>}
+          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>教え方・手順</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.manual||"-"}</div></section>
+          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>大事なポイント</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.importantPoints||"-"}</div></section>
+          {(material.commonMistakes||material.tips||material.timing||material.emotionalGuidance||material.readingPractice||material.aiNarration||material.futureCompatibility||material.memo)&&<section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>学習メモ</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8}}>{[["よくあるミス",material.commonMistakes],["教える人へのコツ",material.tips],["タイミング",material.timing],["気持ちの寄り添い方",material.emotionalGuidance],["読み練習",material.readingPractice],["AIナレーション連携",material.aiNarration],["今後増やしたい内容",material.futureCompatibility],["メモ",material.memo]].map(([label,value])=>value?<div key={label} style={{whiteSpace:"pre-wrap",lineHeight:1.55,fontSize:13,background:"#f9fafb",borderRadius:8,padding:9}}><strong>{label}</strong><br/>{value}</div>:null)}</div></section>}
         </div>
-        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>Evaluation</div>
+        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>評価</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:6,marginBottom:10}}>
           {SUPPORT_RATINGS.map(r=><button key={r.mark} onClick={()=>setSkill(key,r.mark)} title={r.label} style={{border:`2px solid ${current===r.mark?C.green:C.border}`,borderRadius:8,padding:"10px 5px",background:current===r.mark?C.greenL:"#fff",color:current===r.mark?C.green:C.text,fontSize:13,fontWeight:900,cursor:"pointer"}}>{r.label}</button>)}
         </div>
-        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>Comments</div>
+        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>項目別メモ</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
-          {[["Good points","goodPoints"],["Needs improvement","needsImprovement"],["Next practice","nextPractice"]].map(([label,field])=><label key={field} style={{fontSize:12,fontWeight:800,color:C.muted}}>{label}<textarea value={comments[field]||""} onChange={e=>updateComment(key,{[field]:e.target.value})} rows={3} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}
+          {[["良かったところ","goodPoints"],["次に直すところ","needsImprovement"],["次回練習","nextPractice"]].map(([label,field])=><label key={field} style={{fontSize:12,fontWeight:800,color:C.muted}}>{label}<textarea value={comments[field]||""} onChange={e=>updateComment(key,{[field]:e.target.value})} rows={3} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}
         </div>
       </div>;})}
     </div></div>)}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:18}}>{[["Good points","goodPoints"],["Needs improvement","needsImprovement"],["Next practice","nextPractice"],["Memo","memo"]].map(([label,key])=><label key={key} style={{fontSize:12,color:C.muted,fontWeight:800}}>{label}<textarea value={card[key]||""} onChange={e=>onChange({[key]:e.target.value})} rows={4} style={{width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}</div>
-    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}><h4 style={{margin:"0 0 10px",fontSize:15}}>Training history</h4><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><input type="date" value={historyDate} onChange={e=>setHistoryDate(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><input value={historyComment} onChange={e=>setHistoryComment(e.target.value)} placeholder="Comment" style={{flex:"1 1 220px",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><button onClick={addHistory} style={{...Btn(C.green),padding:"11px 16px"}}>Add</button></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:18}}>{[["良かったところ","goodPoints"],["次に直すところ","needsImprovement"],["次回練習","nextPractice"],["メモ","memo"]].map(([label,key])=><label key={key} style={{fontSize:12,color:C.muted,fontWeight:800}}>{label}<textarea value={card[key]||""} onChange={e=>onChange({[key]:e.target.value})} rows={4} style={{width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}</div>
+    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}><h4 style={{margin:"0 0 10px",fontSize:15}}>研修履歴</h4><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><input type="date" value={historyDate} onChange={e=>setHistoryDate(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><input value={historyComment} onChange={e=>setHistoryComment(e.target.value)} placeholder="記録メモ" style={{flex:"1 1 220px",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><button onClick={addHistory} style={{...Btn(C.green),padding:"11px 16px"}}>追加</button></div>
       {[...(card.history||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(h=><div key={h.id} style={{borderBottom:`1px solid ${C.border}`,padding:"8px 0",fontSize:13}}><strong>{h.date}</strong> {h.comment}</div>)}</div>
   </div>;
 }
