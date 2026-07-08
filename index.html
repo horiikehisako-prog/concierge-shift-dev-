@@ -372,8 +372,17 @@ const buildShortageAlerts = ({year,month,prefs,shifts,cfg}) => {
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────
-const stLoad=async k=>{try{const snap=await firebase.database().ref('/data/'+k).get();if(!snap.exists())return null;const val=snap.val();if(typeof val==="string"){try{return JSON.parse(val);}catch{return val;}}return val;}catch(e){return null;}};
+const stParseStored=val=>{if(typeof val==="string"){try{return JSON.parse(val);}catch{return val;}}return val;};
+const stLoad=async k=>{try{const snap=await firebase.database().ref('/data/'+k).get();if(!snap.exists())return null;return stParseStored(snap.val());}catch(e){console.warn("Firebase load failed:",k,e);return null;}};
 const stSave=async(k,v)=>{await firebase.database().ref('/data/'+k).set(JSON.stringify(v));};
+const stUpdate=async(k,updater)=>{
+  const ref=firebase.database().ref('/data/'+k);
+  const res=await ref.transaction(current=>{
+    const next=updater(stParseStored(current));
+    return JSON.stringify(next);
+  });
+  return stParseStored(res.snapshot.val());
+};
 
 const DEFAULT_SEASONAL_INTROS = {
   spring:["やわらかな春風に包まれて…"],
@@ -1161,7 +1170,7 @@ function aiDetectType(text){
     knowledgeBase:(t.match(/knowledge base|kb|辞書|用語|dictionary/g)||[]).length
   };
   const best=Object.entries(score).sort((a,b)=>b[1]-a[1])[0];
-  return best&&best[1]>0?best[0]:"compassOfficial";
+  return best&&best[1]>0?best[0]:"knowledgeBase";
 }
 function aiExtractJson(text){
   try{
@@ -1263,7 +1272,7 @@ function AIInboxView({cfg,compassKb,sv,flash}){
   const updateEntry=(i,field,val)=>setEntries(prev=>prev.map((e,idx)=>idx===i?{...e,[field]:val,updatedAt:new Date().toISOString()}:e));
   const removeEntry=i=>setEntries(prev=>prev.filter((_,idx)=>idx!==i));
   const importNow=async()=>{
-    if(!entries.length||errors.length)return;
+    if(saving||!entries.length||errors.length)return;
     setSaving(true);
     const current=ensureArray(await stLoad("aiInboxEntries"));
     const cleanEntries=entries.map(e=>({...e,id:e.id||`ai-${Date.now()}-${Math.random()}`}));
@@ -1293,14 +1302,13 @@ function AIInboxView({cfg,compassKb,sv,flash}){
         nextSettings.compassDictionary=cd;settingsChanged=true;
       }
     }
-    const hist=ensureArray(await stLoad("aiInboxHistory"));
     const rec={id:`hist-${Date.now()}`,importedAt:new Date().toISOString(),type:detected,count:importable.length,source:"ChatGPT paste"};
     if(settingsChanged){const clean=sanitizeSettingsForSave(nextSettings);await stSave("settings",clean);sv.updateSettings(clean);}
     if(kbChanged)sv.compassKb(nextKb);
-    await stSave("aiInboxEntries",[...current,...cleanEntries]);
-    await stSave("aiInboxHistory",[rec,...hist].slice(0,100));
-    setImported([...current,...cleanEntries]);
-    setHistory([rec,...history].slice(0,100));
+    const savedImported=await stUpdate("aiInboxEntries",raw=>[...ensureArray(raw),...importable]);
+    const savedHistory=await stUpdate("aiInboxHistory",raw=>[rec,...ensureArray(raw)].slice(0,100));
+    setImported(savedImported);
+    setHistory(savedHistory);
     setText("");setEntries([]);setDupes([]);setErrors([]);setSaving(false);
     flash(`✅ ${importable.length}件をCompassへ取り込みました`);
   };
@@ -5070,6 +5078,7 @@ function CompassKnowledgeBaseAdmin({compassKb,sv,flash}){
   const downloadJSON=(name,data)=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);};
   const bulkApply=action=>{
     const ids=Object.keys(selected).filter(id=>selected[id]);if(!ids.length){flash("対象を選択してください");return;}
+    if(action==="delete"&&!window.confirm(`${ids.length}件を削除します。元に戻せません。続けますか？`))return;
     let next=action==="delete"?entries.filter(e=>!selected[e.id]):entries.map(e=>!selected[e.id]?e:action==="approve"?{...e,status:"Approved",updatedAt:new Date().toISOString()}:action==="move"?{...e,dictionary:bulk.dictionary,updatedAt:new Date().toISOString()}:action==="priority"?{...e,priority:Number(bulk.priority)||3,updatedAt:new Date().toISOString()}:action==="tags"?{...e,tags:normalizeCompassTags(bulk.tags),updatedAt:new Date().toISOString()}:e);
     setSelected({});saveAll(next);
   };
