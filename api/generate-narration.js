@@ -148,6 +148,37 @@ const closingStartsWithSeasonalLanguage = closing => {
   return SEASONAL_STARTERS.some(word => beginning.startsWith(normalizeText(word)));
 };
 
+const narrationGivenName = name => {
+  const raw = String(name || "").trim().replace(/様$/u, "");
+  if (!raw) return "";
+  const parts = raw.split(/[\s　]+/u).filter(Boolean);
+  if (parts.length >= 2) return parts[parts.length - 1];
+  const chars = Array.from(raw);
+  if (chars.length >= 5) return chars.slice(-3).join("");
+  if (chars.length >= 3) return chars.slice(-2).join("");
+  return raw;
+};
+
+const nameRuleFromPrompt = prompt => {
+  const sheet = extractPromptPayload(prompt)?.hearingSheet || {};
+  const fullName = String(sheet.deceasedName || "").trim().replace(/様$/u, "");
+  const givenName = String(sheet.narrationName || narrationGivenName(fullName)).trim().replace(/様$/u, "");
+  return { fullName, givenName };
+};
+
+const replaceFullName = (text, prompt) => {
+  const { fullName, givenName } = nameRuleFromPrompt(prompt);
+  if (!fullName || !givenName || fullName === givenName) return text;
+  const escaped = fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(text || "").replace(new RegExp(`${escaped}様?`, "g"), `${givenName}様`);
+};
+
+const applyNameRule = (draft, prompt) => ({
+  ...draft,
+  openingNarration: replaceFullName(draft.openingNarration, prompt),
+  closingNarration: replaceFullName(draft.closingNarration, prompt),
+});
+
 const shouldUseResponsesApi = model => String(model || "").trim().startsWith("gpt-5.5");
 
 const collectResponsesText = json => {
@@ -188,6 +219,8 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const venueNames = buildVenueNames(prompt);
   const failures = [];
   if (!opening.trim() || !closing.trim()) failures.push("missing narration");
+  const { fullName, givenName } = nameRuleFromPrompt(prompt);
+  if (fullName && givenName && fullName !== givenName && full.includes(fullName)) failures.push("full name");
   if (hasVenueName(full, venueNames)) failures.push("venue name");
   if (hasForbiddenExpression(full)) failures.push("attendee greeting");
   if (hasRepeatedExpressions(full)) failures.push("repeated expression");
@@ -204,6 +237,7 @@ const buildSystemPrompt = extraInstruction => [
   "Use only the Compass Hearing Sheet fields included in the prompt: deceased name, date of passing, personality, hobbies, family memories, important episodes, favorite phrases, important values, keywords, and notes.",
   "Do not invent facts that are not in the prompt. If information is missing, omit it naturally. Never ask for more information.",
   "QUALITY CHECK REQUIRED BEFORE ANSWERING: no venue names, no attendee greetings, no repeated expressions, and openingNarration and closingNarration must have different content.",
+  "Never write the deceased person's full name in openingNarration or closingNarration. If a name is needed, use only the given name plus 様. Treat the surname and full name as private reference information only.",
   "Strictly forbidden expressions: 飛鳥会館にお集まりいただき; ○○会館にお集まりいただき; 本日はご参列いただき; 本日はご会葬賜り; ご来場ありがとうございます; ご参列ありがとうございます; ご会葬ありがとうございます; 本日はありがとうございます.",
   "Never include venue names or generic attendee greetings in the narration.",
   "The opening narration must always begin in this order: season, then the deceased, then life. Never begin with venue, attendees, or greetings.",
@@ -259,12 +293,12 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
 
     const content = collectResponsesText(openAiJson);
     const parsed = extractJson(content);
-    return {
+    return applyNameRule({
       openingNarration: parsed.openingNarration || parsed.opening || "",
       closingNarration: parsed.closingNarration || parsed.closing || "",
       detectedTheme: parsed.detectedTheme || parsed.theme || "",
       improvementNotes: parsed.improvementNotes || parsed.notes || "",
-    };
+    }, prompt);
   }
 
   const openAiResponse = await fetch(OPENAI_CHAT_URL, {
@@ -294,12 +328,12 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
 
   const content = openAiJson?.choices?.[0]?.message?.content || "";
   const parsed = extractJson(content);
-  return {
+  return applyNameRule({
     openingNarration: parsed.openingNarration || parsed.opening || "",
     closingNarration: parsed.closingNarration || parsed.closing || "",
     detectedTheme: parsed.detectedTheme || parsed.theme || "",
     improvementNotes: parsed.improvementNotes || parsed.notes || "",
-  };
+  }, prompt);
 };
 
 module.exports = async (req, res) => {
