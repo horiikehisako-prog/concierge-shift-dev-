@@ -1,4 +1,5 @@
-const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
@@ -147,6 +148,21 @@ const closingStartsWithSeasonalLanguage = closing => {
   return SEASONAL_STARTERS.some(word => beginning.startsWith(normalizeText(word)));
 };
 
+const shouldUseResponsesApi = model => String(model || "").trim().startsWith("gpt-5.5");
+
+const collectResponsesText = json => {
+  if (typeof json?.output_text === "string") return json.output_text;
+  const chunks = [];
+  for (const item of json?.output || []) {
+    for (const part of item?.content || []) {
+      if (typeof part?.text === "string") chunks.push(part.text);
+      if (typeof part?.text?.value === "string") chunks.push(part.text.value);
+      if (typeof part?.output_text === "string") chunks.push(part.output_text);
+    }
+  }
+  return chunks.join("\n");
+};
+
 const hasWeakGenericNarration = text => {
   const compact = normalizeText(text);
   const weakWords = [
@@ -215,7 +231,43 @@ const buildSystemPrompt = extraInstruction => [
 ].filter(Boolean).join(" ");
 
 const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
-  const openAiResponse = await fetch(OPENAI_URL, {
+  if (shouldUseResponsesApi(model)) {
+    const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        input: [
+          { role: "system", content: buildSystemPrompt(extraInstruction) },
+          { role: "user", content: prompt },
+        ],
+        max_output_tokens: maxTokens,
+        reasoning: { effort: "medium" },
+        text: { format: { type: "json_object" } },
+      }),
+    });
+
+    const openAiJson = await openAiResponse.json().catch(() => null);
+    if (!openAiResponse.ok) {
+      const error = new Error("OPENAI_REQUEST_FAILED");
+      error.status = openAiResponse.status;
+      throw error;
+    }
+
+    const content = collectResponsesText(openAiJson);
+    const parsed = extractJson(content);
+    return {
+      openingNarration: parsed.openingNarration || parsed.opening || "",
+      closingNarration: parsed.closingNarration || parsed.closing || "",
+      detectedTheme: parsed.detectedTheme || parsed.theme || "",
+      improvementNotes: parsed.improvementNotes || parsed.notes || "",
+    };
+  }
+
+  const openAiResponse = await fetch(OPENAI_CHAT_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
@@ -278,7 +330,7 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const model = String(body.model || "gpt-4.1-mini").trim();
+    const model = String(body.model || "gpt-5.5").trim();
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
     const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 1800, 100, 4000));
     const attempts = [

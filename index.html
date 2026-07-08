@@ -709,7 +709,7 @@ const compassSelectLibraryReferences=(sheet,cfg,theme,limit=3)=>{
 const mergeForbiddenWords=v=>Array.from(new Set([...ensureArray(v),...DEFAULT_FORBIDDEN_WORDS])).filter(Boolean);
 const DEFAULT_AI_SETTINGS = {
   provider:"openai",
-  model:"gpt-4.1-mini",
+  model:"gpt-5.5",
   temperature:0.7,
   maxTokens:1800,
   apiStatus:"server_required",
@@ -720,6 +720,11 @@ const DEFAULT_AI_SETTINGS = {
   jpyUsdRate:160,
   apiProxyPath:"/api/generate-narration",
 };
+const OPENAI_MODEL_OPTIONS=[
+  {id:"gpt-5.5",label:"GPT-5.5"},
+  {id:"gpt-4.1-mini",label:"GPT-4.1 mini"},
+  {id:"gpt-4.1",label:"GPT-4.1"},
+];
 const AI_USAGE_LOG_KEY = "aiUsageLogs";
 const AI_STOPPED_MESSAGE = "Compass AIは現在停止中です。管理者に確認してください。";
 const AI_BUDGET_LIMIT_MESSAGE = "今月のAI利用上限に達しました。管理者に確認してください。";
@@ -759,7 +764,7 @@ const saveAIUsageLog=async log=>{
 };
 const DEFAULT_COMPASS_FUTURE = {
   providers:{
-    openai:{enabled:true,model:"gpt-4.1-mini",apiKeyRef:"OPENAI_API_KEY",status:"server_env_required"},
+    openai:{enabled:true,model:"gpt-5.5",apiKeyRef:"OPENAI_API_KEY",status:"server_env_required"},
     gemini:{enabled:false,model:"",apiKeyRef:"",status:"future"},
     claude:{enabled:false,model:"",apiKeyRef:"",status:"future"},
     localTemplate:{enabled:false,model:"",apiKeyRef:"",status:"disabled"},
@@ -3445,7 +3450,11 @@ function CompassAISettingsEditor({cfg,sv,flash,role}) {
       <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Provider<select value={form.provider} onChange={e=>setField("provider",e.target.value)} style={{...input,display:"block",marginTop:5,background:"#fff"}}>
         <option value="openai">OpenAI</option><option value="gemini" disabled>Gemini (future)</option><option value="claude" disabled>Claude (future)</option><option value="localTemplate" disabled>Local Template (disabled)</option>
       </select></label>
-      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Model<input value={form.model} onChange={e=>setField("model",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
+      <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Model
+        <select value={form.model} onChange={e=>setField("model",e.target.value)} style={{...input,display:"block",marginTop:5,background:"#fff"}}>
+          {OPENAI_MODEL_OPTIONS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+        </select>
+      </label>
       <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Maximum Tokens<input type="number" min="1" value={form.maxTokens} onChange={e=>setNum("maxTokens",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
       <label style={{fontSize:12,fontWeight:800,color:C.muted}}>Temperature<input type="number" step="0.1" min="0" max="2" value={form.temperature} onChange={e=>setNum("temperature",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
       <label style={{fontSize:12,fontWeight:800,color:C.muted}}>AI monthly budget limit<input type="number" min="0" value={form.monthlyBudgetJpy} onChange={e=>setNum("monthlyBudgetJpy",e.target.value)} style={{...input,display:"block",marginTop:5}}/></label>
