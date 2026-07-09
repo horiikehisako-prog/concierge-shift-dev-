@@ -2581,7 +2581,6 @@ function OfficeView(P){
     {id:"study",   label:"📚 勉強会"},
     {id:"items",   label:"🧩 項目設定"},
     {id:"rates",   label:"💰 単価設定"},
-    {id:"ai",      label:"Compass AI"},
   ];
   return <div>
     <div style={{...GC,background:`linear-gradient(135deg,${C.office},#0c4a6e)`,color:"#fff",padding:"16px 20px"}}>
@@ -2599,10 +2598,9 @@ function OfficeView(P){
     {tab==="shift"  &&<AdminShiftView {...P}/>}
     {tab==="att"    &&<AdminAttView {...P}/>}
     {tab==="mc"     &&<MCAccountingView {...P}/>}
-    {tab==="study"  &&<StudySessionView {...P} openAINarration={()=>setTab("ai")}/>}
+    {tab==="study"  &&<StudySessionView {...P}/>}
     {tab==="items"  &&<ItemSettingsTab {...P}/>}
     {tab==="rates"  &&<MCConfigTab {...P}/>}
-    {tab==="ai"     &&<CompassNarrationView {...P}/>}
   </div>;
 }
 
@@ -4987,7 +4985,7 @@ function SupportGrowthChart({card,templates,trainers,onChange}){
 // ═══════════════════════════════════════════════════════════════
 // 勉強会管理
 // ═══════════════════════════════════════════════════════════════
-function StudySessionView({year,month,openAINarration,cfg}){
+function StudySessionView({year,month,cfg}){
   const [sessions,setSessions]=useState([]);
   const [loading,setLoading]=useState(true);
   const teachers=ensureArray(cfg?.mcStaff).length?ensureArray(cfg.mcStaff):DEFAULT_MC_STAFF;
@@ -5038,11 +5036,6 @@ function StudySessionView({year,month,openAINarration,cfg}){
   return <div>
     <div style={GC}>
       <h3 style={{margin:"0 0 14px",fontSize:15}}>📚 勉強会記録　<span style={{fontWeight:400,fontSize:13,color:C.muted}}>{STUDY_RATE.toLocaleString()}円/h + 消費税</span></h3>
-      {openAINarration&&(
-        <button onClick={openAINarration} style={{...Btn(C.navy),width:"100%",marginBottom:14,padding:"12px 18px",fontSize:15}}>
-          Compass AI練習
-        </button>
-      )}
       <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
         <div style={{flex:"1 1 100px"}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>日付</label>
