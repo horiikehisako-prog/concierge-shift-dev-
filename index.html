@@ -1293,7 +1293,6 @@ function AdminView(P){
     {id:"support",label:"🌱 成長カルテ"},
     {id:"library",label:"📚 ナレーションライブラリ"},
     {id:"ai",    label:"Compass AI"},
-    {id:"compassKb",label:"?? Compass Knowledge Base"},
     {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
@@ -1307,7 +1306,6 @@ function AdminView(P){
     {tab==="library"&&<CompassNarrationLibraryView {...P}/>}
     {tab==="ai"    &&<CompassNarrationView {...P}/>}
     {tab==="support"&&<SupportManagerView {...P}/>}
-    {tab==="compassKb"&&<CompassKnowledgeBaseAdmin {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
 }
