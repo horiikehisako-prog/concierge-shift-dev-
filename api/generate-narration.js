@@ -373,7 +373,7 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const model = String(body.model || "gpt-5.5").trim();
+    const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
     const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 2600, 100, 4000));
     const attempts = [

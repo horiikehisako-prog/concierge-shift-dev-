@@ -3552,7 +3552,7 @@ const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
         prompt,
-        model:ai.model||DEFAULT_AI_SETTINGS.model,
+        model:DEFAULT_AI_SETTINGS.model,
         temperature:Number(ai.temperature??DEFAULT_AI_SETTINGS.temperature),
         maxTokens:Number(ai.maxTokens||DEFAULT_AI_SETTINGS.maxTokens),
       }),
