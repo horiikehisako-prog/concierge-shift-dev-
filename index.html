@@ -214,7 +214,7 @@ function App(){
         {!busy&&role==="admin"  &&<AdminView  {...P}/>}
         {!busy&&role==="staff"  &&<StaffView  {...P}/>}
         {!busy&&role==="venue"  &&<VenueView  {...P}/>}
-        {!busy&&role==="office" &&<OfficeView {...P}/>}
+        {!busy&&role==="office" &&<OfficeViewV2 {...P}/>}
         {!busy&&(role==="mc"||role==="assist")&&<MCStaffView {...P}/>}
       </div>
     </div>
@@ -1197,6 +1197,251 @@ function OfficeView(P){
 // ═══════════════════════════════════════════════════════════════
 // STAFF VIEW
 // ═══════════════════════════════════════════════════════════════
+const officeRoleLabel = role => {
+  const s = String(role || "");
+  if (s.includes("パントリー") || s.includes("繝代Φ")) return "パントリー";
+  if (s.includes("アシ") || s.includes("繧｢繧ｷ")) return "アシスタント";
+  if (s.includes("司会") || s.includes("蜿ｸ")) return "MC";
+  if (s.includes("コンシェルジュ")) return "コンシェルジュ";
+  return s || "コンシェルジュ";
+};
+
+const officeActualVenue = (d, vName, cfg, vconf) => {
+  const isFlexVenue = cfg.venues.find(v => v.name === vName)?.options?.length > 0;
+  if (isFlexVenue && vconf && vconf[d]) {
+    if (typeof vconf[d] === "string") return vconf[d];
+    if (vconf[d][vName]) return vconf[d][vName];
+  }
+  return vName;
+};
+
+const officeStaffList = cfg => Array.from(new Set([
+  ...(cfg.staff || []),
+  ...(cfg.mcStaff || []),
+  ...(cfg.assistStaff || []),
+])).filter(Boolean);
+
+const buildConciergeRows = ({ year, month, att, shifts, vconf, cfg }) => {
+  const days = getDays(year, month);
+  const rows = [];
+  for (let d = 1; d <= days; d++) for (const v of cfg.venues) {
+    const staffName = shifts[d]?.[v.name];
+    if (!staffName) continue;
+    const key = `${d}-${v.name}`;
+    const rec = att[key];
+    const start = rec?.start || "09:00";
+    const end = rec?.end || "16:00";
+    const breakMin = rec?.breakMin ?? 60;
+    const hours = rec ? parseHours(start, end, breakMin) : DEFAULT_HOURS;
+    const unitPrice = cfg.staffRates?.[staffName] || RATE_STAFF;
+    const status = rec?.verified ? "承認済" : rec ? "未承認" : "未入力";
+    rows.push({
+      id: `c-${d}-${v.name}`,
+      date: `${year}/${p2(month)}/${p2(d)}`,
+      day: d,
+      staff: staffName,
+      role: "コンシェルジュ",
+      client: "コンシェルジュ",
+      location: officeActualVenue(d, v.name, cfg, vconf),
+      hours,
+      count: 1,
+      unitPrice,
+      amount: Math.round(hours * unitPrice),
+      status,
+      approved: status === "承認済",
+    });
+  }
+  return rows;
+};
+
+const getOfficeMCRate = (record, cfg) => {
+  const role = officeRoleLabel(record.role);
+  const rateRole = record.training ? "研修" : role;
+  return cfg.mcRates?.[record.staff]?.[record.company]?.[rateRole] ||
+    cfg.mcRates?.[record.staff]?.[record.company]?.[record.role] || 0;
+};
+
+const buildMCRows = (records, cfg) => records.map((r, i) => {
+  const role = officeRoleLabel(r.role);
+  const unitPrice = getOfficeMCRate(r, cfg);
+  return {
+    id: `mc-${r.id || i}`,
+    date: String(r.date || "").replaceAll("-", "/"),
+    day: Number(String(r.date || "").split(/[/-]/).pop()) || 0,
+    staff: r.staff,
+    role,
+    client: r.company || "MC",
+    location: r.venue || "",
+    hours: 0,
+    count: 1,
+    unitPrice,
+    amount: unitPrice,
+    status: "記録済",
+    approved: true,
+  };
+});
+
+const applyOfficeFilters = (rows, f) => rows.filter(r =>
+  (!f.staff || r.staff === f.staff) &&
+  (!f.client || r.client === f.client) &&
+  (!f.location || r.location === f.location) &&
+  (!f.role || r.role === f.role)
+);
+
+const OfficeFilterPanel = ({ filters, setFilters, options }) => {
+  const field = (key, label, values) => (
+    <label style={{display:"flex",flexDirection:"column",gap:6,fontSize:12,fontWeight:700,color:C.muted}}>
+      {label}
+      <select value={filters[key]} onChange={e=>setFilters({...filters,[key]:e.target.value})}
+        style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 12px",fontSize:16,background:"#fff",color:C.text}}>
+        <option value="">すべて</option>
+        {values.map(v=><option key={v} value={v}>{v}</option>)}
+      </select>
+    </label>
+  );
+  return <div style={{...GC,padding:14,borderRadius:8}}>
+    <div style={{fontSize:13,fontWeight:900,marginBottom:10}}>月次フィルター</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+      {field("staff","スタッフ",options.staff)}
+      {field("client","クライアント",options.client)}
+      {field("location","場所",options.location)}
+      {field("role","役割",options.role)}
+    </div>
+  </div>;
+};
+
+function OfficeDashboardCards({ rows }) {
+  const approvedPayroll = rows.filter(r=>r.approved).reduce((a,r)=>a+r.amount,0);
+  const unapproved = rows.filter(r=>r.role==="コンシェルジュ" && !r.approved).length;
+  const conciergeHours = Math.round(rows.filter(r=>r.role==="コンシェルジュ").reduce((a,r)=>a+r.hours,0)*100)/100;
+  const roleCount = role => rows.filter(r=>r.role===role).reduce((a,r)=>a+(r.count||1),0);
+  const cards = [
+    ["今月の承認済給与", yen(approvedPayroll), C.blue],
+    ["未承認の勤務", `${unapproved}件`, unapproved ? C.red : C.green],
+    ["コンシェルジュ総時間", `${conciergeHours}h`, C.navy],
+    ["MC件数", `${roleCount("MC")}件`, C.purple],
+    ["アシスタント件数", `${roleCount("アシスタント")}件`, C.green],
+    ["パントリー件数", `${roleCount("パントリー")}件`, C.amber],
+  ];
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10,marginBottom:14}}>
+    {cards.map(([label,val,color])=>
+      <div key={label} style={{...GC,marginBottom:0,padding:"16px 14px",borderRadius:8}}>
+        <div style={{fontSize:12,color:C.muted,fontWeight:700,marginBottom:8}}>{label}</div>
+        <div style={{fontSize:22,fontWeight:900,color,lineHeight:1.2}}>{val}</div>
+      </div>
+    )}
+  </div>;
+}
+
+function OfficePayrollCheck({ rows }) {
+  const map = {};
+  rows.filter(r=>r.approved).forEach(r=>{
+    const key = `${r.staff}-${r.role}-${r.unitPrice}`;
+    if (!map[key]) map[key] = {staff:r.staff,role:r.role,count:0,hours:0,unitPrice:r.unitPrice,total:0};
+    map[key].count += r.count || 1;
+    map[key].hours += r.hours || 0;
+    map[key].total += r.amount || 0;
+  });
+  const list = Object.values(map).sort((a,b)=>a.staff.localeCompare(b.staff,"ja") || a.role.localeCompare(b.role,"ja"));
+  const staffTotals = {};
+  list.forEach(r=>staffTotals[r.staff]=(staffTotals[r.staff]||0)+r.total);
+  return <div>
+    {list.length===0 && <div style={{...GC,textAlign:"center",color:C.muted}}>承認済みの給与対象がありません</div>}
+    {list.map(r=>
+      <div key={`${r.staff}-${r.role}-${r.unitPrice}`} style={{...GC,borderRadius:8,padding:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:17,fontWeight:900}}>{r.staff}</div>
+            <div style={{fontSize:13,color:C.muted,marginTop:2}}>{r.role}</div>
+          </div>
+          <div style={{fontSize:20,fontWeight:900,color:C.blue}}>{yen(r.total)}</div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginTop:14,fontSize:13}}>
+          <div><b>{r.count}</b> 件</div>
+          <div><b>{Math.round(r.hours*100)/100}</b> h</div>
+          <div><b>{yen(r.unitPrice)}</b></div>
+        </div>
+        <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${C.border}`,textAlign:"right",fontSize:14,fontWeight:900}}>
+          スタッフ合計 {yen(staffTotals[r.staff])}
+        </div>
+      </div>
+    )}
+  </div>;
+}
+
+function OfficeAttendanceCheck({ rows }) {
+  const sorted = [...rows].sort((a,b)=>a.date.localeCompare(b.date) || a.staff.localeCompare(b.staff,"ja"));
+  return <div>
+    {sorted.length===0 && <div style={{...GC,textAlign:"center",color:C.muted}}>表示できる出勤データがありません</div>}
+    {sorted.map(r=>
+      <div key={r.id} style={{...GC,borderRadius:8,padding:16,borderColor:r.approved?C.border:C.amber}}>
+        <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:16,fontWeight:900}}>{r.date}</div>
+          <span style={{fontSize:12,fontWeight:800,borderRadius:999,padding:"5px 10px",
+            background:r.approved?C.greenL:C.amberL,color:r.approved?C.green:C.amber}}>
+            {r.status}
+          </span>
+        </div>
+        <div style={{fontSize:16,fontWeight:800}}>{r.staff} <span style={{fontSize:13,color:C.muted}}>({r.role})</span></div>
+        <div style={{fontSize:13,color:C.muted,marginTop:6}}>{r.client} / {r.location}</div>
+        <div style={{fontSize:15,fontWeight:800,marginTop:10}}>
+          {r.hours ? `${r.hours}h` : `${r.count || 1}件`}
+        </div>
+      </div>
+    )}
+  </div>;
+}
+
+function OfficeViewV2(P){
+  const [tab,setTab]=useState("dashboard");
+  const [mcRows,setMcRows]=useState([]);
+  const [filters,setFilters]=useState({staff:"",client:"",location:"",role:""});
+  const tabs=[
+    {id:"dashboard", label:"ダッシュボード"},
+    {id:"payroll",   label:"給与確認"},
+    {id:"attend",    label:"出勤確認"},
+    {id:"csv",       label:"CSV"},
+    {id:"print",     label:"印刷"},
+    {id:"mc",        label:"MC集計"},
+  ];
+  useEffect(()=>{
+    let alive=true;
+    Promise.all(
+      officeStaffList(P.cfg).map(s => stLoad(`mc-${P.year}-${p2(P.month)}-${s}`).then(d=>(d||[]).map(r=>({...r,staff:r.staff||s}))))
+    ).then(all=>{ if(alive) setMcRows(buildMCRows(all.flat(), P.cfg)); });
+    return ()=>{alive=false;};
+  },[P.year,P.month,P.cfg]);
+
+  const conciergeRows = buildConciergeRows(P);
+  const allRows = [...conciergeRows, ...mcRows];
+  const options = {
+    staff: [...new Set(allRows.map(r=>r.staff).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja")),
+    client: [...new Set(allRows.map(r=>r.client).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja")),
+    location: [...new Set(allRows.map(r=>r.location).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ja")),
+    role: [...new Set(allRows.map(r=>r.role).filter(Boolean))],
+  };
+  const filteredRows = applyOfficeFilters(allRows, filters);
+
+  return <div>
+    <div style={{...GC,background:`linear-gradient(135deg,${C.office},#0c4a6e)`,color:"#fff",padding:"16px 20px",borderRadius:8}}>
+      <div style={{fontSize:13,opacity:.85,marginBottom:4}}>Office Dashboard</div>
+      <div style={{fontSize:20,fontWeight:900}}>{P.year}年{P.month}月 事務確認</div>
+      <div style={{display:"inline-block",marginTop:10,background:"rgba(255,255,255,.18)",border:"1px solid rgba(255,255,255,.45)",borderRadius:999,padding:"5px 12px",fontSize:12,fontWeight:900}}>
+        DEV確認中
+      </div>
+    </div>
+    <MonthSel {...P}/>
+    <Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {(tab==="dashboard"||tab==="payroll"||tab==="attend") && <OfficeFilterPanel filters={filters} setFilters={setFilters} options={options}/>}
+    {tab==="dashboard" &&<OfficeDashboardCards rows={filteredRows}/>}
+    {tab==="payroll"   &&<OfficePayrollCheck rows={filteredRows}/>}
+    {tab==="attend"    &&<OfficeAttendanceCheck rows={filteredRows}/>}
+    {tab==="csv"       &&<AccountingView {...P}/>}
+    {tab==="print"     &&<PublicShift {...P} uname=""/>}
+    {tab==="mc"        &&<MCAccountingView {...P}/>}
+  </div>;
+}
+
 function StaffView(P){
   const [tab,setTab]=useState("wish");
   const tabs=[
