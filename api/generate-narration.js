@@ -1,6 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260710.1";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -148,6 +149,13 @@ const closingStartsWithSeasonalLanguage = closing => {
   return SEASONAL_STARTERS.some(word => beginning.startsWith(normalizeText(word)));
 };
 
+const safeOpenAiError = json => {
+  const message = json?.error?.message || json?.message || "";
+  const type = json?.error?.type || json?.type || "";
+  const code = json?.error?.code || json?.code || "";
+  return { message: String(message).slice(0, 500), type, code };
+};
+
 const narrationGivenName = name => {
   const raw = String(name || "").trim().replace(/様$/u, "");
   if (!raw) return "";
@@ -288,6 +296,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
     if (!openAiResponse.ok) {
       const error = new Error("OPENAI_REQUEST_FAILED");
       error.status = openAiResponse.status;
+      error.openAiError = safeOpenAiError(openAiJson);
       throw error;
     }
 
@@ -323,6 +332,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   if (!openAiResponse.ok) {
     const error = new Error("OPENAI_REQUEST_FAILED");
     error.status = openAiResponse.status;
+    error.openAiError = safeOpenAiError(openAiJson);
     throw error;
   }
 
@@ -342,9 +352,28 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const diagnostics = {
+    ok: true,
+    buildId: API_BUILD_ID,
+    route: "/api/generate-narration",
+    method: req.method,
+    hasOpenAIKey: !!apiKey,
+    nodeEnv: process.env.NODE_ENV || "",
+    vercelEnv: process.env.VERCEL_ENV || "",
+    vercelRegion: process.env.VERCEL_REGION || "",
+  };
+
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
     res.end();
+    return;
+  }
+
+  if (req.method === "GET") {
+    console.log("[generate-narration] diagnostics", diagnostics);
+    res.statusCode = 200;
+    res.end(JSON.stringify(diagnostics));
     return;
   }
 
@@ -354,12 +383,15 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  console.log("[generate-narration] request", diagnostics);
+
   if (!apiKey) {
+    console.error("[generate-narration] OPENAI_API_KEY missing", diagnostics);
     res.statusCode = 503;
     res.end(JSON.stringify({
       code: "OPENAI_API_KEY_MISSING",
       error: "AI connection is not configured.",
+      diagnostics,
     }));
     return;
   }
@@ -391,6 +423,10 @@ module.exports = async (req, res) => {
     }
 
     if (!lastCheck?.ok) {
+      console.warn("[generate-narration] quality check failed", {
+        buildId: API_BUILD_ID,
+        failures: lastCheck?.failures || [],
+      });
       res.statusCode = 422;
       res.end(JSON.stringify({
         code: "GENERATION_QUALITY_CHECK_FAILED",
@@ -403,15 +439,28 @@ module.exports = async (req, res) => {
     res.statusCode = 200;
     res.end(JSON.stringify(parsed));
   } catch (error) {
+    console.error("[generate-narration] failed", {
+      buildId: API_BUILD_ID,
+      message: error.message,
+      status: error.status || null,
+      openAiError: error.openAiError || null,
+    });
     if (error.message === "OPENAI_REQUEST_FAILED") {
       res.statusCode = 502;
       res.end(JSON.stringify({
+        code: "OPENAI_REQUEST_FAILED",
         error: "OpenAI request failed",
         status: error.status,
+        openAiError: error.openAiError || null,
+        diagnostics: { ...diagnostics, hasOpenAIKey: true },
       }));
       return;
     }
     res.statusCode = 500;
-    res.end(JSON.stringify({ error: "AI narration generation failed" }));
+    res.end(JSON.stringify({
+      code: "AI_NARRATION_GENERATION_FAILED",
+      error: "AI narration generation failed",
+      diagnostics: { ...diagnostics, hasOpenAIKey: true },
+    }));
   }
 };
