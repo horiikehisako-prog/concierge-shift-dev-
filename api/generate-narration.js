@@ -346,6 +346,37 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   }, prompt);
 };
 
+const runOpenAiProbe = async apiKey => {
+  const model = "gpt-5.5";
+  const startedAt = Date.now();
+  const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        { role: "system", content: "You are a health check endpoint. Return only JSON." },
+        { role: "user", content: "Return {\"ok\":true,\"message\":\"probe ok\"}." },
+      ],
+      max_output_tokens: 80,
+      text: { format: { type: "json_object" } },
+    }),
+  });
+
+  const openAiJson = await openAiResponse.json().catch(() => null);
+  return {
+    ok: openAiResponse.ok,
+    status: openAiResponse.status,
+    model,
+    elapsedMs: Date.now() - startedAt,
+    openAiError: openAiResponse.ok ? null : safeOpenAiError(openAiJson),
+    outputPreview: openAiResponse.ok ? collectResponsesText(openAiJson).slice(0, 300) : "",
+  };
+};
+
 module.exports = async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -371,6 +402,43 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === "GET") {
+    if (new URL(req.url, "https://diagnostics.local").searchParams.get("probe") === "openai") {
+      if (!apiKey) {
+        console.error("[generate-narration] probe missing OPENAI_API_KEY", diagnostics);
+        res.statusCode = 503;
+        res.end(JSON.stringify({
+          ...diagnostics,
+          code: "OPENAI_API_KEY_MISSING",
+          error: "AI connection is not configured.",
+        }));
+        return;
+      }
+      try {
+        const probe = await runOpenAiProbe(apiKey);
+        console.log("[generate-narration] openai probe", {
+          buildId: API_BUILD_ID,
+          ok: probe.ok,
+          status: probe.status,
+          openAiError: probe.openAiError,
+        });
+        res.statusCode = probe.ok ? 200 : 502;
+        res.end(JSON.stringify({ ...diagnostics, probe }));
+      } catch (error) {
+        console.error("[generate-narration] openai probe failed", {
+          buildId: API_BUILD_ID,
+          message: error.message,
+          status: error.status || null,
+          openAiError: error.openAiError || null,
+        });
+        res.statusCode = 500;
+        res.end(JSON.stringify({
+          ...diagnostics,
+          code: "OPENAI_PROBE_FAILED",
+          error: error.message || "OpenAI probe failed",
+        }));
+      }
+      return;
+    }
     console.log("[generate-narration] diagnostics", diagnostics);
     res.statusCode = 200;
     res.end(JSON.stringify(diagnostics));
