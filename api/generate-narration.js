@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.3";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.4";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -347,19 +347,34 @@ const buildSystemPrompt = extraInstruction => [
   extraInstruction || "",
 ].filter(Boolean).join(" ");
 
+const buildFastSystemPrompt = extraInstruction => [
+  "You are a professional Japanese funeral MC. Write narration to be read aloud, not an essay.",
+  "Return only JSON: openingNarration, closingNarration, detectedTheme, improvementNotes.",
+  "Use only facts in the Compass Hearing Sheet. Do not invent facts. If information is sparse, write shorter.",
+  "Never use the deceased person's full name. Use only the given name plus 様.",
+  "Do not include venue names, attendee greetings, or the phrase 在りし日を.",
+  "Opening: begin with season, then the deceased, then life. Include one or two concrete memories from the sheet.",
+  "Closing: do not start with seasonal language. Do not retell the opening. Express what remains in the family's hearts and a quiet farewell.",
+  "Hisako style: warm, calm, natural Japanese, easy to read aloud, with short breathable sentences.",
+  "Avoid generic AI wording. Prefer concrete scenes, gestures, phrases, and daily moments over abstract praise.",
+  "Opening length: 420-650 Japanese characters. Closing length: 320-520 Japanese characters.",
+  "Before returning, remove repetition, full names, venue names, and copied sample wording.",
+  extraInstruction || "",
+].filter(Boolean).join(" ");
+
 const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
   if (shouldUseResponsesApi(model)) {
     const callResponses = async forcePlainJson => {
       const systemPrompt = forcePlainJson
-        ? `${buildSystemPrompt(extraInstruction)} Return exactly one raw JSON object. Do not use markdown, code fences, labels, commentary, or prose outside JSON.`
-        : buildSystemPrompt(extraInstruction);
+        ? `${buildFastSystemPrompt(extraInstruction)} Return exactly one raw JSON object. Do not use markdown, code fences, labels, commentary, or prose outside JSON.`
+        : buildFastSystemPrompt(extraInstruction);
       const body = {
         model,
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
         ],
-        max_output_tokens: Math.min(Math.max(maxTokens, 2200), 3000),
+        max_output_tokens: Math.min(Math.max(maxTokens, 1400), 1800),
       };
       if (!forcePlainJson) body.text = { format: { type: "json_object" } };
 
@@ -575,7 +590,7 @@ module.exports = async (req, res) => {
 
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
-    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 2600, 100, 4000));
+    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 1600, 100, 2200));
     const attempts = [""];
     let parsed = null;
     let lastCheck = null;
