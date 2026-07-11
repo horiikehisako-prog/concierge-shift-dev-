@@ -60,6 +60,17 @@ const extractJson = text => {
   }
 };
 
+const parseModelJson = content => {
+  try {
+    return extractJson(content);
+  } catch (cause) {
+    const error = new Error("MODEL_JSON_PARSE_FAILED");
+    error.contentPreview = String(content || "").slice(0, 600);
+    error.cause = cause;
+    throw error;
+  }
+};
+
 const normalizeText = value => String(value || "")
   .replace(/\s+/g, "")
   .replace(/[、。,.，．「」『』（）()]/g, "");
@@ -287,7 +298,6 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
           { role: "user", content: prompt },
         ],
         max_output_tokens: maxTokens,
-        reasoning: { effort: "high" },
         text: { format: { type: "json_object" } },
       }),
     });
@@ -301,7 +311,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
     }
 
     const content = collectResponsesText(openAiJson);
-    const parsed = extractJson(content);
+    const parsed = parseModelJson(content);
     return applyNameRule({
       openingNarration: parsed.openingNarration || parsed.opening || "",
       closingNarration: parsed.closingNarration || parsed.closing || "",
@@ -337,7 +347,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   }
 
   const content = openAiJson?.choices?.[0]?.message?.content || "";
-  const parsed = extractJson(content);
+  const parsed = parseModelJson(content);
   return applyNameRule({
     openingNarration: parsed.openingNarration || parsed.opening || "",
     closingNarration: parsed.closingNarration || parsed.closing || "",
@@ -534,6 +544,16 @@ module.exports = async (req, res) => {
         error: "OpenAI request failed",
         status: error.status,
         openAiError: error.openAiError || null,
+        diagnostics: { ...diagnostics, hasOpenAIKey: true },
+      }));
+      return;
+    }
+    if (error.message === "MODEL_JSON_PARSE_FAILED") {
+      res.statusCode = 502;
+      res.end(JSON.stringify({
+        code: "MODEL_JSON_PARSE_FAILED",
+        error: "OpenAI response could not be parsed as narration JSON",
+        contentPreview: error.contentPreview || "",
         diagnostics: { ...diagnostics, hasOpenAIKey: true },
       }));
       return;
