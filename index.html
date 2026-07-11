@@ -3528,10 +3528,10 @@ const compassLocalNarrationDraft=({sheet,cfg,theme,reason,compassKb=[]})=>{
   const honorName=/様$/.test(name)?name:`${name}様`;
   const season=compassSeasonFromDate(s.deceasedDate);
   const seasonOpeners={
-    spring:"やわらかな春の気配が、静かに心へ届く季節となりました。",
-    summer:"夏の光が、日々の記憶をそっと照らす季節となりました。",
-    autumn:"澄んだ秋の空に、歩まれた日々が静かに思い起こされます。",
-    winter:"冬の静けさの中に、あたたかな記憶が深く心へ残ります。",
+    spring:"やわらかな風に、草花がそっと揺れる頃となりました。",
+    summer:"木漏れ日が、静かに降り注ぐ頃となりました。",
+    autumn:"色づいた木々が、風に揺れる頃となりました。",
+    winter:"吐く息の白さに、季節の移ろいを感じる頃となりました。",
   };
   const personality=compassTrimSentence(compassPreferredExpression(s.personality,compassKb)||s.personality||"日々を丁寧に重ね、まわりの方を大切にしてこられた方");
   const memory=compassTrimSentence(compassFirstFilled(s,["memorableEvents","familyMemories","travelAnniversaryEffort","hobbies","valuedThings"]));
@@ -3540,15 +3540,18 @@ const compassLocalNarrationDraft=({sheet,cfg,theme,reason,compassKb=[]})=>{
   const valued=compassTrimSentence(s.valuedThings||s.hobbies);
   const opening=[
     seasonOpeners[season]||seasonOpeners.winter,
-    `${honorName}は、${personality}でした。`,
-    memory?`そのお姿を思い返す時、${memory}という記憶が、ご家族の胸に静かによみがえります。`:"",
-    valued?`${honorName}が大切にしてこられたものは、今もご家族の日々の中に、やさしく息づいています。`:"",
-    phrase?`そして、${phrase}という言葉もまた、これから先も皆様の心を支えてくれることでしょう。`:"",
+    `ご家族が思い浮かべる${honorName}のお姿は、${personality}ではなかったでしょうか。`,
+    memory?`ふとした瞬間によみがえるのは、${memory}。その場にあった声や表情までが、今もご家族の胸に静かに残っていることと存じます。`:"",
+    valued?`何気ない毎日の中で大切にされてきたものは、今も皆様の日々の中に、やさしく息づいています。`:"",
+    phrase?`${phrase}という言葉もまた、${honorName}らしいぬくもりとして、これからも皆様の心に残っていくことでしょう。`:"",
+    `そのぬくもりを胸に、皆様それぞれのお心に${honorName}を偲びながら、この時をお迎えいただければと存じます。`,
+    "まもなく開式のお時間でございます。",
   ].filter(Boolean).join("\n\n");
   const closing=[
-    `いま、${honorName}とのお別れの時を迎え、ご家族の胸には、${family}。`,
-    memory?`先ほど思い起こされたその記憶は、ただ過ぎ去った出来事ではなく、これからもご家族をつなぐ大切な灯りです。`:"",
-    `${honorName}が残してくださった思いを胸に、どうぞ静かに、最後のお別れへとお進みください。`,
+    `お見送りの時を迎えた今、ご家族の胸には、${family}。`,
+    `${honorName}からいただいた優しさやぬくもりは、これからも皆様の日々をそっと支えてくださることでしょう。`,
+    `どうか折に触れ、${honorName}を思い出し、そのお姿を語り継いでいただけましたら幸いに存じます。そのお気持ちが、何よりの供養となることでしょう。`,
+    `これをもちまして、${honorName}のご葬儀を閉式いたします。`,
   ].filter(Boolean).join("\n\n");
   return compassFormatDraft({
     openingNarration:opening,
