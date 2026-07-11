@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.10";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.11";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -369,7 +369,10 @@ const buildFastSystemPrompt = extraInstruction => [
   "Use only facts in the Compass Hearing Sheet. Do not invent facts. If information is sparse, write shorter.",
   "Never use the deceased person's full name. Use only the given name plus 様.",
   "Do not include venue names, attendee greetings, or the phrase 在りし日を.",
-  "Opening: begin with season, then the deceased, then life. Reflect on personality, life path, memories, family time, and one or two concrete scenes.",
+  "Opening: begin with a seasonal scene, not a season name or month name, then the deceased, then life. Reflect on personality, life path, memories, family time, and one or two concrete scenes.",
+  "As a rule, do not use direct season or month words such as spring, summer, autumn, winter, July, August, or 'this month'. Make listeners feel the season through sound, wind, light, flowers, trees, air, sky, insects, breath, and temperature.",
+  "Prefer scene openings like cicadas sounding, dew on grasses, soft wind through trees, sunlight through leaves, clear deep sky, colored leaves moving in the wind, quiet insects, white breath, or new life budding.",
+  "Never write a plain explanatory opening such as 'It is July' or 'the summer sunlight is bright'. Start from a sensory image.",
   "Opening ending: create emotional flow before the final line. End naturally with: \u307e\u3082\u306a\u304f\u958b\u5f0f\u306e\u304a\u6642\u9593\u3067\u3054\u3056\u3044\u307e\u3059\u3002",
   "Closing: do not start with seasonal language. Do not retell the opening. Speak to the family after the farewell, focusing on what remains in their hearts, gratitude, inherited warmth, and walking forward.",
   "Closing ending: leave a quiet afterglow, then naturally connect to: \u3053\u308c\u3092\u3082\u3061\u307e\u3057\u3066\u3001{name}\u69d8\u306e\u3054\u846c\u5100\u3092\u9589\u5f0f\u3044\u305f\u3057\u307e\u3059\u3002 Replace {name} with the given name only.",
@@ -394,7 +397,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   if (shouldUseResponsesApi(model)) {
     const callResponses = async forcePlainJson => {
       const systemPrompt = forcePlainJson
-        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration as text to listen to, not text to read silently. Use short sentences, many natural commas, line breaks, pauses, and spoken rhythm. Opening must be 60-70% and closing 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use pauses and direct address to the family. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
+        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration as text to listen to, not text to read silently. Use short sentences, many natural commas, line breaks, pauses, and spoken rhythm. Opening must be 60-70% and closing 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use pauses and direct address to the family. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
         : buildFastSystemPrompt(extraInstruction);
       const body = {
         model,
@@ -764,7 +767,7 @@ const compactNarrationPrompt = prompt => {
   }));
 
   return [
-    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. This is text to listen to, not text to read silently. Prioritize spoken rhythm, short sentences, natural pauses, many Japanese commas, and line breaks. Each sentence should carry one scene or one feeling. Opening is 60-70%; closing is 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Add more direct address to family and mourners. Use pauses with short standalone lines. Do not repeat episodes. Opening ends with the opening-time sentence. Closing adds an afterglow prayer about remembering and speaking of the deceased before the formal closing sentence.",
+    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. This is text to listen to, not text to read silently. Prioritize spoken rhythm, short sentences, natural pauses, many Japanese commas, and line breaks. Each sentence should carry one scene or one feeling. Opening is 60-70%; closing is 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Add more direct address to family and mourners. Use pauses with short standalone lines. Do not repeat episodes. Opening ends with the opening-time sentence. Closing adds an afterglow prayer about remembering and speaking of the deceased before the formal closing sentence.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
