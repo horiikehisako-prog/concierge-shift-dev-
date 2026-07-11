@@ -71,6 +71,38 @@ const parseModelJson = content => {
   }
 };
 
+const parseNarrationTextFallback = content => {
+  const text = String(content || "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  if (!text) return null;
+
+  const openingMatch = text.match(/(?:【\s*)?(?:開式前|開式前ナレーション)(?:\s*】)?[\s:：]*([\s\S]*?)(?=(?:【\s*)?(?:閉式後|閉式後ナレーション)(?:\s*】)?[\s:：]*|$)/);
+  const closingMatch = text.match(/(?:【\s*)?(?:閉式後|閉式後ナレーション)(?:\s*】)?[\s:：]*([\s\S]*)$/);
+  const openingNarration = String(openingMatch?.[1] || "").trim();
+  const closingNarration = String(closingMatch?.[1] || "").trim();
+  if (openingNarration && closingNarration) {
+    return {
+      openingNarration,
+      closingNarration,
+      detectedTheme: "Compass AI",
+      improvementNotes: "OpenAI returned text instead of JSON, so Compass imported it as narration text.",
+    };
+  }
+  return null;
+};
+
+const parseNarrationResponse = content => {
+  try {
+    return parseModelJson(content);
+  } catch (jsonError) {
+    const textFallback = parseNarrationTextFallback(content);
+    if (textFallback) return textFallback;
+    throw jsonError;
+  }
+};
+
 const normalizeText = value => String(value || "")
   .replace(/\s+/g, "")
   .replace(/[、。,.，．「」『』（）()]/g, "");
@@ -354,7 +386,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
     const firstContent = collectResponsesText(firstJson);
     let parsed = null;
     try {
-      parsed = parseModelJson(firstContent);
+      parsed = parseNarrationResponse(firstContent);
     } catch (firstError) {
       console.warn("[generate-narration] responses json parse retry", {
         buildId: API_BUILD_ID,
@@ -363,7 +395,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
       const retryJson = await callResponses(true);
       const retryContent = collectResponsesText(retryJson);
       try {
-        parsed = parseModelJson(retryContent);
+        parsed = parseNarrationResponse(retryContent);
       } catch (retryError) {
         retryError.firstContentPreview = firstError.contentPreview || "";
         retryError.contentPreview = retryError.contentPreview || retryContent.slice(0, 600);
