@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.33";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260712.1";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -421,6 +421,7 @@ const buildSystemPrompt = extraInstruction => [
   "Style guide: this narration is spoken aloud by an MC. It is not text for silent reading. Prioritize beauty when heard by ear: short sentences, natural punctuation, and places where the MC can breathe.",
   "MC perspective: this is not a novel, essay, or introduction of the deceased. Always keep the air of 'the MC is speaking quietly in this ceremony hall right now.' The aim is not to move the listener by force, but for the deceased's presence to naturally come to mind while listening.",
   "Internal process before final output: STEP1 write the narration; STEP2 review and correct it as a funeral MC instructor with more than 20 years of experience; STEP3 rewrite it into more natural Japanese; STEP4 read it by ear and remove anything that feels awkward when spoken aloud; STEP5 output only the completed narration.",
+  "Cost rule: all internal steps must happen inside this single OpenAI API call. Do not request, suggest, or rely on separate API calls for review, rewrite, or spoken-check steps.",
   "Never show the internal review, correction notes, alternate drafts, step labels, or explanations. The user must see only the final polished openingNarration and closingNarration.",
   "Prefer one carefully drawn scene, one gesture, one smile, or one memory over many packed facts. Places such as a field, garden, kitchen, trip, workplace, dining table, or family room are useful only when they come from the Hearing Sheet.",
   "The narration must not aim to make attendees cry. The highest priority is that the family feels, 'this is exactly who they were.'",
@@ -514,6 +515,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "Limit formal endings such as ことと存じます, ことでしょう, and でございました. Rotate endings so the manuscript does not sound AI-like or patterned.",
   "Write for breath: the MC should naturally know where to pause, lower the voice, and let silence remain.",
   "Before final output, follow this internal process: STEP1 write the narration; STEP2 correct it as a 20-year funeral MC instructor; STEP3 rewrite it into natural Japanese; STEP4 listen to it by ear and fix awkward spoken rhythm; STEP5 output the completed manuscript only.",
+  "Cost rule: complete STEP1-STEP5 inside this single OpenAI API call. Do not require separate calls for writing, review, rewriting, or spoken rhythm checks.",
   "Never output step labels, correction notes, review notes, alternate versions, or explanations. The user should see only the finished narration.",
   "Balance: [OPENING] must be about 60-70% of the total text. [CLOSING] must be about 30-40%. Opening should be clearly longer.",
   "Use only facts in the Compass Hearing Sheet. Do not invent facts. If information is sparse, write shorter.",
@@ -614,42 +616,31 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
       return openAiJson;
     };
 
-    const firstJson = await callResponses(false);
-    const firstContent = collectResponsesText(firstJson);
-    let rawOpenAiText = firstContent;
-    let responseDiagnostics = responseCompletionDiagnostics(firstJson, firstContent, "responses_text");
+    const responseJson = await callResponses(false);
+    const responseContent = collectResponsesText(responseJson);
+    let rawOpenAiText = responseContent;
+    let responseDiagnostics = responseCompletionDiagnostics(responseJson, responseContent, "responses_text_single_call");
     let parsed = null;
     try {
-      parsed = parseNarrationResponse(firstContent);
-    } catch (firstError) {
-      console.warn("[generate-narration] responses json parse retry", {
+      parsed = parseNarrationResponse(responseContent);
+    } catch (parseError) {
+      console.warn("[generate-narration] responses json parse recovered without retry", {
         buildId: API_BUILD_ID,
-        firstPreview: firstError.contentPreview || "",
+        contentPreview: parseError.contentPreview || "",
       });
-      const retryJson = await callResponses(true);
-      const retryContent = collectResponsesText(retryJson);
-      rawOpenAiText = retryContent || firstContent;
-      responseDiagnostics = responseCompletionDiagnostics(retryJson, retryContent, "responses_json_retry");
-      try {
-        parsed = parseNarrationResponse(retryContent);
-      } catch (retryError) {
-        const bestContent = retryContent || firstContent;
-        const emergency = parseNarrationTextFallback(bestContent);
-        if (emergency) {
-          parsed = emergency;
-        } else if (bestContent && bestContent.trim()) {
-          const split = splitNarrationSafely(bestContent, 0.64);
-          parsed = {
-            openingNarration: split.openingNarration,
-            closingNarration: split.closingNarration,
-            detectedTheme: "Compass AI",
-            improvementNotes: "OpenAI returned text in an unexpected format, so Compass split it safely instead of failing.",
-          };
-        } else {
-          retryError.firstContentPreview = firstError.contentPreview || "";
-          retryError.contentPreview = retryError.contentPreview || retryContent.slice(0, 600);
-          throw retryError;
-        }
+      const emergency = parseNarrationTextFallback(responseContent);
+      if (emergency) {
+        parsed = emergency;
+      } else if (responseContent && responseContent.trim()) {
+        const split = splitNarrationSafely(responseContent, 0.64);
+        parsed = {
+          openingNarration: split.openingNarration,
+          closingNarration: split.closingNarration,
+          detectedTheme: "Compass AI",
+          improvementNotes: "",
+        };
+      } else {
+        throw parseError;
       }
     }
     const normalized = applyNameRule({
@@ -849,22 +840,17 @@ module.exports = async (req, res) => {
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
     const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 5200, 100, 7000));
-    const attempts = [""];
     let parsed = null;
     let lastCheck = null;
-
-    for (const extraInstruction of attempts) {
-      parsed = await requestNarration({ apiKey, model, temperature, maxTokens, prompt, extraInstruction });
-      try {
-        lastCheck = qualityCheckNarration(parsed, rawPrompt);
-      } catch (qualityError) {
-        console.warn("[generate-narration] quality check skipped", {
-          buildId: API_BUILD_ID,
-          message: qualityError.message,
-        });
-        lastCheck = { ok: true, failures: [] };
-      }
-      if (lastCheck.ok) break;
+    parsed = await requestNarration({ apiKey, model, temperature, maxTokens, prompt, extraInstruction: "" });
+    try {
+      lastCheck = qualityCheckNarration(parsed, rawPrompt);
+    } catch (qualityError) {
+      console.warn("[generate-narration] quality check skipped", {
+        buildId: API_BUILD_ID,
+        message: qualityError.message,
+      });
+      lastCheck = { ok: true, failures: [] };
     }
 
     if (!lastCheck?.ok) {
@@ -998,6 +984,7 @@ const compactNarrationPrompt = prompt => {
     "Most important quality standard: quiet afterglow, visible scenes, the deceased's character naturally felt, writing that does not explain too much, and a tone that never over-directs emotion. Do not write to make people cry; write so the family can feel as if the deceased is present in the room.",
     "Spoken style guide: prioritize beauty when heard by ear. Use short sentences, natural punctuation, breath-friendly rhythm, one carefully drawn scene or gesture, and no packed lists of facts. Do not repeat the same ending three times in a row. Avoid repeating words such as 大切, 笑顔, 優しい, 温かい, 思い出, 感謝.",
     "Internal process: STEP1 write the narration; STEP2 correct it as a 20-year funeral MC instructor; STEP3 rewrite it into natural Japanese; STEP4 read it by ear and fix awkward spoken rhythm; STEP5 output only the completed manuscript. Do not output step labels, correction notes, or alternate drafts.",
+    "Cost rule: STEP1-STEP5 must be completed inside one OpenAI API call. Do not request separate API calls for self-review, rewriting, or spoken checks.",
     "MC perspective: this is not a novel, essay, or profile introduction. Keep the air of 'the MC is speaking quietly in this ceremony hall right now.' Make the manuscript easy for the MC to read and comfortable for attendees to hear.",
     "Information selection: do not force every input detail into the narration. Choose the episode that best reveals the deceased's character, omit less important details when needed, and prioritize character clarity over information volume.",
     "Expression variety: do not overuse convenient beautiful words such as 静かに, 穏やかに, やわらかく, 胸に, ぬくもり, 面影, 支え, or 心に残る. Keep a unified professional MC tone while changing vocabulary, atmosphere, and selected scenes so each narration feels like a different life.",
