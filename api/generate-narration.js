@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260710.1";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.2";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -201,16 +201,48 @@ const applyNameRule = (draft, prompt) => ({
 const shouldUseResponsesApi = model => String(model || "").trim().startsWith("gpt-5.5");
 
 const collectResponsesText = json => {
-  if (typeof json?.output_text === "string") return json.output_text;
+  if (typeof json?.output_text === "string" && json.output_text.trim()) return json.output_text;
   const chunks = [];
+  const addChunk = value => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed) chunks.push(trimmed);
+  };
   for (const item of json?.output || []) {
+    addChunk(item?.text);
+    addChunk(item?.output_text);
     for (const part of item?.content || []) {
-      if (typeof part?.text === "string") chunks.push(part.text);
-      if (typeof part?.text?.value === "string") chunks.push(part.text.value);
-      if (typeof part?.output_text === "string") chunks.push(part.output_text);
+      addChunk(part?.text);
+      addChunk(part?.text?.value);
+      addChunk(part?.output_text);
+      addChunk(part?.content);
+      addChunk(part?.message);
     }
   }
-  return chunks.join("\n");
+  if (chunks.length) return [...new Set(chunks)].join("\n");
+
+  const recursiveChunks = [];
+  const visit = value => {
+    if (!value) return;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed && /openingNarration|closingNarration|開式前|閉式後|\{/.test(trimmed)) {
+        recursiveChunks.push(trimmed);
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value !== "object") return;
+    Object.entries(value).forEach(([key, child]) => {
+      if (["usage", "metadata", "response_metadata"].includes(key)) return;
+      visit(child);
+    });
+  };
+  visit(json);
+  return [...new Set(recursiveChunks)].join("\n");
 };
 
 const hasWeakGenericNarration = text => {
@@ -285,33 +317,59 @@ const buildSystemPrompt = extraInstruction => [
 
 const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
   if (shouldUseResponsesApi(model)) {
-    const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const callResponses = async forcePlainJson => {
+      const systemPrompt = forcePlainJson
+        ? `${buildSystemPrompt(extraInstruction)} Return exactly one raw JSON object. Do not use markdown, code fences, labels, commentary, or prose outside JSON.`
+        : buildSystemPrompt(extraInstruction);
+      const body = {
         model,
         input: [
-          { role: "system", content: buildSystemPrompt(extraInstruction) },
+          { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
         ],
-        max_output_tokens: maxTokens,
-        text: { format: { type: "json_object" } },
-      }),
-    });
+        max_output_tokens: Math.max(maxTokens, 3600),
+      };
+      if (!forcePlainJson) body.text = { format: { type: "json_object" } };
 
-    const openAiJson = await openAiResponse.json().catch(() => null);
-    if (!openAiResponse.ok) {
-      const error = new Error("OPENAI_REQUEST_FAILED");
-      error.status = openAiResponse.status;
-      error.openAiError = safeOpenAiError(openAiJson);
-      throw error;
+      const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const openAiJson = await openAiResponse.json().catch(() => null);
+      if (!openAiResponse.ok) {
+        const error = new Error("OPENAI_REQUEST_FAILED");
+        error.status = openAiResponse.status;
+        error.openAiError = safeOpenAiError(openAiJson);
+        throw error;
+      }
+      return openAiJson;
+    };
+
+    const firstJson = await callResponses(false);
+    const firstContent = collectResponsesText(firstJson);
+    let parsed = null;
+    try {
+      parsed = parseModelJson(firstContent);
+    } catch (firstError) {
+      console.warn("[generate-narration] responses json parse retry", {
+        buildId: API_BUILD_ID,
+        firstPreview: firstError.contentPreview || "",
+      });
+      const retryJson = await callResponses(true);
+      const retryContent = collectResponsesText(retryJson);
+      try {
+        parsed = parseModelJson(retryContent);
+      } catch (retryError) {
+        retryError.firstContentPreview = firstError.contentPreview || "";
+        retryError.contentPreview = retryError.contentPreview || retryContent.slice(0, 600);
+        throw retryError;
+      }
     }
-
-    const content = collectResponsesText(openAiJson);
-    const parsed = parseModelJson(content);
     return applyNameRule({
       openingNarration: parsed.openingNarration || parsed.opening || "",
       closingNarration: parsed.closingNarration || parsed.closing || "",
@@ -554,6 +612,7 @@ module.exports = async (req, res) => {
         code: "MODEL_JSON_PARSE_FAILED",
         error: "OpenAI response could not be parsed as narration JSON",
         contentPreview: error.contentPreview || "",
+        firstContentPreview: error.firstContentPreview || "",
         diagnostics: { ...diagnostics, hasOpenAIKey: true },
       }));
       return;
