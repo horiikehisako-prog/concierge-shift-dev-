@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.11";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.12";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -78,8 +78,11 @@ const parseNarrationTextFallback = content => {
     .trim();
   if (!text) return null;
 
-  const openingMatch = text.match(/(?:\[OPENING\]|\u3010?\s*(?:\u958b\u5f0f\u524d|\u958b\u5f0f\u524d\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)[\s:：]*([\s\S]*?)(?=(?:\[CLOSING\]|\u3010?\s*(?:\u9589\u5f0f\u5f8c|\u9589\u5f0f\u5f8c\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)[\s:：]*|$)/i);
-  const closingMatch = text.match(/(?:\[CLOSING\]|\u3010?\s*(?:\u9589\u5f0f\u5f8c|\u9589\u5f0f\u5f8c\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)[\s:：]*([\s\S]*)$/i);
+  const openingLabel = String.raw`(?:\[OPENING\]|\u3010?\s*(?:\u958b\u5f0f\u524d|\u958b\u5f0f\u524d\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)`;
+  const closingLabel = String.raw`(?:\[CLOSING\]|\u3010?\s*(?:\u9589\u5f0f\u5f8c|\u9589\u5f0f\u5f8c\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)`;
+  const labelSeparator = String.raw`[\s:\uFF1A]*`;
+  const openingMatch = text.match(new RegExp(`${openingLabel}${labelSeparator}([\\s\\S]*?)(?=${closingLabel}${labelSeparator}|$)`, "i"));
+  const closingMatch = text.match(new RegExp(`${closingLabel}${labelSeparator}([\\s\\S]*)$`, "i"));
   const openingNarration = String(openingMatch?.[1] || "").trim();
   const closingNarration = String(closingMatch?.[1] || "").trim();
   if (openingNarration && closingNarration) {
@@ -98,6 +101,16 @@ const parseNarrationTextFallback = content => {
       closingNarration: paragraphs.slice(midpoint).join("\n\n"),
       detectedTheme: "Compass AI",
       improvementNotes: "OpenAI returned unlabeled text, so Compass split it into opening and closing narration.",
+    };
+  }
+  const lines = text.split(/\n+/).map(v => v.trim()).filter(Boolean);
+  if (lines.length >= 4 && text.length >= 120) {
+    const midpoint = Math.ceil(lines.length * 0.62);
+    return {
+      openingNarration: lines.slice(0, midpoint).join("\n\n"),
+      closingNarration: lines.slice(midpoint).join("\n\n"),
+      detectedTheme: "Compass AI",
+      improvementNotes: "OpenAI returned unlabeled lines, so Compass split them into opening and closing narration.",
     };
   }
   return null;
@@ -443,9 +456,24 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
       try {
         parsed = parseNarrationResponse(retryContent);
       } catch (retryError) {
-        retryError.firstContentPreview = firstError.contentPreview || "";
-        retryError.contentPreview = retryError.contentPreview || retryContent.slice(0, 600);
-        throw retryError;
+        const bestContent = retryContent || firstContent;
+        const emergency = parseNarrationTextFallback(bestContent);
+        if (emergency) {
+          parsed = emergency;
+        } else if (bestContent && bestContent.trim()) {
+          const text = bestContent.trim();
+          const midpoint = Math.ceil(text.length * 0.62);
+          parsed = {
+            openingNarration: text.slice(0, midpoint).trim(),
+            closingNarration: text.slice(midpoint).trim(),
+            detectedTheme: "Compass AI",
+            improvementNotes: "OpenAI returned text in an unexpected format, so Compass split it safely instead of failing.",
+          };
+        } else {
+          retryError.firstContentPreview = firstError.contentPreview || "";
+          retryError.contentPreview = retryError.contentPreview || retryContent.slice(0, 600);
+          throw retryError;
+        }
       }
     }
     return applyNameRule({
