@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.7";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.8";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -370,6 +370,9 @@ const buildFastSystemPrompt = extraInstruction => [
   "Closing ending: leave a quiet afterglow, then naturally connect to: \u3053\u308c\u3092\u3082\u3061\u307e\u3057\u3066\u3001{name}\u69d8\u306e\u3054\u846c\u5100\u3092\u9589\u5f0f\u3044\u305f\u3057\u307e\u3059\u3002 Replace {name} with the given name only.",
   "Do not repeat the same episode in opening and closing. Opening recalls life; closing supports the family after farewell.",
   "Family perspective is most important. Do not write profile-like sentences such as 'liked X' or 'did Y' as plain explanation. Translate facts into how the family remembers them and feels them now.",
+  "Write scenes, not explanations. Express season, life, memories, and gratitude through scenery, sound, light, air, gestures, facial expressions, and ordinary daily moments.",
+  "Do not tell the audience what to understand; help them feel it. Replace resume-like statements such as 'enjoyed meeting people' with family-memory phrasing such as 'the family may still picture the gentle smile that brightened the room.'",
+  "Use phrases that invite memory: '\u3054\u5bb6\u65cf\u304c\u601d\u3044\u6d6e\u304b\u3079\u308b\u304a\u59ff\u306f', '\u4eca\u3082\u80f8\u306b\u6d6e\u304b\u3076\u306e\u306f', '\u4f55\u6c17\u306a\u3044\u65e5\u5e38\u306e\u4e2d\u306b', '\u305d\u306e\u7b11\u9854\u304c\u5834\u3092\u660e\u308b\u304f\u3057\u3066\u304f\u3060\u3055\u3063\u305f'.",
   "Hisako style: warm, calm, natural Japanese, easy to read aloud, with pauses, afterglow, emotional temperature, and professional MC dignity.",
   "Aim for narration that helps the family picture the deceased in their hearts. Quietly wrap their feelings; do not merely introduce a profile.",
   "Avoid generic AI wording. Prefer concrete scenes, gestures, phrases, and daily moments over abstract praise.",
@@ -382,7 +385,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   if (shouldUseResponsesApi(model)) {
     const callResponses = async forcePlainJson => {
       const systemPrompt = forcePlainJson
-        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration. Opening must be 60-70% and closing 30-40%. Write from the family's feelings, not as a profile. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
+        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration. Opening must be 60-70% and closing 30-40%. Write from the family's feelings, not as a profile. Write scenes with light, sound, air, gestures, facial expressions, and daily moments instead of explanations. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
         : buildFastSystemPrompt(extraInstruction);
       const body = {
         model,
@@ -752,7 +755,7 @@ const compactNarrationPrompt = prompt => {
   }));
 
   return [
-    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Opening is 60-70%; closing is 30-40%. Write from the family's feelings, not as a profile. Do not repeat episodes. Opening ends with the opening-time sentence. Closing leaves afterglow and connects to the formal closing sentence.",
+    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Opening is 60-70%; closing is 30-40%. Write from the family's feelings, not as a profile. Write scenes with light, sound, air, gestures, facial expressions, and daily moments instead of explanations. Let listeners feel the memories rather than being told them. Do not repeat episodes. Opening ends with the opening-time sentence. Closing leaves afterglow and connects to the formal closing sentence.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
