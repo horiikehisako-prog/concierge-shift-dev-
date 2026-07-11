@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.8";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.9";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -372,6 +372,10 @@ const buildFastSystemPrompt = extraInstruction => [
   "Family perspective is most important. Do not write profile-like sentences such as 'liked X' or 'did Y' as plain explanation. Translate facts into how the family remembers them and feels them now.",
   "Write scenes, not explanations. Express season, life, memories, and gratitude through scenery, sound, light, air, gestures, facial expressions, and ordinary daily moments.",
   "Do not tell the audience what to understand; help them feel it. Replace resume-like statements such as 'enjoyed meeting people' with family-memory phrasing such as 'the family may still picture the gentle smile that brightened the room.'",
+  "Turn facts into visible scenes. Do not write 'In October, it was the birthday month.' Write like: 'In October, when birthdays came around, three generations of the family traveled together; the scenery, small conversations, and laughter remain warmly in their hearts.'",
+  "Increase direct address to the family and mourners. Include lines like: '\u7686\u69d8\u304a\u4e00\u4eba\u304a\u3072\u3068\u308a\u306e\u80f8\u306b\u306f\u3001\u305d\u308c\u305e\u308c\u9055\u3063\u305f{name}\u69d8\u3068\u306e\u601d\u3044\u51fa\u304c\u9759\u304b\u306b\u3088\u307f\u304c\u3048\u3063\u3066\u3044\u308b\u3053\u3068\u3068\u5b58\u3058\u307e\u3059\u3002' Replace {name} with the given name only.",
+  "Use pauses. Prefer short standalone lines followed by a reflective sentence. Example: '\u4eba\u3092\u601d\u3044\u3084\u308b\u3053\u3068\u3002\n\n\u5bb6\u65cf\u3092\u5927\u5207\u306b\u3059\u308b\u3053\u3068\u3002\n\n\u305d\u306e\u4f55\u6c17\u306a\u3044\u6bce\u65e5\u306e\u7a4d\u307f\u91cd\u306d\u3053\u305d\u304c\u3001{name}\u69d8\u3089\u3057\u3044\u4eba\u751f\u3067\u3054\u3056\u3044\u307e\u3057\u305f\u3002'",
+  "Before the final closing sentence, always add an afterglow prayer such as: '\u3069\u3046\u304b\u3053\u308c\u304b\u3089\u3082\u3001\u6298\u306b\u89e6\u308c{name}\u69d8\u3092\u601d\u3044\u51fa\u3057\u3001\u305d\u306e\u512a\u3057\u3044\u7b11\u9854\u3092\u8a9e\u308a\u7d99\u3044\u3067\u3044\u305f\u3060\u3051\u307e\u3057\u305f\u3089\u5e78\u3044\u306b\u5b58\u3058\u307e\u3059\u3002\n\n\u305d\u306e\u304a\u6c17\u6301\u3061\u304c\u3001\u4f55\u3088\u308a\u306e\u4f9b\u990a\u3068\u306a\u308b\u3053\u3068\u3067\u3057\u3087\u3046\u3002'",
   "Use phrases that invite memory: '\u3054\u5bb6\u65cf\u304c\u601d\u3044\u6d6e\u304b\u3079\u308b\u304a\u59ff\u306f', '\u4eca\u3082\u80f8\u306b\u6d6e\u304b\u3076\u306e\u306f', '\u4f55\u6c17\u306a\u3044\u65e5\u5e38\u306e\u4e2d\u306b', '\u305d\u306e\u7b11\u9854\u304c\u5834\u3092\u660e\u308b\u304f\u3057\u3066\u304f\u3060\u3055\u3063\u305f'.",
   "Hisako style: warm, calm, natural Japanese, easy to read aloud, with pauses, afterglow, emotional temperature, and professional MC dignity.",
   "Aim for narration that helps the family picture the deceased in their hearts. Quietly wrap their feelings; do not merely introduce a profile.",
@@ -385,7 +389,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   if (shouldUseResponsesApi(model)) {
     const callResponses = async forcePlainJson => {
       const systemPrompt = forcePlainJson
-        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration. Opening must be 60-70% and closing 30-40%. Write from the family's feelings, not as a profile. Write scenes with light, sound, air, gestures, facial expressions, and daily moments instead of explanations. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
+        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration. Opening must be 60-70% and closing 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use pauses and direct address to the family. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
         : buildFastSystemPrompt(extraInstruction);
       const body = {
         model,
@@ -755,7 +759,7 @@ const compactNarrationPrompt = prompt => {
   }));
 
   return [
-    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Opening is 60-70%; closing is 30-40%. Write from the family's feelings, not as a profile. Write scenes with light, sound, air, gestures, facial expressions, and daily moments instead of explanations. Let listeners feel the memories rather than being told them. Do not repeat episodes. Opening ends with the opening-time sentence. Closing leaves afterglow and connects to the formal closing sentence.",
+    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Opening is 60-70%; closing is 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Add more direct address to family and mourners. Use pauses with short standalone lines. Do not repeat episodes. Opening ends with the opening-time sentence. Closing adds an afterglow prayer about remembering and speaking of the deceased before the formal closing sentence.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
