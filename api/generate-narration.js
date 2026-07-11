@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.14";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.15";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -333,6 +333,20 @@ const collectResponsesText = json => {
   return [...new Set(recursiveChunks)].join("\n");
 };
 
+const responseCompletionDiagnostics = (json, text, source) => ({
+  source,
+  responseStatus: json?.status || "",
+  incompleteReason: json?.incomplete_details?.reason || json?.incomplete_details?.message || "",
+  outputTextLength: String(text || "").length,
+  outputTokens: json?.usage?.output_tokens || json?.usage?.output_tokens_details?.total_tokens || null,
+  totalTokens: json?.usage?.total_tokens || null,
+});
+
+const responseLooksIncomplete = json =>
+  json?.status === "incomplete" ||
+  !!json?.incomplete_details ||
+  String(json?.finish_reason || "").toLowerCase() === "length";
+
 const hasWeakGenericNarration = text => {
   const compact = normalizeText(text);
   const weakWords = [
@@ -446,6 +460,7 @@ const buildFastSystemPrompt = extraInstruction => [
 
 const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
   if (shouldUseResponsesApi(model)) {
+    const outputTokenLimit = Math.min(Math.max(maxTokens, 2600), 4200);
     const callResponses = async forcePlainJson => {
       const systemPrompt = (forcePlainJson
         ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes. Write warm Japanese funeral MC narration as text to listen to, not text to read silently. Compass AI is not a profile introduction AI; it helps the family remember and say thank you. Opening must be 60-70% and closing 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use line breaks only where an MC would naturally pause; do not chop text into fragments. Before the opening final line, receive the family's feelings. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
@@ -456,7 +471,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
         ],
-        max_output_tokens: Math.min(Math.max(maxTokens, 1400), 1800),
+        max_output_tokens: outputTokenLimit,
       };
       if (forcePlainJson) body.text = { format: { type: "json_object" } };
 
@@ -476,11 +491,23 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         error.openAiError = safeOpenAiError(openAiJson);
         throw error;
       }
+      if (responseLooksIncomplete(openAiJson)) {
+        console.warn("[generate-narration] openai response incomplete", {
+          buildId: API_BUILD_ID,
+          forcePlainJson,
+          outputTokenLimit,
+          status: openAiJson?.status || "",
+          incompleteDetails: openAiJson?.incomplete_details || null,
+          textLength: collectResponsesText(openAiJson).length,
+        });
+      }
       return openAiJson;
     };
 
     const firstJson = await callResponses(false);
     const firstContent = collectResponsesText(firstJson);
+    let rawOpenAiText = firstContent;
+    let responseDiagnostics = responseCompletionDiagnostics(firstJson, firstContent, "responses_text");
     let parsed = null;
     try {
       parsed = parseNarrationResponse(firstContent);
@@ -491,6 +518,8 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
       });
       const retryJson = await callResponses(true);
       const retryContent = collectResponsesText(retryJson);
+      rawOpenAiText = retryContent || firstContent;
+      responseDiagnostics = responseCompletionDiagnostics(retryJson, retryContent, "responses_json_retry");
       try {
         parsed = parseNarrationResponse(retryContent);
       } catch (retryError) {
@@ -513,12 +542,34 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         }
       }
     }
-    return applyNameRule({
+    const normalized = applyNameRule({
       openingNarration: stripNonNarrationSections(parsed.openingNarration || parsed.opening || ""),
       closingNarration: stripNonNarrationSections(parsed.closingNarration || parsed.closing || ""),
       detectedTheme: parsed.detectedTheme || parsed.theme || "",
       improvementNotes: "",
     }, prompt);
+    const displayText = [normalized.openingNarration, normalized.closingNarration].filter(Boolean).join("\n\n");
+    console.log("[generate-narration] comparison", {
+      buildId: API_BUILD_ID,
+      openAiTextLength: String(rawOpenAiText || "").length,
+      compassDisplayLength: displayText.length,
+      openingLength: normalized.openingNarration.length,
+      closingLength: normalized.closingNarration.length,
+      outputTokenLimit,
+      responseDiagnostics,
+    });
+    return {
+      ...normalized,
+      generationDiagnostics: {
+        ...responseDiagnostics,
+        outputTokenLimit,
+        openAiTextLength: String(rawOpenAiText || "").length,
+        compassDisplayLength: displayText.length,
+        openingLength: normalized.openingNarration.length,
+        closingLength: normalized.closingNarration.length,
+        possibleTruncation: responseLooksIncomplete(firstJson) || responseDiagnostics.responseStatus === "incomplete",
+      },
+    };
   }
 
   const openAiResponse = await fetch(OPENAI_CHAT_URL, {
@@ -687,7 +738,7 @@ module.exports = async (req, res) => {
 
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
-    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 1600, 100, 2200));
+    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 3200, 100, 4200));
     const attempts = [""];
     let parsed = null;
     let lastCheck = null;
@@ -714,6 +765,7 @@ module.exports = async (req, res) => {
       if (parsed?.openingNarration || parsed?.closingNarration) {
         res.statusCode = 200;
         res.end(JSON.stringify({
+          ...parsed,
           ...applyNameRule(parsed, rawPrompt),
           generationSource: "openai",
           qualityWarning: QUALITY_CHECK_FAILED_MESSAGE,
@@ -732,7 +784,10 @@ module.exports = async (req, res) => {
     }
 
     res.statusCode = 200;
-    res.end(JSON.stringify(applyNameRule(parsed, rawPrompt)));
+    res.end(JSON.stringify({
+      ...parsed,
+      ...applyNameRule(parsed, rawPrompt),
+    }));
   } catch (error) {
     console.error("[generate-narration] failed", {
       buildId: API_BUILD_ID,
