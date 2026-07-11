@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.24";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.25";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -149,6 +149,20 @@ const stripNonNarrationSections = value => {
   return text;
 };
 
+const stripFixedClosingOpening = value => {
+  let text = String(value || "").trim();
+  if (!text) return "";
+  const fixedOpeningPatterns = [
+    /^本日はご多用の中、?ご会葬いただき誠にありがとうございました。[。\s]*/u,
+    /^本日は(?:ご参列|ご会葬|ご来場|お集まり|お越し)[^。]{0,60}(?:ありがとう|賜り|いただき)[^。]*。[。\s]*/u,
+    /^(?:ご参列|ご会葬|ご来場|お集まり|お越し)[^。]{0,60}(?:ありがとう|賜り|いただき)[^。]*。[。\s]*/u,
+  ];
+  for (const pattern of fixedOpeningPatterns) {
+    text = text.replace(pattern, "").trim();
+  }
+  return text;
+};
+
 const parseNarrationResponse = content => {
   try {
     return parseModelJson(content);
@@ -283,7 +297,7 @@ const replaceFullName = (text, prompt) => {
 const applyNameRule = (draft, prompt) => ({
   ...draft,
   openingNarration: replaceFullName(draft.openingNarration, prompt),
-  closingNarration: replaceFullName(draft.closingNarration, prompt),
+  closingNarration: stripFixedClosingOpening(replaceFullName(draft.closingNarration, prompt)),
 });
 
 const shouldUseResponsesApi = model => String(model || "").trim().startsWith("gpt-5.5");
@@ -381,6 +395,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
+  if (hasForbiddenExpression(closing.slice(0, 120))) failures.push("closing fixed greeting");
   return { ok: failures.length === 0, failures };
 };
 
@@ -391,10 +406,10 @@ const buildSystemPrompt = extraInstruction => [
   "The narration must not aim to make attendees cry. The highest priority is that the family feels, 'this is exactly who they were.'",
   "Use only the Compass Hearing Sheet fields included in the prompt: deceased name, date of passing, personality, hobbies, family memories, important episodes, favorite phrases, important values, keywords, and notes.",
   "Do not invent facts that are not in the prompt. If information is missing, omit it naturally. Never ask for more information.",
-  "QUALITY CHECK REQUIRED BEFORE ANSWERING: no venue names, no generic attendee greetings in openingNarration, no repeated expressions, and openingNarration and closingNarration must have different content.",
+  "QUALITY CHECK REQUIRED BEFORE ANSWERING: no venue names, no generic attendee greetings in openingNarration or closingNarration, no repeated expressions, and openingNarration and closingNarration must have different content.",
   "Never write the deceased person's full name in openingNarration or closingNarration. If a name is needed, use only the given name plus 様. Treat the surname and full name as private reference information only.",
   "Strictly forbidden expressions: 飛鳥会館にお集まりいただき; ○○会館にお集まりいただき; 本日はご参列いただき; 本日はご会葬賜り; ご来場ありがとうございます; ご参列ありがとうございます; ご会葬ありがとうございます; 本日はありがとうございます.",
-  "Never include venue names or generic attendee greetings in openingNarration. ClosingNarration may include a short, dignified thank-you to those who attended when it sounds natural.",
+  "Never include venue names or generic attendee greetings in openingNarration or closingNarration. The closing must not start with attendee thanks; it must begin from the afterglow of farewell, the deceased's character, the family's feelings, or a warm memory that remains.",
   "The opening narration must always begin in this order: season, then the deceased, then life. Never begin with venue, attendees, or greetings.",
   "Do not keep the deceased waiting behind a long seasonal preface. The seasonal sentence is only atmosphere. Mention the deceased's given name and the family's farewell feelings by the second sentence.",
   "Seasonal language is allowed only in openingNarration. closingNarration must never start with seasonal language or seasonal scenery.",
