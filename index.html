@@ -3488,8 +3488,9 @@ const AI_LOADING_MESSAGES = [
 const AI_NOT_CONFIGURED_MESSAGE = "AI接続がまだ設定されていません。管理者に確認してください。";
 const AI_FAILED_MESSAGE = "AIナレーション作成に失敗しました。時間をおいて再度お試しください。";
 const compassFormatDraft=response=>{
-  const opening=clean(response?.openingNarration||response?.opening||response?.preCeremonyNarration||"");
-  const closing=clean(response?.closingNarration||response?.closing||response?.postCeremonyNarration||"");
+  const stripAiMetaSections=value=>clean(value).replace(/^\s*(?:\[?Improvement notes?\]?|Improvement notes?|Deleted theme|notes?)\s*[:\uFF1A]?[\s\S]*$/im,"").trim();
+  const opening=stripAiMetaSections(response?.openingNarration||response?.opening||response?.preCeremonyNarration||"");
+  const closing=stripAiMetaSections(response?.closingNarration||response?.closing||response?.postCeremonyNarration||"");
   const detectedTheme=clean(response?.detectedTheme||response?.theme||"");
   const notes=Array.isArray(response?.improvementNotes)?response.improvementNotes.filter(Boolean).join("\n"):clean(response?.improvementNotes||response?.notes||"");
   return {
@@ -3503,12 +3504,6 @@ const compassFormatDraft=response=>{
       "",
       "【閉式後ナレーション】",
       closing||"（生成結果が空でした）",
-      "",
-      "【Detected theme】",
-      detectedTheme||"未検出",
-      "",
-      "【Improvement notes】",
-      notes||"特記事項なし",
     ].join("\n"),
     generationSource:response?.generationSource||response?.source||"openai",
     fallbackReason:clean(response?.fallbackReason||response?.reason||""),

@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.12";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.13";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -71,6 +71,26 @@ const parseModelJson = content => {
   }
 };
 
+const splitNarrationSafely = (text, ratio = 0.64) => {
+  const value = String(text || "").trim();
+  if (!value) return { openingNarration: "", closingNarration: "" };
+  const target = Math.ceil(value.length * ratio);
+  const boundaries = [];
+  const boundaryRegex = /(?:\n{2,}|[。！？]\s*)/g;
+  let match;
+  while ((match = boundaryRegex.exec(value))) {
+    boundaries.push(match.index + match[0].length);
+  }
+  const usable = boundaries.filter(pos => pos > value.length * 0.35 && pos < value.length * 0.82);
+  const splitAt = usable.length
+    ? usable.reduce((best, pos) => Math.abs(pos - target) < Math.abs(best - target) ? pos : best, usable[0])
+    : target;
+  return {
+    openingNarration: value.slice(0, splitAt).trim(),
+    closingNarration: value.slice(splitAt).trim(),
+  };
+};
+
 const parseNarrationTextFallback = content => {
   const text = String(content || "")
     .replace(/```(?:json)?/gi, "")
@@ -95,7 +115,7 @@ const parseNarrationTextFallback = content => {
   }
   const paragraphs = text.split(/\n{2,}/).map(v => v.trim()).filter(Boolean);
   if (paragraphs.length >= 4 && text.length >= 200) {
-    const midpoint = Math.ceil(paragraphs.length / 2);
+    const midpoint = Math.ceil(paragraphs.length * 0.64);
     return {
       openingNarration: paragraphs.slice(0, midpoint).join("\n\n"),
       closingNarration: paragraphs.slice(midpoint).join("\n\n"),
@@ -114,6 +134,19 @@ const parseNarrationTextFallback = content => {
     };
   }
   return null;
+};
+
+const stripNonNarrationSections = value => {
+  let text = String(value || "").trim();
+  if (!text) return "";
+  const noisePatterns = [
+    /^\s*(?:\[[^\]]*improvement[^\]]*\]|【[^】]*improvement[^】]*】|improvement\s*notes?|improvement\s*note|notes?|deleted\s*theme|quality\s*notes?|writing\s*notes?)\s*[:：]?[\s\S]*$/im,
+    /^\s*(?:改善メモ|改善点|補足|注記|備考|生成メモ|品質メモ|削除テーマ)\s*[:：]?[\s\S]*$/m,
+  ];
+  for (const pattern of noisePatterns) {
+    text = text.replace(pattern, "").trim();
+  }
+  return text;
 };
 
 const parseNarrationResponse = content => {
@@ -403,15 +436,16 @@ const buildFastSystemPrompt = extraInstruction => [
   "Avoid generic AI wording. Prefer concrete scenes, gestures, phrases, and daily moments over abstract praise.",
   "Opening length: 620-820 Japanese characters. Closing length: 300-460 Japanese characters.",
   "Before returning, remove repetition, full names, venue names, and copied sample wording.",
+  "Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside [OPENING] and [CLOSING].",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
 
 const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
   if (shouldUseResponsesApi(model)) {
     const callResponses = async forcePlainJson => {
-      const systemPrompt = forcePlainJson
+      const systemPrompt = (forcePlainJson
         ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration as text to listen to, not text to read silently. Use short sentences, many natural commas, line breaks, pauses, and spoken rhythm. Opening must be 60-70% and closing 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use pauses and direct address to the family. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
-        : buildFastSystemPrompt(extraInstruction);
+        : buildFastSystemPrompt(extraInstruction)) + " Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside the requested narration fields. If improvementNotes exists, keep it empty.";
       const body = {
         model,
         input: [
@@ -461,11 +495,10 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         if (emergency) {
           parsed = emergency;
         } else if (bestContent && bestContent.trim()) {
-          const text = bestContent.trim();
-          const midpoint = Math.ceil(text.length * 0.62);
+          const split = splitNarrationSafely(bestContent, 0.64);
           parsed = {
-            openingNarration: text.slice(0, midpoint).trim(),
-            closingNarration: text.slice(midpoint).trim(),
+            openingNarration: split.openingNarration,
+            closingNarration: split.closingNarration,
             detectedTheme: "Compass AI",
             improvementNotes: "OpenAI returned text in an unexpected format, so Compass split it safely instead of failing.",
           };
@@ -477,10 +510,10 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
       }
     }
     return applyNameRule({
-      openingNarration: parsed.openingNarration || parsed.opening || "",
-      closingNarration: parsed.closingNarration || parsed.closing || "",
+      openingNarration: stripNonNarrationSections(parsed.openingNarration || parsed.opening || ""),
+      closingNarration: stripNonNarrationSections(parsed.closingNarration || parsed.closing || ""),
       detectedTheme: parsed.detectedTheme || parsed.theme || "",
-      improvementNotes: parsed.improvementNotes || parsed.notes || "",
+      improvementNotes: "",
     }, prompt);
   }
 
@@ -513,10 +546,10 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   const content = openAiJson?.choices?.[0]?.message?.content || "";
   const parsed = parseModelJson(content);
   return applyNameRule({
-    openingNarration: parsed.openingNarration || parsed.opening || "",
-    closingNarration: parsed.closingNarration || parsed.closing || "",
+    openingNarration: stripNonNarrationSections(parsed.openingNarration || parsed.opening || ""),
+    closingNarration: stripNonNarrationSections(parsed.closingNarration || parsed.closing || ""),
     detectedTheme: parsed.detectedTheme || parsed.theme || "",
-    improvementNotes: parsed.improvementNotes || parsed.notes || "",
+    improvementNotes: "",
   }, prompt);
 };
 
@@ -795,7 +828,7 @@ const compactNarrationPrompt = prompt => {
   }));
 
   return [
-    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. This is text to listen to, not text to read silently. Prioritize spoken rhythm, short sentences, natural pauses, many Japanese commas, and line breaks. Each sentence should carry one scene or one feeling. Opening is 60-70%; closing is 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Add more direct address to family and mourners. Use pauses with short standalone lines. Do not repeat episodes. Opening ends with the opening-time sentence. Closing adds an afterglow prayer about remembering and speaking of the deceased before the formal closing sentence.",
+    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Never output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside those two narration sections. This is text to listen to, not text to read silently. Prioritize spoken rhythm, short sentences, natural pauses, many Japanese commas, and line breaks. Each sentence should carry one scene or one feeling. Opening is 60-70%; closing is 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Add more direct address to family and mourners. Use pauses with short standalone lines. Do not repeat episodes. Opening ends with the opening-time sentence. Closing adds an afterglow prayer about remembering and speaking of the deceased before the formal closing sentence.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
