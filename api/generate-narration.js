@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.15";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.16";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -409,11 +409,14 @@ const buildSystemPrompt = extraInstruction => [
   "Never describe the same episode twice. If an episode is used in openingNarration, closingNarration may explain why it mattered or what remains in the family's hearts, but must not summarize or narrate that episode again.",
   "Write as a script to be read aloud, not as an article. Prioritize rhythm, breathing, emotional pacing, warmth, and quiet dignity over beautiful literary style.",
   "Use plain, natural Japanese funeral MC wording. Avoid ornate metaphors, dramatic expressions, clever conclusions, sales-like polish, and phrases that sound like AI.",
+  "Do not overuse sentence endings such as でございました, ことでしょう, or ことと存じます. Never use the same ending pattern in consecutive sentences. Vary the rhythm with natural Japanese endings.",
   "Use natural spoken Japanese. This is text to listen to, not text to read silently.",
   "Line breaks are direction for performance. Do not chop the manuscript into many tiny fragments. Break lines only where an MC would naturally pause or let emotion remain.",
   "Shape the text so an MC can breathe between thoughts. One paragraph should carry one scene or one feeling. Do not pack too many facts into one sentence.",
   "Target length: openingNarration about 680-900 Japanese characters; closingNarration about 330-520 Japanese characters.",
   "Avoid generic AI phrases, repetitive wording, unnecessary greetings, overused abstract words, and repeated gratitude wording. Use concrete memories first, then quiet feeling.",
+  "Avoid words and sentences that could fit anyone. Every important paragraph must include a detail, gesture, place-like scene, phrase, habit, relationship, or daily moment from the Hearing Sheet.",
+  "Do not explain personality. Show one scene where that personality can be felt.",
   "Do not use the phrase 在りし日を because it is reserved for other manuscripts and would duplicate Hisako's wording.",
   "Do not overuse words equivalent to gratitude, warmth, bonds, irreplaceable, eternal, or watching over. Use them only when the Hearing Sheet supports them.",
   "Use any sample references only for tone, structure, rhythm, warmth, and ending style. Do not copy sample text directly.",
@@ -428,6 +431,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "Highest priority: natural pauses, emotional flow, family perspective, and rhythm that reaches the family's hearts when read aloud.",
   "Use Japanese commas and line breaks for performance, but do not chop the manuscript into tiny fragments. Keep sentence flow when the emotion should continue.",
   "Each paragraph should carry one scene or one feeling. Change focus gently; avoid long resume-like explanation.",
+  "Do not overuse sentence endings such as でございました, ことでしょう, or ことと存じます. Do not repeat the same ending in consecutive sentences; vary the rhythm naturally.",
   "Write for breath: the MC should naturally know where to pause, lower the voice, and let silence remain.",
   "Balance: [OPENING] must be about 60-70% of the total text. [CLOSING] must be about 30-40%. Opening should be clearly longer.",
   "Use only facts in the Compass Hearing Sheet. Do not invent facts. If information is sparse, write shorter.",
@@ -452,6 +456,8 @@ const buildFastSystemPrompt = extraInstruction => [
   "Hisako style: warm, calm, natural Japanese, easy to read aloud, with pauses, afterglow, emotional temperature, and professional MC dignity.",
   "Aim for narration that helps the family picture the deceased in their hearts. Quietly wrap their feelings; do not merely introduce a profile.",
   "Avoid generic AI wording. Prefer concrete scenes, gestures, phrases, and daily moments over abstract praise.",
+  "Every paragraph should feel specific to this deceased. Use the Hearing Sheet's actual details; if there are few details, write shorter rather than filling with phrases that fit anyone.",
+  "Show personality through a scene: a smile at the table, hands at work, a familiar phrase, a quiet habit, a family trip, a garden, a meal, or another true detail from the Hearing Sheet.",
   "Opening length: 680-900 Japanese characters. Closing length: 330-520 Japanese characters. Opening must feel clearly longer.",
   "Before returning, remove repetition, full names, venue names, and copied sample wording.",
   "Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside [OPENING] and [CLOSING].",
@@ -460,10 +466,10 @@ const buildFastSystemPrompt = extraInstruction => [
 
 const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
   if (shouldUseResponsesApi(model)) {
-    const outputTokenLimit = Math.min(Math.max(maxTokens, 2600), 4200);
+    const outputTokenLimit = Math.min(Math.max(maxTokens, 4200), 7000);
     const callResponses = async forcePlainJson => {
       const systemPrompt = (forcePlainJson
-        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes. Write warm Japanese funeral MC narration as text to listen to, not text to read silently. Compass AI is not a profile introduction AI; it helps the family remember and say thank you. Opening must be 60-70% and closing 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use line breaks only where an MC would naturally pause; do not chop text into fragments. Before the opening final line, receive the family's feelings. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
+        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes. Write warm Japanese funeral MC narration as text to listen to, not text to read silently. Compass AI is not a profile introduction AI; it helps the family remember and say thank you. Opening must be 60-70% and closing 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use line breaks only where an MC would naturally pause; do not chop text into fragments. Do not overuse sentence endings such as でございました, ことでしょう, or ことと存じます; never repeat the same ending in consecutive sentences. Use details from the Hearing Sheet so each scene feels specific to this deceased, not anyone. Before the opening final line, receive the family's feelings. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
         : buildFastSystemPrompt(extraInstruction)) + " Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside the requested narration fields. If improvementNotes exists, keep it empty.";
       const body = {
         model,
@@ -738,7 +744,7 @@ module.exports = async (req, res) => {
 
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
-    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 3200, 100, 4200));
+    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 5200, 100, 7000));
     const attempts = [""];
     let parsed = null;
     let lastCheck = null;
@@ -884,7 +890,7 @@ const compactNarrationPrompt = prompt => {
   }));
 
   return [
-    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Never output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside those two narration sections. Compass AI is not a profile-introduction AI; it helps the family picture the deceased and send them off with a quiet feeling of thank you. This is text to listen to, not text to read silently. Prioritize spoken rhythm, natural pauses, emotional flow, family perspective, and professional MC dignity. Line breaks are performance direction; use them only where an MC would naturally pause, and do not chop the manuscript into tiny fragments. Opening is 60-70%; closing is 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Do not repeat episodes. Opening reflects life, personality, memories, family time, and the deceased's character; before the opening-time sentence, receive the family's feelings. Closing speaks to the family after farewell, with gratitude, inherited kindness, strength to walk forward, and afterglow before the formal closing sentence.",
+    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Never output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside those two narration sections. Compass AI is not a profile-introduction AI; it helps the family picture the deceased and send them off with a quiet feeling of thank you. This is text to listen to, not text to read silently. Prioritize spoken rhythm, natural pauses, emotional flow, family perspective, and professional MC dignity. Line breaks are performance direction; use them only where an MC would naturally pause, and do not chop the manuscript into tiny fragments. Opening is 60-70%; closing is 30-40%. Begin with a sensory seasonal scene, not direct season or month words such as spring, summer, autumn, winter, July, August, or this month. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Do not overuse sentence endings such as でございました, ことでしょう, or ことと存じます; never repeat the same ending in consecutive sentences. Use details from the Hearing Sheet so each scene feels specific to this deceased, not anyone. Do not repeat episodes. Opening reflects life, personality, memories, family time, and the deceased's character; before the opening-time sentence, receive the family's feelings. Closing speaks to the family after farewell, with gratitude, inherited kindness, strength to walk forward, and afterglow before the formal closing sentence.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
