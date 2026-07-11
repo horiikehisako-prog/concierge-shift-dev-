@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.4";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.5";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -78,8 +78,8 @@ const parseNarrationTextFallback = content => {
     .trim();
   if (!text) return null;
 
-  const openingMatch = text.match(/(?:【\s*)?(?:開式前|開式前ナレーション)(?:\s*】)?[\s:：]*([\s\S]*?)(?=(?:【\s*)?(?:閉式後|閉式後ナレーション)(?:\s*】)?[\s:：]*|$)/);
-  const closingMatch = text.match(/(?:【\s*)?(?:閉式後|閉式後ナレーション)(?:\s*】)?[\s:：]*([\s\S]*)$/);
+  const openingMatch = text.match(/(?:\[OPENING\]|\u3010?\s*(?:\u958b\u5f0f\u524d|\u958b\u5f0f\u524d\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)[\s:：]*([\s\S]*?)(?=(?:\[CLOSING\]|\u3010?\s*(?:\u9589\u5f0f\u5f8c|\u9589\u5f0f\u5f8c\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)[\s:：]*|$)/i);
+  const closingMatch = text.match(/(?:\[CLOSING\]|\u3010?\s*(?:\u9589\u5f0f\u5f8c|\u9589\u5f0f\u5f8c\u30ca\u30ec\u30fc\u30b7\u30e7\u30f3)\s*\u3011?)[\s:：]*([\s\S]*)$/i);
   const openingNarration = String(openingMatch?.[1] || "").trim();
   const closingNarration = String(closingMatch?.[1] || "").trim();
   if (openingNarration && closingNarration) {
@@ -88,6 +88,16 @@ const parseNarrationTextFallback = content => {
       closingNarration,
       detectedTheme: "Compass AI",
       improvementNotes: "OpenAI returned text instead of JSON, so Compass imported it as narration text.",
+    };
+  }
+  const paragraphs = text.split(/\n{2,}/).map(v => v.trim()).filter(Boolean);
+  if (paragraphs.length >= 4 && text.length >= 200) {
+    const midpoint = Math.ceil(paragraphs.length / 2);
+    return {
+      openingNarration: paragraphs.slice(0, midpoint).join("\n\n"),
+      closingNarration: paragraphs.slice(midpoint).join("\n\n"),
+      detectedTheme: "Compass AI",
+      improvementNotes: "OpenAI returned unlabeled text, so Compass split it into opening and closing narration.",
     };
   }
   return null;
@@ -349,7 +359,7 @@ const buildSystemPrompt = extraInstruction => [
 
 const buildFastSystemPrompt = extraInstruction => [
   "You are a professional Japanese funeral MC. Write narration to be read aloud, not an essay.",
-  "Return only JSON: openingNarration, closingNarration, detectedTheme, improvementNotes.",
+  "Return plain text, not JSON. Use exactly these ASCII labels: [OPENING] and [CLOSING].",
   "Use only facts in the Compass Hearing Sheet. Do not invent facts. If information is sparse, write shorter.",
   "Never use the deceased person's full name. Use only the given name plus 様.",
   "Do not include venue names, attendee greetings, or the phrase 在りし日を.",
@@ -366,7 +376,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   if (shouldUseResponsesApi(model)) {
     const callResponses = async forcePlainJson => {
       const systemPrompt = forcePlainJson
-        ? `${buildFastSystemPrompt(extraInstruction)} Return exactly one raw JSON object. Do not use markdown, code fences, labels, commentary, or prose outside JSON.`
+        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
         : buildFastSystemPrompt(extraInstruction);
       const body = {
         model,
@@ -376,7 +386,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         ],
         max_output_tokens: Math.min(Math.max(maxTokens, 1400), 1800),
       };
-      if (!forcePlainJson) body.text = { format: { type: "json_object" } };
+      if (forcePlainJson) body.text = { format: { type: "json_object" } };
 
       const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
         method: "POST",
