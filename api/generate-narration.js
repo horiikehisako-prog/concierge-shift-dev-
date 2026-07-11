@@ -495,6 +495,20 @@ module.exports = async (req, res) => {
         buildId: API_BUILD_ID,
         failures: lastCheck?.failures || [],
       });
+      if (parsed?.openingNarration || parsed?.closingNarration) {
+        res.statusCode = 200;
+        res.end(JSON.stringify({
+          ...parsed,
+          generationSource: "openai",
+          qualityWarning: QUALITY_CHECK_FAILED_MESSAGE,
+          qualityFailures: lastCheck?.failures || [],
+          improvementNotes: [
+            parsed.improvementNotes || "",
+            `Compass quality warning: ${(lastCheck?.failures || []).join(", ")}`,
+          ].filter(Boolean).join("\n"),
+        }));
+        return;
+      }
       res.statusCode = 422;
       res.end(JSON.stringify({
         code: "GENERATION_QUALITY_CHECK_FAILED",

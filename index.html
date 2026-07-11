@@ -756,6 +756,24 @@ const normalizeAISettings=s=>{
     apiProxyPath:String(n.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath),
   };
 };
+const resolveCompassApiProxyPath=value=>{
+  const fallback=DEFAULT_AI_SETTINGS.apiProxyPath;
+  const configured=String(value||fallback).trim()||fallback;
+  if(typeof window==="undefined")return configured;
+  try{
+    const current=new URL(window.location.href);
+    const target=new URL(configured,current.origin);
+    if(current.hostname.endsWith(".vercel.app")){
+      const oldPreview=target.hostname.endsWith(".vercel.app")&&target.origin!==current.origin;
+      const githubPages=target.hostname.endsWith("github.io");
+      if(oldPreview||githubPages)return fallback;
+      if(target.origin===current.origin&&target.pathname===fallback)return fallback;
+    }
+    return configured;
+  }catch(e){
+    return fallback;
+  }
+};
 const sanitizeSettingsForSave=v=>v?{...v,aiSettings:normalizeAISettings(v.aiSettings)}:v;
 const aiMonthKey=(d=new Date())=>`${d.getFullYear()}-${p2(d.getMonth()+1)}`;
 const estimateAITokens=txt=>Math.max(1,Math.ceil(String(txt||"").length/2));
@@ -3493,6 +3511,7 @@ const compassFormatDraft=response=>{
       notes||"特記事項なし",
     ].join("\n"),
     generationSource:response?.generationSource||response?.source||"openai",
+    fallbackReason:clean(response?.fallbackReason||response?.reason||""),
   };
 };
 const compassFirstFilled=(sheet,keys)=>keys.map(k=>clean(sheet?.[k]||"")).find(Boolean)||"";
@@ -3542,12 +3561,14 @@ const compassLocalNarrationDraft=({sheet,cfg,theme,reason,compassKb=[]})=>{
     detectedTheme:theme||compassDetectTheme(s,cfg),
     improvementNotes:`AI接続が利用できなかったため、入力内容から予備の司会原稿を作成しました。必要に応じてHisakoさんの言葉に整えてください。\n原因: ${reason||"API unavailable"}`,
     generationSource:"localDraft",
+    fallbackReason:reason||"API unavailable",
   });
 };
 const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
   const ai=normalizeAISettings(cfg.aiSettings);
   try{
-    const res=await fetch(ai.apiProxyPath||DEFAULT_AI_SETTINGS.apiProxyPath,{
+    const apiPath=resolveCompassApiProxyPath(ai.apiProxyPath);
+    const res=await fetch(apiPath,{
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body:JSON.stringify({
@@ -3559,8 +3580,12 @@ const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
     });
     let data=null;
     try{data=await res.json();}catch(e){}
-    if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:"OPENAI_API_KEY missing"});
-    if(!res.ok) return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:data?.error||`API ${res.status}`});
+    if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:`OPENAI_API_KEY missing at ${apiPath}`});
+    if(!res.ok){
+      const openAiMsg=data?.openAiError?.message?` / ${data.openAiError.message}`:"";
+      const failures=Array.isArray(data?.qualityFailures)&&data.qualityFailures.length?` / ${data.qualityFailures.join(", ")}`:"";
+      return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:`${data?.code||data?.error||"API_ERROR"} ${res.status} at ${apiPath}${openAiMsg}${failures}`});
+    }
     return compassFormatDraft({...data,generationSource:"openai"});
   }catch(e){
     return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:e?.message||"network error"});
@@ -3857,7 +3882,11 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       const actualOutputTokens=estimateAITokens(generated.full||"");
       const usedOpenAI=generated.generationSource==="openai";
       if(!usedOpenAI){
-        const fallbackMsg="OpenAI未接続のため、無料下書きで作成しました。GPT-5.5の品質確認にはOPENAI_API_KEYの設定が必要です。";
+        const reason=generated.fallbackReason||generated.improvementNotes||"理由を取得できませんでした";
+        const keyMissing=String(reason).includes("OPENAI_API_KEY");
+        const fallbackMsg=keyMissing
+          ?"OpenAI APIキーを確認できなかったため、無料下書きで作成しました。VercelのOPENAI_API_KEY設定を確認してください。"
+          :`GPT-5.5 APIのPOST呼び出しで問題が出たため、無料下書きで作成しました。理由: ${reason}`;
         setAiError(fallbackMsg);
         flash?.(fallbackMsg);
       }
