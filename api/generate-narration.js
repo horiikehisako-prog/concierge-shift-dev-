@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.5";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.6";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -591,12 +591,13 @@ module.exports = async (req, res) => {
 
   try {
     const body = await readJsonBody(req);
-    const prompt = String(body.prompt || "").trim();
-    if (!prompt) {
+    const rawPrompt = String(body.prompt || "").trim();
+    if (!rawPrompt) {
       res.statusCode = 400;
       res.end(JSON.stringify({ error: "prompt is required" }));
       return;
     }
+    const prompt = compactNarrationPrompt(rawPrompt);
 
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
@@ -608,7 +609,7 @@ module.exports = async (req, res) => {
     for (const extraInstruction of attempts) {
       parsed = await requestNarration({ apiKey, model, temperature, maxTokens, prompt, extraInstruction });
       try {
-        lastCheck = qualityCheckNarration(parsed, prompt);
+        lastCheck = qualityCheckNarration(parsed, rawPrompt);
       } catch (qualityError) {
         console.warn("[generate-narration] quality check skipped", {
           buildId: API_BUILD_ID,
@@ -627,7 +628,7 @@ module.exports = async (req, res) => {
       if (parsed?.openingNarration || parsed?.closingNarration) {
         res.statusCode = 200;
         res.end(JSON.stringify({
-          ...parsed,
+          ...applyNameRule(parsed, rawPrompt),
           generationSource: "openai",
           qualityWarning: QUALITY_CHECK_FAILED_MESSAGE,
           qualityFailures: lastCheck?.failures || [],
@@ -648,7 +649,7 @@ module.exports = async (req, res) => {
     }
 
     res.statusCode = 200;
-    res.end(JSON.stringify(parsed));
+    res.end(JSON.stringify(applyNameRule(parsed, rawPrompt)));
   } catch (error) {
     console.error("[generate-narration] failed", {
       buildId: API_BUILD_ID,
@@ -685,4 +686,76 @@ module.exports = async (req, res) => {
       diagnostics: { ...diagnostics, hasOpenAIKey: true },
     }));
   }
+};
+
+const compactText = (value, max = 700) => {
+  const text = String(value || "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}...`;
+};
+
+const asArray = value => Array.isArray(value) ? value : [];
+
+const compactNarrationPrompt = prompt => {
+  const payload = extractPromptPayload(prompt);
+  if (!payload) return compactText(prompt, 6000);
+  const sheet = payload.hearingSheet || {};
+  const writingRules = payload.writingRules || {};
+  const compactSheet = {};
+  [
+    "deceasedName",
+    "narrationName",
+    "age",
+    "deceasedDate",
+    "ceremonyType",
+    "personality",
+    "hobbies",
+    "memorableEvents",
+    "familyMemories",
+    "familyFeelings",
+    "travelAnniversaryEffort",
+    "favoritePhrases",
+    "valuedThings",
+    "notes",
+  ].forEach(key => {
+    if (sheet[key] !== undefined && sheet[key] !== null && String(sheet[key]).trim()) {
+      compactSheet[key] = compactText(sheet[key], 900);
+    }
+  });
+
+  const references = asArray(payload.selectedLibraryStyleReferences).slice(0, 2).map(ref => ({
+    title: compactText(ref.title, 80),
+    theme: compactText(ref.theme, 80),
+    tags: asArray(ref.tags).slice(0, 8),
+    openingNarration: compactText(ref.openingNarration, 420),
+    closingNarration: compactText(ref.closingNarration, 360),
+    writingNotes: compactText(ref.writingNotes || ref.approvalReason, 280),
+  }));
+
+  const guides = asArray(payload.hisakoSampleGuides).slice(0, 2).map(sample => ({
+    title: compactText(sample.title, 80),
+    tags: asArray(sample.tags).slice(0, 8),
+    text: compactText(sample.text, 650),
+  }));
+
+  const dictionaryEntries = asArray(payload.hisakoReplacementDictionary?.entries).slice(0, 30).map(entry => ({
+    dictionary: entry.dictionary,
+    originalWord: compactText(entry.originalWord, 80),
+    compassExpression: compactText(entry.compassExpression, 120),
+    reason: compactText(entry.reason || entry.explanation, 160),
+  }));
+
+  return [
+    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING].",
+    JSON.stringify({
+      season: writingRules.season || "",
+      theme: writingRules.theme || payload.writingRules?.theme || "",
+      nameUsageRule: writingRules.nameUsageRule || "",
+      forbiddenWords: asArray(writingRules.forbiddenWords).slice(0, 20),
+      hearingSheet: compactSheet,
+      selectedStyleReferences: references,
+      hisakoSampleGuides: guides,
+      replacementDictionary: dictionaryEntries,
+    }, null, 2),
+  ].join("\n");
 };
