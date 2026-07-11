@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.9";
+const API_BUILD_ID = "sprint27-openai-diagnostics-20260711.10";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -360,6 +360,11 @@ const buildSystemPrompt = extraInstruction => [
 const buildFastSystemPrompt = extraInstruction => [
   "You are a professional Japanese funeral MC. Write narration to be read aloud, not an essay.",
   "Return plain text, not JSON. Use exactly these ASCII labels: [OPENING] and [CLOSING].",
+  "The narration is not text to read silently; it is text to listen to. Prioritize how it sounds when spoken by an MC.",
+  "Highest priority: short sentences, natural pauses, emotional flow, and rhythm that reaches the family's hearts when read aloud.",
+  "Use more Japanese commas and line breaks than ordinary writing. Let each sentence carry one scene or one feeling only.",
+  "Change the scene or emotional focus sentence by sentence. Avoid long sentences that explain several facts at once.",
+  "Write for breath: the MC should naturally know where to pause, lower the voice, and let silence remain.",
   "Balance: [OPENING] must be about 60-70% of the total text. [CLOSING] must be about 30-40%. Opening should be clearly longer.",
   "Use only facts in the Compass Hearing Sheet. Do not invent facts. If information is sparse, write shorter.",
   "Never use the deceased person's full name. Use only the given name plus 様.",
@@ -389,7 +394,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   if (shouldUseResponsesApi(model)) {
     const callResponses = async forcePlainJson => {
       const systemPrompt = forcePlainJson
-        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration. Opening must be 60-70% and closing 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use pauses and direct address to the family. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
+        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Write warm Japanese funeral MC narration as text to listen to, not text to read silently. Use short sentences, many natural commas, line breaks, pauses, and spoken rhythm. Opening must be 60-70% and closing 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, and daily moments. Use pauses and direct address to the family. Before the closing sentence, add an afterglow prayer about remembering and speaking of the deceased. Do not repeat episodes. Do not use full names, venue names, attendee greetings, or the phrase 在りし日を."
         : buildFastSystemPrompt(extraInstruction);
       const body = {
         model,
@@ -759,7 +764,7 @@ const compactNarrationPrompt = prompt => {
   }));
 
   return [
-    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. Opening is 60-70%; closing is 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Add more direct address to family and mourners. Use pauses with short standalone lines. Do not repeat episodes. Opening ends with the opening-time sentence. Closing adds an afterglow prayer about remembering and speaking of the deceased before the formal closing sentence.",
+    "Compass AI narration request. Use only this compact data. Return plain text with [OPENING] and [CLOSING]. This is text to listen to, not text to read silently. Prioritize spoken rhythm, short sentences, natural pauses, many Japanese commas, and line breaks. Each sentence should carry one scene or one feeling. Opening is 60-70%; closing is 30-40%. Write from the family's feelings, not as a profile. Turn facts into visible scenes with light, sound, air, gestures, facial expressions, small conversations, and daily moments. Let listeners feel the memories rather than being told them. Add more direct address to family and mourners. Use pauses with short standalone lines. Do not repeat episodes. Opening ends with the opening-time sentence. Closing adds an afterglow prayer about remembering and speaking of the deceased before the formal closing sentence.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
