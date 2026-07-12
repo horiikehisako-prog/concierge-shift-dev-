@@ -3338,7 +3338,7 @@ const compassDetectTheme=(sheet,cfg={})=>{
   ];
   return rules.find(([,rx])=>rx.test(text))?.[0]||ensureArray(cfg.compassThemes)[0]||"家族愛";
 };
-const compassEmptySheet=()=>({deceasedName:"",age:"",deceasedDate:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
+const compassEmptySheet=()=>({deceasedName:"",age:"",gender:"未選択",familyRelation:"その他",deceasedDate:"",personality:"",hobbies:"",familyMemories:"",memorableEvents:"",
   travelAnniversaryEffort:"",favoritePhrases:"",valuedThings:"",familyFeelings:"",ceremonyType:"通夜",notes:""});
 const COMPASS_HEARING_PLACEHOLDERS={
   personality:"例：口数は多くないけれど、困った人を見ると黙って手を貸す方でした。",
@@ -3400,6 +3400,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
       venueNameRule:"会場はCompass AIヒアリングシートの対象外。会場名を推測、保存、送信、本文記載しない。",
       genericGreetingRule:"ご参列・ご来場・お集まりへのお礼など、一般的な葬儀の開会挨拶を書かない。",
       nameUsageRule:`本文では故人様のフルネームを使わない。故人様をお名前で呼ぶ時は下のお名前「${narrationName}様」だけを使う。姓やフルネームは保存名・確認用として扱い、openingNarration/closingNarrationには入れない。`,
+      genderRelationRule:"性別とご遺族から見た故人様は、文章表現を自然にするための補助情報としてのみ使う。お母様らしい優しさ、お父様として家族を支えられた、お祖母様としてお孫様を見守られた等の表現は、聞き取り内容と矛盾しない場合だけ自然に反映する。性別や続柄だけで人物像を決めつけず、事実にない内容を創作しない。",
       repetitionRule:"openingNarrationで描いたエピソード、場面、思い出をclosingNarrationで再説明しない。同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
       styleReferenceRule:"Use only Compass Official narrations as writing style references. Do not copy, reuse, translate, or paraphrase the sample text. Learn only tone, rhythm, flow, warmth, sentence length, opening style, closing style, Writing Notes, and Reason for Approval.",
       professionalMcStandard:"一般的なAI文章ではなく、経験ある葬儀司会者が読み上げる原稿の水準にする。抽象語を重ねず、具体的な記憶から温度を出す。",
@@ -3443,6 +3444,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
       "会場名、会場に集まったことへの挨拶、本日はご参列ありがとうございます等の定型挨拶は書かない",
       "会場は入力・保存・送信対象ではない。会場名を推測して書かない",
       `故人様のお名前は本文ではフルネームにしない。必要な場合は下のお名前「${narrationName}様」だけを使う`,
+      "性別とご遺族から見た故人様は補助情報としてのみ使う。聞き取り内容と矛盾しない範囲で自然な呼び方や表現に反映し、性別や続柄だけで人物像を決めつけたり、事実にない内容を作ったりしない",
       "開式前は故人様を紹介し、参列者が人生を思い出せるように、お人柄・歩み・職業・趣味・家族の記憶・具体的なエピソードへ進む",
       "季節の言葉は開式前ナレーションのみで使う。閉式後ナレーションは季節の言葉から始めない",
       "閉式後は人生を語り直さない。ご家族の気持ち、心に残るもの、静かな別れ、余韻を中心に書く",
@@ -3937,10 +3939,12 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
         <div style={{fontSize:13,color:C.text}}>Compass AI first searches the Compass Official Library and selects the best matching 3 narrations. They are used only for writing style, tone, rhythm, flow, warmth, and sentence length. Do not copy.</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
-        {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
+        {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["gender","性別","radio"],["familyRelation","ご遺族から見た故人様","relation"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>{label}</label>
           {type==="textarea"?<textarea value={sheet[key]} onChange={e=>update(key,e.target.value)} rows={3} placeholder={COMPASS_HEARING_PLACEHOLDERS[key]||""} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,resize:"vertical"}}/>:
           type==="select"?<select value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:"#fff"}}><option>通夜</option><option>葬儀</option></select>:
+          type==="radio"?<div style={{display:"flex",gap:12,flexWrap:"wrap",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",background:"#fff"}}>{["男性","女性","未選択"].map(v=><label key={v} style={{display:"flex",alignItems:"center",gap:5,fontSize:13,color:C.text,fontWeight:700}}><input type="radio" name="compass-gender" checked={(sheet[key]||"未選択")===v} onChange={()=>update(key,v)}/>{v==="未選択"?"その他・未選択":v}</label>)}</div>:
+          type==="relation"?<select value={sheet[key]||"その他"} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,background:"#fff"}}>{["父","母","祖父","祖母","夫","妻","息子","娘","兄","姉","弟","妹","義父","義母","その他"].map(v=><option key={v} value={v}>{v}</option>)}</select>:
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
       </div>
