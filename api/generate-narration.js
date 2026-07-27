@@ -214,13 +214,20 @@ const normalizeText = value => String(value || "")
   .replace(/[、。,.，．「」『』（）()]/g, "");
 
 const extractPromptPayload = prompt => {
-  const match = String(prompt || "").match(/\{[\s\S]*\}/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[0]);
-  } catch (_) {
-    return null;
+  const text = String(prompt || "");
+  const starts = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === "{") starts.push(i);
   }
+  for (const start of starts.reverse()) {
+    try {
+      const parsed = JSON.parse(text.slice(start).trim());
+      if (parsed && typeof parsed === "object") return parsed;
+    } catch (_) {
+      // Keep looking for the real JSON payload. Prompt instructions also include {fullName}-style placeholders.
+    }
+  }
+  return null;
 };
 
 const buildVenueNames = prompt => {
@@ -485,7 +492,7 @@ const buildSystemPrompt = extraInstruction => [
   "Highest priority: write grammatically correct, natural Japanese from the beginning. Correct subject-predicate agreement, complete every sentence, and make every sentence meaningful on its own.",
   "Do not use unclear pronouns such as 彼, 彼女, or 私. Do not speak for the family's private feelings unless the input explicitly says so. Do not invent emotions, life philosophy, or values not present in the input.",
   "Prefer natural, readable Japanese over difficult, poetic, or ornate expressions. Output only the completed openingNarration and closingNarration; never output drafts, evaluation, correction process, step labels, or notes.",
-  "Never generate broken Japanese such as 'その笑顔が周りを明るく照らしてくださいましたではなかったでしょうか。', casual fragments such as '歌ったり、踊ったりしていつも可愛い。', or unclear first-person lines such as '私も彼女を見習い、明るく前向きに歩んでいきたい。'.",
+  "Never generate broken Japanese, casual fragments, or unclear first-person lines from the family's point of view. Every sentence must have a natural subject and predicate and must be suitable for an MC to read aloud.",
   "Prefer one carefully drawn scene, one gesture, one smile, or one memory over many packed facts. Places such as a field, garden, kitchen, trip, workplace, dining table, or family room are useful only when they come from the Hearing Sheet.",
   "The narration must not aim to make attendees cry. The highest priority is that the family feels, 'this is exactly who they were.'",
   "Use only the Compass Hearing Sheet fields included in the prompt: deceased name, date of passing, personality, hobbies, family memories, important episodes, favorite phrases, important values, keywords, and notes.",
@@ -587,7 +594,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "Do not use unclear pronouns such as 彼, 彼女, or 私. Do not speak for the family's feelings unless explicitly provided. Do not invent emotions, life philosophy, or values not in the Hearing Sheet.",
   "Gender and the family relationship to the deceased are only auxiliary information for natural Japanese expression. Use them only when supported by the Hearing Sheet. Do not decide personality or add facts based only on gender or relationship.",
   "Use simple, readable Japanese before poetic expression. Never output drafts, evaluation, correction process, step labels, or notes; output only the completed [OPENING] and [CLOSING].",
-  "Never generate broken Japanese such as 'その笑顔が周りを明るく照らしてくださいましたではなかったでしょうか。', casual fragments such as '歌ったり、踊ったりしていつも可愛い。', or unclear first-person lines such as '私も彼女を見習い、明るく前向きに歩んでいきたい。'.",
+  "Never generate broken Japanese, casual fragments, or unclear first-person lines from the family's point of view. Every sentence must have a natural subject and predicate and must be suitable for an MC to read aloud.",
   "Balance: [OPENING] must be about 60-70% of the total text. [CLOSING] must be about 30-40%. Opening should be clearly longer.",
   "Use only facts in the Compass Hearing Sheet. Do not invent facts. If information is sparse, write shorter.",
   "Do not guess inner feelings, life philosophy, forgiveness, purity of heart, or outlook unless the Hearing Sheet clearly supports it. Avoid unsupported lines like 自分の心を濁さずに生きる, 人生を前向きに受け止めた, or 人を許すことを大切にした.",
