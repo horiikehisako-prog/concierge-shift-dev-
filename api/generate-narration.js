@@ -495,7 +495,7 @@ const buildSystemPrompt = extraInstruction => [
   "When describing values, stay close to observable actions, family quotes, habits, and scenes. If a thought or philosophy is not directly supported, soften it or omit it.",
   "Select information before writing. Do not force every input detail into the narration. Prioritize the episode that best reveals the deceased's character, and describe it carefully. If needed, omit less important details. Character clarity matters more than information volume.",
   "QUALITY CHECK REQUIRED BEFORE ANSWERING: no venue names, no generic attendee greetings in openingNarration or closingNarration, no repeated expressions, and openingNarration and closingNarration must have different content.",
-  "Name rule: after the opening seasonal sentence, use one fixed life-introduction sentence with 故 plus the full name: '故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。'. Do not also write '本日、故{fullName}様とのお別れの時を迎えました。'. The closing final line must also use 故 plus the full name. Everywhere else, use only the given name plus 様 when a name is needed. Never write 故人様 or 個人様 in the narration body.",
+  "Name rule: after the opening seasonal sentence, use one fixed life-introduction sentence with 故 plus the full name: '故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。'. Do not also write '本日、故{fullName}様とのお別れの時を迎えました。'. Use 故 plus the full name only in that opening life-introduction sentence. Everywhere else, use only the given name plus 様 when a name is needed. Never write 故人様 or 個人様 in the narration body.",
   "Do not repeat the deceased's given name more than necessary. After using the name once in a section, use natural Japanese references such as そのお姿, ご本人, その笑顔, or omit the subject where Japanese sounds natural. Do not use 故人様 or 個人様. Keep required fixed final lines unchanged.",
   "Strictly forbidden expressions: 飛鳥会館にお集まりいただき; ○○会館にお集まりいただき; 本日はご参列いただき; 本日はご会葬賜り; ご来場ありがとうございます; ご参列ありがとうございます; ご会葬ありがとうございます; 本日はありがとうございます.",
   "Never include venue names or generic attendee greetings in openingNarration or closingNarration. The closing must not start with attendee thanks; it must begin from the afterglow of farewell, the deceased's character, the family's feelings, or a warm memory that remains.",
@@ -594,8 +594,8 @@ const buildFastSystemPrompt = extraInstruction => [
   "Keep values grounded in what the family actually described: actions, words, habits, gestures, places, and family memories.",
   "Do not force every input detail into the narration. Select the episode that best reveals the deceased's character, omit less important details when needed, and prioritize character clarity over information volume.",
   "Do not write a resume or strict chronology. Make personality, daily life, family time, hobbies, and treasured values into one gentle story.",
-  "Use the deceased person's full name only in the opening life-introduction sentence and the closing final line. Everywhere else, use only the given name plus 様.",
-  "Do not repeat the given name unnecessarily. After the name appears once, naturally replace it with そのお姿, ご本人, その笑顔, or omit the subject where the meaning remains clear. Do not use 故人様 or 個人様. Required fixed closing lines may still use the name.",
+  "Use the deceased person's full name only in the opening life-introduction sentence. The fixed flower-farewell closing does not use the deceased's name. Everywhere else, use only the given name plus 様.",
+  "Do not repeat the given name unnecessarily. After the name appears once, naturally replace it with そのお姿, ご本人, その笑顔, or omit the subject where the meaning remains clear. Do not use 故人様 or 個人様. The fixed flower-farewell closing does not use the deceased's name.",
   "Do not include venue names or attendee greetings in opening or closing. Closing must not start with attendee thanks. Never use the phrase 在りし日を.",
   "Opening: begin with one simple seasonal scene, not a season name or month name, and make that first sentence end like この季節, 季節となりました, 頃となりました, or 頃でございます. Then add only one fixed life-introduction sentence with 故 plus the full name: '故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。'. Do not add a separate 'お別れの時を迎えました' sentence. Then continue with personality, work or life path, hobbies and family memories, one memorable episode, then the required final sentence.",
   "As a rule, do not use direct season or month words such as spring, summer, autumn, winter, July, August, or 'this month'. Make listeners feel the season through sound, wind, light, flowers, trees, air, sky, insects, breath, and temperature.",
@@ -607,7 +607,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "Opening ending: the final sentence must be exactly: \u5c3d\u304d\u308b\u3053\u3068\u306e\u306a\u3044\u611f\u8b1d\u306e\u601d\u3044\u3092\u80f8\u306b\u3001\u307e\u3082\u306a\u304f\u958b\u5f0f\u306e\u304a\u6642\u9593\u3067\u3054\u3056\u3044\u307e\u3059\u3002",
   "Closing: do not start with seasonal language or attendee thanks. Do not retell the opening. Begin from the afterglow after farewell, using a memory not used in opening, the family's feelings, what the deceased left behind, and the deceased living on in the family's hearts.",
   "In closing, avoid motivational wording such as 'walk forward', 'turn toward brightness', or 'be strong'. Funeral MC narration should leave memory and support, not a slogan.",
-  "Closing ending: leave a quiet afterglow, then naturally connect to the required final line using the full name: \u3053\u308c\u3092\u3082\u3061\u307e\u3057\u3066\u3001{fullName}\u69d8\u306e\u3054\u846c\u5100\u3092\u9589\u5f0f\u3044\u305f\u3057\u307e\u3059\u3002",
+  "Closing ending: leave a quiet afterglow, then naturally connect to the fixed flower-farewell guidance. Do not write a formal closing declaration such as これをもちまして or ご葬儀を閉式いたします.",
   "Do not repeat the same episode in opening and closing. Opening recalls life; closing supports the family after farewell.",
   "Family perspective is most important. Do not write profile-like sentences such as 'liked X' or 'did Y' as plain explanation. Translate facts into how the family remembers them and feels them now.",
   "Do not overuse one opening phrase such as '\u3054\u5bb6\u65cf\u304c\u601d\u3044\u6d6e\u304b\u3079\u308b\u304a\u59ff\u306f'. Rotate memory-inviting expressions naturally: '\u4eca\u3082\u7686\u69d8\u306e\u80f8\u306b\u3088\u307f\u304c\u3048\u308b\u306e\u306f', '\u3075\u3068\u601d\u3044\u8fd4\u3055\u308c\u308b\u306e\u306f', '\u7686\u69d8\u306e\u5fc3\u306b\u6d6e\u304b\u3076\u306e\u306f', '\u3054\u5bb6\u65cf\u306e\u8a18\u61b6\u306e\u4e2d\u306b\u306f', '\u4eca\u65e5\u3053\u306e\u6642\u3001\u81ea\u7136\u3068\u601d\u3044\u51fa\u3055\u308c\u308b\u306e\u306f'.",
@@ -636,7 +636,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "Opening length: 680-900 Japanese characters. Closing length: 330-520 Japanese characters. Opening must feel clearly longer.",
   "The whole narration should feel like about 90 seconds to 2 minutes when read aloud.",
   "Avoid taboo or repetitive funeral words: \u91cd\u306d\u91cd\u306d, \u305f\u3073\u305f\u3073, \u307e\u3059\u307e\u3059, \u3044\u3088\u3044\u3088, \u304f\u308c\u3050\u308c\u3082, \u8fd4\u3059\u8fd4\u3059, \u6b21\u3005, \u7d9a\u304f, \u8ffd\u3063\u3066, \u518d\u3073, \u307e\u305f\u307e\u305f, \u6d6e\u304b\u3070\u308c\u306a\u3044.",
-  "Before returning, remove repetition, venue names, and copied sample wording. Keep the full name only in the opening first mention and the closing final line.",
+  "Before returning, remove repetition, venue names, copied sample wording, and formal closing declarations. Keep the full name only in the opening first mention.",
   "Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside [OPENING] and [CLOSING].",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
@@ -780,6 +780,99 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   }, prompt);
 };
 
+const buildPolishSystemPrompt = () => [
+  "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes.",
+  "You are the final senior funeral MC editor for Compass AI. Your job is not to create a new story; your job is to make the draft sound less AI-like and more like a calm veteran MC speaking in the ceremony hall.",
+  "Keep every factual detail inside the Compass Hearing Sheet boundary. Do not add new facts, emotions, life philosophy, religion, family feelings, or episodes.",
+  "Preserve the required opening structure: one seasonal sentence, then the fixed life-introduction sentence with 故 plus the full name, then the person's life and memories, ending with the required opening final sentence.",
+  "Preserve the required closing structure: afterglow and family memory first, then the fixed flower-farewell guidance. Do not write formal closing declarations such as これをもちまして, ご葬儀を閉式いたします, or 初七日法要を執り納めさせていただきます.",
+  "Remove AI-like writing: abstract praise, explanatory personality labels, profile-like summaries, too-perfect conclusions, repeated words, repeated sentence endings, and generic funeral phrases.",
+  "Replace bare explanations such as 優しい方でした, 明るい方でした, 家族思いでした, or 前向きな方でした with concrete actions, habits, words, scenes, and family memories already present in the draft or Hearing Sheet.",
+  "Make the Japanese natural to hear aloud. Shorten overloaded sentences. Use line breaks only where an MC would naturally pause. One sentence should carry one scene or one feeling.",
+  "Keep the tone warm, restrained, dignified, and specific. The family should feel, 'this sounds like them,' not 'this sounds like AI wrote a beautiful funeral text.'",
+  "Do not use 故人様 or 個人様. Use the given name plus 様 only when a name is needed, and avoid unnecessary repetition of the name.",
+  "Because the fixed closing begins with the age phrase, remove another age phrase immediately before it. Use the given name plus 様, その歩み, or そのご生涯 instead.",
+  "Never output notes, deleted text, markdown, explanations, labels, or alternatives outside the JSON fields.",
+].join(" ");
+
+const requestNarrationPolish = async ({ apiKey, model, prompt, draft }) => {
+  if (!draft?.openingNarration || !draft?.closingNarration) return draft;
+  const userPayload = {
+    compassRequest: compactText(prompt, 7000),
+    firstDraft: {
+      openingNarration: compactText(draft.openingNarration, 2200),
+      closingNarration: compactText(draft.closingNarration, 1800),
+      detectedTheme: draft.detectedTheme || "",
+    },
+    requiredOutput: "Return polished JSON only. Keep required fixed opening and fixed flower-farewell closing.",
+  };
+
+  const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        { role: "system", content: buildPolishSystemPrompt() },
+        { role: "user", content: JSON.stringify(userPayload, null, 2) },
+      ],
+      max_output_tokens: 5200,
+      text: { format: { type: "json_object" } },
+    }),
+  });
+
+  const openAiJson = await openAiResponse.json().catch(() => null);
+  if (!openAiResponse.ok) {
+    const error = new Error("OPENAI_POLISH_REQUEST_FAILED");
+    error.status = openAiResponse.status;
+    error.openAiError = safeOpenAiError(openAiJson);
+    throw error;
+  }
+  const content = collectResponsesText(openAiJson);
+  const parsed = parseNarrationResponse(content);
+  const polished = applyNameRule({
+    openingNarration: stripNonNarrationSections(parsed.openingNarration || parsed.opening || ""),
+    closingNarration: stripNonNarrationSections(parsed.closingNarration || parsed.closing || ""),
+    detectedTheme: parsed.detectedTheme || parsed.theme || draft.detectedTheme || "",
+    improvementNotes: "",
+  }, prompt);
+  return {
+    ...polished,
+    generationDiagnostics: {
+      ...(draft.generationDiagnostics || {}),
+      polishPass: true,
+      polishResponseStatus: openAiJson?.status || "",
+      polishTextLength: content.length,
+      polishPossibleTruncation: responseLooksIncomplete(openAiJson),
+    },
+  };
+};
+
+const polishNarrationSafely = async args => {
+  try {
+    return await requestNarrationPolish(args);
+  } catch (error) {
+    console.warn("[generate-narration] polish pass skipped", {
+      buildId: API_BUILD_ID,
+      message: error.message,
+      status: error.status || null,
+      openAiError: error.openAiError || null,
+    });
+    return {
+      ...args.draft,
+      generationDiagnostics: {
+        ...(args.draft?.generationDiagnostics || {}),
+        polishPass: false,
+        polishSkipped: true,
+        polishSkipReason: error.message,
+      },
+    };
+  }
+};
+
 const runOpenAiProbe = async apiKey => {
   const model = "gpt-5.5";
   const startedAt = Date.now();
@@ -914,6 +1007,7 @@ module.exports = async (req, res) => {
     let parsed = null;
     let lastCheck = null;
     parsed = await requestNarration({ apiKey, model, temperature, maxTokens, prompt, extraInstruction: "" });
+    parsed = await polishNarrationSafely({ apiKey, model, prompt, draft: parsed });
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
     } catch (qualityError) {
