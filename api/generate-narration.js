@@ -787,99 +787,6 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
   }, prompt);
 };
 
-const buildPolishSystemPrompt = () => [
-  "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes.",
-  "You are the final senior funeral MC editor for Compass AI. Your job is not to create a new story; your job is to make the draft sound less AI-like and more like a calm veteran MC speaking in the ceremony hall.",
-  "Keep every factual detail inside the Compass Hearing Sheet boundary. Do not add new facts, emotions, life philosophy, religion, family feelings, or episodes.",
-  "Preserve the required opening structure: one seasonal sentence, then the fixed life-introduction sentence with 故 plus the full name, then the person's life and memories, ending with the required opening final sentence.",
-  "Preserve the required closing structure: afterglow and family memory first, then the fixed flower-farewell guidance. Do not write formal closing declarations such as これをもちまして, ご葬儀を閉式いたします, or 初七日法要を執り納めさせていただきます.",
-  "Remove AI-like writing: abstract praise, explanatory personality labels, profile-like summaries, too-perfect conclusions, repeated words, repeated sentence endings, and generic funeral phrases.",
-  "Replace bare explanations such as 優しい方でした, 明るい方でした, 家族思いでした, or 前向きな方でした with concrete actions, habits, words, scenes, and family memories already present in the draft or Hearing Sheet.",
-  "Make the Japanese natural to hear aloud. Shorten overloaded sentences. Use line breaks only where an MC would naturally pause. One sentence should carry one scene or one feeling.",
-  "Keep the tone warm, restrained, dignified, and specific. The family should feel, 'this sounds like them,' not 'this sounds like AI wrote a beautiful funeral text.'",
-  "Do not use 故人様 or 個人様. Use the given name plus 様 only when a name is needed, and avoid unnecessary repetition of the name.",
-  "Because the fixed closing begins with the age phrase, remove another age phrase immediately before it. Use the given name plus 様, その歩み, or そのご生涯 instead.",
-  "Never output notes, deleted text, markdown, explanations, labels, or alternatives outside the JSON fields.",
-].join(" ");
-
-const requestNarrationPolish = async ({ apiKey, model, prompt, draft }) => {
-  if (!draft?.openingNarration || !draft?.closingNarration) return draft;
-  const userPayload = {
-    compassRequest: compactText(prompt, 7000),
-    firstDraft: {
-      openingNarration: compactText(draft.openingNarration, 2200),
-      closingNarration: compactText(draft.closingNarration, 1800),
-      detectedTheme: draft.detectedTheme || "",
-    },
-    requiredOutput: "Return polished JSON only. Keep required fixed opening and fixed flower-farewell closing.",
-  };
-
-  const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      input: [
-        { role: "system", content: buildPolishSystemPrompt() },
-        { role: "user", content: JSON.stringify(userPayload, null, 2) },
-      ],
-      max_output_tokens: 5200,
-      text: { format: { type: "json_object" } },
-    }),
-  });
-
-  const openAiJson = await openAiResponse.json().catch(() => null);
-  if (!openAiResponse.ok) {
-    const error = new Error("OPENAI_POLISH_REQUEST_FAILED");
-    error.status = openAiResponse.status;
-    error.openAiError = safeOpenAiError(openAiJson);
-    throw error;
-  }
-  const content = collectResponsesText(openAiJson);
-  const parsed = parseNarrationResponse(content);
-  const polished = applyNameRule({
-    openingNarration: stripNonNarrationSections(parsed.openingNarration || parsed.opening || ""),
-    closingNarration: stripNonNarrationSections(parsed.closingNarration || parsed.closing || ""),
-    detectedTheme: parsed.detectedTheme || parsed.theme || draft.detectedTheme || "",
-    improvementNotes: "",
-  }, prompt);
-  return {
-    ...polished,
-    generationDiagnostics: {
-      ...(draft.generationDiagnostics || {}),
-      polishPass: true,
-      polishResponseStatus: openAiJson?.status || "",
-      polishTextLength: content.length,
-      polishPossibleTruncation: responseLooksIncomplete(openAiJson),
-    },
-  };
-};
-
-const polishNarrationSafely = async args => {
-  try {
-    return await requestNarrationPolish(args);
-  } catch (error) {
-    console.warn("[generate-narration] polish pass skipped", {
-      buildId: API_BUILD_ID,
-      message: error.message,
-      status: error.status || null,
-      openAiError: error.openAiError || null,
-    });
-    return {
-      ...args.draft,
-      generationDiagnostics: {
-        ...(args.draft?.generationDiagnostics || {}),
-        polishPass: false,
-        polishSkipped: true,
-        polishSkipReason: error.message,
-      },
-    };
-  }
-};
-
 const runOpenAiProbe = async apiKey => {
   const model = "gpt-5.5";
   const startedAt = Date.now();
@@ -1010,11 +917,17 @@ module.exports = async (req, res) => {
 
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
-    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 5200, 100, 7000));
+    const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 4600, 100, 5600));
     let parsed = null;
     let lastCheck = null;
-    parsed = await requestNarration({ apiKey, model, temperature, maxTokens, prompt, extraInstruction: "" });
-    parsed = await polishNarrationSafely({ apiKey, model, prompt, draft: parsed });
+    parsed = await requestNarration({
+      apiKey,
+      model,
+      temperature,
+      maxTokens,
+      prompt,
+      extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, required opening life-introduction, fixed flower-farewell closing, and removal of AI-like phrasing.",
+    });
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
     } catch (qualityError) {
