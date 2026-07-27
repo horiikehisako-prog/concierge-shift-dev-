@@ -297,7 +297,7 @@ const narrationGivenName = name => {
 
 const nameRuleFromPrompt = prompt => {
   const sheet = extractPromptPayload(prompt)?.hearingSheet || {};
-  const fullName = String(sheet.deceasedName || "").trim().replace(/様$/u, "");
+  const fullName = String(sheet.fullName || sheet.deceasedName || "").trim().replace(/様$/u, "");
   const givenName = String(sheet.narrationName || narrationGivenName(fullName)).trim().replace(/様$/u, "");
   return { fullName, givenName };
 };
@@ -309,9 +309,27 @@ const replaceFullName = (text, prompt) => {
   return String(text || "").replace(new RegExp(`${escaped}様?`, "g"), `${givenName}様`);
 };
 
+const ensureOpeningFullNameIntro = (value, prompt) => {
+  let text = String(value || "").trim();
+  if (!text) return "";
+  const { fullName, givenName } = nameRuleFromPrompt(prompt);
+  if (!fullName || !givenName || fullName === givenName) return text;
+  const fullLabel = `故${fullName}様`;
+  const escapedGiven = givenName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  text = text.replace(new RegExp(`故?${escapedGiven}様とのお別れの時を迎えました。?`, "u"), `${fullLabel}とのお別れの時を迎えました。`);
+  if (!/お別れの時を迎えました。?/.test(text.slice(0, 220))) {
+    const firstSentence = text.match(/^(.+?[。！？])/u)?.[1] || "";
+    const bridge = `本日、${fullLabel}とのお別れの時を迎えました。`;
+    text = firstSentence
+      ? `${firstSentence}${bridge}${text.slice(firstSentence.length).trimStart()}`
+      : `${bridge}${text}`;
+  }
+  return text;
+};
+
 const applyNameRule = (draft, prompt) => ({
   ...draft,
-  openingNarration: replaceFullName(draft.openingNarration, prompt),
+  openingNarration: ensureOpeningFullNameIntro(replaceFullName(draft.openingNarration, prompt), prompt),
   closingNarration: ensureClosingFinalLine(
     stripFixedClosingOpening(replaceFullName(draft.closingNarration, prompt)),
     prompt
@@ -408,7 +426,10 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const bodyWithoutRequiredClosings = full
     .replace(/①\s*葬儀のみ[\s\S]*?ご葬儀を閉式いたします。?/u, "")
     .replace(/②\s*葬儀[＋+・]初七日[\s\S]*?初七日法要を執り納めさせていただきます。?/u, "");
-  if (fullName && givenName && fullName !== givenName && bodyWithoutRequiredClosings.includes(fullName)) failures.push("full name");
+  const bodyAfterAllowedIntro = fullName && givenName && fullName !== givenName
+    ? bodyWithoutRequiredClosings.replace(new RegExp(`^([\\s\\S]{0,220})${fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "u"), "$1")
+    : bodyWithoutRequiredClosings;
+  if (fullName && givenName && fullName !== givenName && bodyAfterAllowedIntro.includes(fullName)) failures.push("full name");
   if (hasVenueName(full, venueNames)) failures.push("venue name");
   if (hasForbiddenExpression(opening)) failures.push("attendee greeting");
   if (hasRepeatedExpressions(full)) failures.push("repeated expression");
@@ -440,7 +461,7 @@ const buildSystemPrompt = extraInstruction => [
   "When describing values, stay close to observable actions, family quotes, habits, and scenes. If a thought or philosophy is not directly supported, soften it or omit it.",
   "Select information before writing. Do not force every input detail into the narration. Prioritize the episode that best reveals the deceased's character, and describe it carefully. If needed, omit less important details. Character clarity matters more than information volume.",
   "QUALITY CHECK REQUIRED BEFORE ANSWERING: no venue names, no generic attendee greetings in openingNarration or closingNarration, no repeated expressions, and openingNarration and closingNarration must have different content.",
-  "Never write the deceased person's full name in openingNarration or closingNarration. If a name is needed, use only the given name plus 様. Treat the surname and full name as private reference information only.",
+  "Name rule: after the opening seasonal sentence, the first mention must be the full name as '故{fullName}様'. The closing final line must also use the full name. Everywhere else, use only the given name plus 様 when a name is needed.",
   "Do not repeat the deceased's given name more than necessary. After using the name once in a section, use natural Japanese references such as そのお姿, ご本人, 故人様, その笑顔, or omit the subject where Japanese sounds natural. Keep required fixed final lines unchanged.",
   "Strictly forbidden expressions: 飛鳥会館にお集まりいただき; ○○会館にお集まりいただき; 本日はご参列いただき; 本日はご会葬賜り; ご来場ありがとうございます; ご参列ありがとうございます; ご会葬ありがとうございます; 本日はありがとうございます.",
   "Never include venue names or generic attendee greetings in openingNarration or closingNarration. The closing must not start with attendee thanks; it must begin from the afterglow of farewell, the deceased's character, the family's feelings, or a warm memory that remains.",
@@ -455,8 +476,8 @@ const buildSystemPrompt = extraInstruction => [
   "Opening narration should be 60-70% of the total. It reflects on life, personality, work or life path, hobbies, family memories, and one memorable episode that shows the deceased's character.",
   "Closing narration should be 30-40% of the total. It begins naturally from the afterglow after the farewell, uses memories or episodes not used in openingNarration, names what remains with the family, and closes quietly.",
   "Closing narration must not retell the life story. It should express the family's feelings, what remains in their hearts, emotional aftertaste, and a quiet farewell. Do not begin with fixed attendee thanks such as '本日はご多用の中、ご会葬いただき誠にありがとうございました。'.",
-  "Use this opening structure exactly: 1) one refined seasonal sentence, 2) one natural bridge sentence about today being the time of farewell with the deceased, 3) '{name}様は{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。' with the given name only and the age from input, 4) personality shown through episodes, 5) family, 6) hobbies and work or life path if provided, 7) one impressive scene that feels specific to the deceased, 8) close exactly with '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'.",
-  "Use this closing structure: 1) begin quietly from the afterglow after the farewell, with a memory not used in openingNarration, 2) the family's feelings, 3) what the deceased left behind, 4) the deceased living on in everyone's hearts, 5) close exactly with 'これをもちまして、{name}様のご葬儀を閉式いたします。'. A single afterglow sentence may come immediately before the final line. Do not repeat opening content.",
+  "Use this opening structure exactly: 1) one refined seasonal sentence, 2) '本日、故{fullName}様とのお別れの時を迎えました。', 3) '{givenName}様は{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。', 4) personality shown through episodes, 5) family, 6) hobbies and work or life path if provided, 7) one impressive scene that feels specific to the deceased, 8) close exactly with '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'.",
+  "Use this closing structure: 1) begin quietly from the afterglow after the farewell, with a memory not used in openingNarration, 2) the family's feelings, 3) what the deceased left behind, 4) the deceased living on in everyone's hearts, 5) close exactly with 'これをもちまして、{fullName}様のご葬儀を閉式いたします。'. A single afterglow sentence may come immediately before the final line. Do not repeat opening content.",
   "If the hearing sheet is sparse, write a shorter dignified narration instead of padding. Never fill missing details with generic praise.",
   "Specific memory is stronger than a beautiful adjective. Prefer one true detail from the hearing sheet over abstract phrases such as warmth, bonds, gratitude, precious, irreplaceable, or watching over.",
   "When there is too much information, reduce rather than list. Choose the few details that make the family feel 'this is them' and let each selected scene breathe.",
@@ -579,7 +600,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "Opening length: 680-900 Japanese characters. Closing length: 330-520 Japanese characters. Opening must feel clearly longer.",
   "The whole narration should feel like about 90 seconds to 2 minutes when read aloud.",
   "Avoid taboo or repetitive funeral words: \u91cd\u306d\u91cd\u306d, \u305f\u3073\u305f\u3073, \u307e\u3059\u307e\u3059, \u3044\u3088\u3044\u3088, \u304f\u308c\u3050\u308c\u3082, \u8fd4\u3059\u8fd4\u3059, \u6b21\u3005, \u7d9a\u304f, \u8ffd\u3063\u3066, \u518d\u3073, \u307e\u305f\u307e\u305f, \u6d6e\u304b\u3070\u308c\u306a\u3044.",
-  "Before returning, remove repetition, full names, venue names, and copied sample wording.",
+  "Before returning, remove repetition, venue names, and copied sample wording. Keep the full name only in the opening first mention and the closing final line.",
   "Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside [OPENING] and [CLOSING].",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
@@ -589,7 +610,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
     const outputTokenLimit = Math.min(Math.max(maxTokens, 4200), 7000);
     const callResponses = async forcePlainJson => {
       const systemPrompt = (forcePlainJson
-        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes. You are the dedicated veteran funeral MC for Asuka Hall with more than 20 years of funeral MC experience. Write Hisako-style narration as text to listen to, not text to read silently. The goal is not to invite tears; the highest priority is that the family feels, 'this is truly who they were.' Opening must be 60-70% and closing 30-40%. Opening structure: one refined seasonal sentence, then one natural bridge sentence about today being the time of farewell with {name}, then '{name}様は{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。', then personality, family, hobbies and work or life path if provided, one memorable scene, and final sentence exactly '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'. Closing must begin naturally from the afterglow after the farewell, not with a fixed attendee greeting such as '本日はご多用の中、ご会葬いただき誠にありがとうございました。'. Then use a memory not used in opening, the family's feelings, what the deceased left behind, and the deceased living on in everyone's hearts. Closing must end exactly with 'これをもちまして、{name}様のご葬儀を閉式いたします。'. A single afterglow sentence may come immediately before the final line. Do not rely on fixed funeral phrases such as 'そのお気持ちが何よりの供養となることでしょう。', '安らかなるご冥福をお祈り申し上げます。', or '在りし日のお姿を偲び'. Do not write a resume or strict chronology; express what kind of life they lived, what character they had, what ordinary days they treasured, and what they left with the family as one gentle story. Use only facts from the Hearing Sheet; do not invent. Do not infer inner life, life philosophy, forgiveness, purity of heart, or outlook beyond what the family actually said. Lines such as 自分の心を濁さずに生きる, 人生を前向きに受け止めた, or 人を許すことを大切にした are allowed only when directly supported by the Hearing Sheet. Do not keep the deceased waiting: mention the given name and today's farewell by the second sentence, then use the required life introduction as the third sentence. After using the given name once in a section, do not repeat it unnecessarily; use そのお姿, ご本人, 故人様, その笑顔, or omit the subject where Japanese sounds natural, while keeping required fixed final lines unchanged. One sentence should carry one scene or one feeling. Turn facts into small remembered moments, not polished summaries. Avoid explanatory personality sentences such as '〇〇な人でした.' Show character through actions, facial expressions, daily habits, conversations, hobbies, family time, and relationships with others. Avoid preachy or strongly religious wording. Avoid taboo or repetitive funeral words: 重ね重ね, たびたび, ますます, いよいよ, くれぐれも, 返す返す, 次々, 続く, 追って, 再び, またまた, 浮かばれない. Do not overuse sentence endings such as でございました, ことでしょう, or ことと存じます. Use details from the Hearing Sheet so each scene feels specific to this deceased, not anyone. Do not directly explain personality as 優しかった, 前向きだった, 明るかった, or 家族思いだった; show the action, habit, words, or family scene that makes listeners feel it. Do not repeat episodes. Do not use full names, venue names, or the phrase 在りし日を."
+        ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes. You are the dedicated veteran funeral MC for Asuka Hall with more than 20 years of funeral MC experience. Write Hisako-style narration as text to listen to, not text to read silently. The goal is not to invite tears; the highest priority is that the family feels, 'this is truly who they were.' Opening must be 60-70% and closing 30-40%. Opening structure: one refined seasonal sentence, then '本日、故{fullName}様とのお別れの時を迎えました。', then '{givenName}様は{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。', then personality, family, hobbies and work or life path if provided, one memorable scene, and final sentence exactly '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'. Closing must begin naturally from the afterglow after the farewell, not with a fixed attendee greeting such as '本日はご多用の中、ご会葬いただき誠にありがとうございました。'. Then use a memory not used in opening, the family's feelings, what the deceased left behind, and the deceased living on in everyone's hearts. Closing must end exactly with 'これをもちまして、{fullName}様のご葬儀を閉式いたします。'. A single afterglow sentence may come immediately before the final line. Use the full name only in the opening first mention and closing final line; everywhere else use the given name plus 様 only when a name is needed. Do not rely on fixed funeral phrases such as 'そのお気持ちが何よりの供養となることでしょう。', '安らかなるご冥福をお祈り申し上げます。', or '在りし日のお姿を偲び'. Do not write a resume or strict chronology; express what kind of life they lived, what character they had, what ordinary days they treasured, and what they left with the family as one gentle story. Use only facts from the Hearing Sheet; do not invent. Do not infer inner life, life philosophy, forgiveness, purity of heart, or outlook beyond what the family actually said. Lines such as 自分の心を濁さずに生きる, 人生を前向きに受け止めた, or 人を許すことを大切にした are allowed only when directly supported by the Hearing Sheet. Do not keep the deceased waiting: mention the full name and today's farewell by the second sentence, then use the required life introduction as the third sentence. After using the given name once in a section, do not repeat it unnecessarily; use そのお姿, ご本人, 故人様, その笑顔, or omit the subject where Japanese sounds natural, while keeping required fixed final lines unchanged. One sentence should carry one scene or one feeling. Turn facts into small remembered moments, not polished summaries. Avoid explanatory personality sentences such as '〇〇な人でした.' Show character through actions, facial expressions, daily habits, conversations, hobbies, family time, and relationships with others. Avoid preachy or strongly religious wording. Avoid taboo or repetitive funeral words: 重ね重ね, たびたび, ますます, いよいよ, くれぐれも, 返す返す, 次々, 続く, 追って, 再び, またまた, 浮かばれない. Do not overuse sentence endings such as でございました, ことでしょう, or ことと存じます. Use details from the Hearing Sheet so each scene feels specific to this deceased, not anyone. Do not directly explain personality as 優しかった, 前向きだった, 明るかった, or 家族思いだった; show the action, habit, words, or family scene that makes listeners feel it. Do not repeat episodes. Do not use venue names or the phrase 在りし日を."
         : buildFastSystemPrompt(extraInstruction)) + " Most important quality standard: quiet afterglow, visible scenes, the deceased's character naturally felt, writing that does not explain too much, and a tone that never over-directs emotion. This is spoken MC text, not silent reading text, novel, essay, or profile introduction. Always keep the air of 'the MC is speaking quietly in this ceremony hall right now.' Before writing, internally choose exactly one theme that represents this deceased, such as family love, hard work, smile, challenge, compassion, sincerity, love of nature, teaching others, or community. Use that theme as the axis of both narrations, give more space to facts connected to it, and keep unrelated information short or omit it. Never display the theme label or selection process to the user. Use short sentences, natural punctuation, breath-friendly rhythm, and one carefully drawn scene or gesture rather than many packed facts. Do not force every input detail into the narration. Select the episode that best reveals the deceased's character, omit less important details when needed, and prioritize character clarity over information volume. Do not repeat the same sentence ending three times in a row, and do not repeat words such as 大切, 笑顔, 優しい, 温かい, 思い出, 感謝, 静かに, 穏やかに, やわらかく, 胸に, ぬくもり, 面影, 支え, or 心に残る many times. Choose vocabulary that fits this specific person instead of a fixed Compass AI pattern. Do not write to make people cry; write so the family can feel as if the deceased is present in the room. The manuscript must be easy for the MC to read and comfortable for attendees to hear. Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside the requested narration fields. If improvementNotes exists, keep it empty.";
       const body = {
         model,

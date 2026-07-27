@@ -3486,7 +3486,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
       sentenceRhythm:"記事ではなく読み上げ用の台本として書く。短い文、自然な間、息継ぎしやすい行のリズムを優先する。多くの文は30〜45日本語文字程度にする。",
       venueNameRule:"会場はCompass AIヒアリングシートの対象外。会場名を推測、保存、送信、本文記載しない。",
       genericGreetingRule:"ご参列・ご来場・お集まりへのお礼など、一般的な葬儀の開会挨拶を書かない。",
-      nameUsageRule:`本文では下のお名前「${narrationName}様」だけを必要最小限に使う。閉式後末尾の締め文だけは必ずヒアリングシートのフルネームを使う。`,
+      nameUsageRule:`開式前は季節の一文のあと、必ず「本日、故${hearingSheet.deceasedName||"フルネーム"}様とのお別れの時を迎えました。」とフルネームで入る。続けて「${narrationName}様は${hearingSheet.age||""}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。」の型を使う。本文途中は下のお名前「${narrationName}様」だけを必要最小限に使う。閉式後末尾の締め文だけは必ずヒアリングシートのフルネームを使う。`,
       requiredClosingOptions:["① 葬儀のみ: これをもちまして、フルネーム様のご葬儀を閉式いたします。","② 葬儀＋初七日: これをもちまして、フルネーム様のご葬儀並びに初七日法要を執り納めさせていただきます。"],
       genderRelationRule:"性別とご遺族から見た故人様は、文章表現を自然にするための補助情報としてのみ使う。お母様らしい優しさ、お父様として家族を支えられた、お祖母様としてお孫様を見守られた等の表現は、聞き取り内容と矛盾しない場合だけ自然に反映する。性別や続柄だけで人物像を決めつけず、事実にない内容を創作しない。",
       repetitionRule:"openingNarrationで描いたエピソード、場面、思い出をclosingNarrationで再説明しない。同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
@@ -3523,7 +3523,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
     },
     selectedLibraryStyleReferences:selectedSamples,
     hisakoSampleGuides,
-    hearingSheet:{...hearingSheet,narrationName},
+    hearingSheet:{...hearingSheet,fullName:hearingSheet.deceasedName,narrationName},
     outputRules:[
       "日本語の葬儀司会ナレーション下書きを作成する",
       "開式前ナレーション、閉式後ナレーション、detectedTheme、improvementNotesをJSONで返す",
@@ -3556,7 +3556,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
     "The user never writes prompts. Compass automatically built this prompt.",
     "Return only valid JSON with keys: openingNarration, closingNarration, detectedTheme, improvementNotes.",
     "Quality Check before returning: no venue names, no attendee greetings, no repeated expressions, and openingNarration and closingNarration must have different content.",
-    "Never write the deceased person's full name in openingNarration or closingNarration. Use only the given name plus 様 when a name is needed.",
+    "Name rule: after the opening seasonal sentence, the first mention must be the full name as 故フルネーム様. The closing final line must also use the full name. Everywhere else, use only the given name plus 様 when a name is needed.",
     "Strictly forbidden expressions: 飛鳥会館にお集まりいただき; ○○会館にお集まりいただき; 本日はご参列いただき; 本日はご会葬賜り; ご来場ありがとうございます; ご参列ありがとうございます; ご会葬ありがとうございます; 本日はありがとうございます.",
     "Opening narration must begin with season, then the deceased, then life. Never begin with venue, attendees, or greetings.",
     "Closing narration must not begin with seasonal language. Seasonal language is allowed only in openingNarration.",
@@ -4043,7 +4043,18 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
     setRecords(next);setActiveId(rec.id);setSaving(false);flash?.("ナレーションを保存しました");
   };
   const copy=async()=>{try{await navigator.clipboard.writeText(draft.full);flash?.("コピーしました");}catch(e){flash?.("本文を選択してコピーしてください");}};
+  const printNarration=()=>window.print();
+  const narrationPrintStyle=`
+    @media print {
+      body * { visibility: hidden !important; }
+      #narration-print, #narration-print * { visibility: visible !important; }
+      #narration-print { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 0 !important; }
+      .no-print { display: none !important; }
+      @page { size: A4; margin: 14mm; }
+    }
+  `;
   return <div>
+    <style dangerouslySetInnerHTML={{__html:narrationPrintStyle}}/>
     {role==="admin"&&<CompassAISettingsEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
     {["admin","support"].includes(role)&&<CompassMasterEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
     {aiControl.enabled===false&&<div style={{...GC,background:C.redL,border:`1px solid ${C.red}`,fontWeight:800,color:C.red,lineHeight:1.6}}>{AI_STOPPED_MESSAGE}</div>}
@@ -4096,6 +4107,16 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginTop:10}}>
         <button onClick={save} disabled={saving} style={{...Btn(C.green),padding:"12px 18px"}}>{saving?"保存中":"保存"}</button>
         <button onClick={copy} style={{...Btn(C.white,C.navy),border:`1px solid ${C.border}`,padding:"12px 18px"}}>本文をコピー</button>
+        <button onClick={printNarration} disabled={!draft.full.trim()} style={{...Btn(draft.full.trim()?C.navy:C.muted),padding:"12px 18px"}}>印刷する</button>
+      </div>
+      <div id="narration-print" style={{marginTop:16,background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"18px 20px",color:"#111"}}>
+        <h2 style={{fontSize:18,margin:"0 0 12px",fontWeight:900}}>葬儀ナレーション</h2>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,fontSize:12,marginBottom:14,color:"#444"}}>
+          <div>故人様: {sheet.deceasedName||"-"}</div>
+          <div>作成者: {uname||"-"}</div>
+          <div>作成日: {new Date().toLocaleDateString("ja-JP")}</div>
+        </div>
+        <div style={{whiteSpace:"pre-wrap",fontSize:14,lineHeight:1.9}}>{draft.full||"ナレーション本文がここに表示されます。"}</div>
       </div>
     </div>
     <div style={GC}>
