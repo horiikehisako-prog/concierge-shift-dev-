@@ -1002,19 +1002,19 @@ const compactNarrationPrompt = prompt => {
     }
   });
 
-  const references = asArray(payload.selectedLibraryStyleReferences).slice(0, 2).map(ref => ({
-    title: compactText(ref.title, 80),
-    theme: compactText(ref.theme, 80),
-    tags: asArray(ref.tags).slice(0, 8),
-    openingNarration: compactText(ref.openingNarration, 420),
-    closingNarration: compactText(ref.closingNarration, 360),
-    writingNotes: compactText(ref.writingNotes || ref.approvalReason, 280),
+  const references = asArray(payload.selectedLibraryStyleReferences).slice(0, 4).map(ref => ({
+    title: compactText(ref.title, 100),
+    theme: compactText(ref.theme, 100),
+    tags: asArray(ref.tags).slice(0, 10),
+    openingNarration: compactText(ref.openingNarration, 850),
+    closingNarration: compactText(ref.closingNarration, 700),
+    writingNotes: compactText(ref.writingNotes || ref.approvalReason, 420),
   }));
 
-  const guides = asArray(payload.hisakoSampleGuides).slice(0, 2).map(sample => ({
+  const guides = asArray(payload.hisakoSampleGuides).slice(0, 4).map(sample => ({
     title: compactText(sample.title, 80),
     tags: asArray(sample.tags).slice(0, 8),
-    text: compactText(sample.text, 650),
+    text: compactText(sample.text, 900),
   }));
 
   const dictionaryEntries = asArray(payload.hisakoReplacementDictionary?.entries).slice(0, 30).map(entry => ({
@@ -1037,6 +1037,8 @@ const compactNarrationPrompt = prompt => {
     "Do not force every input detail into the narration. Give more space to the facts and episodes connected to the selected theme. Keep unrelated information short, or omit it when needed, and prioritize character clarity over information volume.",
     "Expression variety: do not overuse convenient beautiful words such as 静かに, 穏やかに, やわらかく, 胸に, ぬくもり, 面影, 支え, or 心に残る. Keep a unified professional MC tone while changing vocabulary, atmosphere, and selected scenes so each narration feels like a different life.",
     "Evidence boundary: do not infer inner life, life philosophy, forgiveness, purity of heart, or outlook beyond what the family actually said. Keep values grounded in observable actions, family quotes, habits, gestures, places, and memories.",
+    "When selectedStyleReferences are present, study them as the highest-priority textbook. Do not copy their facts or phrases. Learn the order of ideas, breath length, restraint, warmth, scene selection, how the opening moves from season to life, and how the closing leaves afterglow.",
+    "Before final output, silently compare the draft with the selectedStyleReferences. If the draft sounds like a generic profile, rewrite it so it has one concrete family memory, fewer adjectives, and a more natural spoken rhythm.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
