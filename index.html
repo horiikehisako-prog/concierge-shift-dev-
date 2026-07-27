@@ -691,17 +691,61 @@ const compassTextScore=(entry,sheet,theme,season)=>{
   let score=0;
   if(entry.theme&&theme&&entry.theme===theme) score+=12;
   if(entry.tags.includes("Hisako Official")) score+=10;
+  if(entry.tags.includes("AI教科書")||entry.tags.includes("お手本")) score+=12;
   if(entry.aiLearningWeight) score+=Math.min(10,Number(entry.aiLearningWeight)||0);
   if(entry.tags.includes(SEASON_LABELS[season])||entry.tags.map(t=>t.toLowerCase()).includes(season)) score+=5;
   needles.forEach(n=>{if(hay.includes(n)) score+=1;});
   return score;
 };
 const compassStyleReferenceText=text=>String(text||"").replace(/在りし日を/g,"日々を");
+const compassTextbookHash=s=>Array.from(String(s||"")).reduce((h,ch)=>((h*31)+ch.charCodeAt(0))>>>0,2166136261).toString(36);
+const compassStripMarkdown=s=>String(s||"")
+  .replace(/^#{1,6}\s*/gm,"")
+  .replace(/\*\*(.*?)\*\*/g,"$1")
+  .replace(/^\s*[-*]\s+/gm,"")
+  .trim();
+const compassTextbookSection=(text,labels)=>{
+  const source=String(text||"");
+  const patterns=labels.map(label=>String(label).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|");
+  const re=new RegExp(`(?:^|\\n)\\s*#{1,6}\\s*(?:${patterns})[^\\n]*\\n([\\s\\S]*?)(?=\\n\\s*#{1,6}\\s|$)`,"i");
+  const m=source.match(re);
+  return m?compassStripMarkdown(m[1]):"";
+};
+const compassParseTextbookMarkdown=(text,fileName="")=>{
+  const raw=String(text||"");
+  const titleMatch=raw.match(/^\s*#\s+(.+)$/m)||raw.match(/^\s*##\s+(.+)$/m);
+  const cleanName=String(fileName||"").replace(/\.[^.]+$/,"").replace(/^\d+[_\-\s]*/,"").replace(/[_\-]+/g," ").trim();
+  const title=compassStripMarkdown(titleMatch?.[1]||cleanName||"ナレーション教科書");
+  const opening=compassTextbookSection(raw,["開式前","開式前ナレーション","Opening","Opening narration"]);
+  const closing=compassTextbookSection(raw,["閉式後","閉式後ナレーション","Closing","Closing narration"]);
+  const body=compassStripMarkdown(raw.replace(/^\s*#.*$/gm,""));
+  const now=new Date().toISOString();
+  return normalizeCompassLibraryEntry({
+    id:`textbook-${compassTextbookHash(`${fileName}:${title}`)}`,
+    title:`教科書・${title}`,
+    openingNarration:opening||(!closing?body:""),
+    closingNarration:closing,
+    theme:title,
+    tags:["AI教科書","お手本","Compass Official","Hisako Official","葬儀","開式前","閉式後","Markdown"],
+    writingNotes:"ナレーション教科書として取り込んだお手本。本文をコピーせず、構成、間、語尾、温度感、余韻、故人様の思い出の拾い方を参考にする。",
+    approvalReason:"教科書Markdownから取り込み。Compass AIの文体・構成・余韻の参考として使用する。",
+    favorite:true,
+    approvedForAI:true,
+    approvedForCompassAI:true,
+    compassOfficial:true,
+    officialVersion:"AI教科書Markdown",
+    officialScore:100,
+    mostReferenced:100,
+    aiLearningWeight:10,
+    createdAt:now,
+    updatedAt:now,
+  });
+};
 const compassSelectLibraryReferences=(sheet,cfg,theme,limit=6)=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   return normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary)
-    .filter(e=>e.compassOfficial&&(e.openingNarration||e.closingNarration))
+    .filter(e=>e.compassOfficial&&e.approvedForAI&&(e.openingNarration||e.closingNarration))
     .map(e=>({...e,_score:compassTextScore(e,sheet,selectedTheme,season)}))
     .sort((a,b)=>(b._score-a._score)||String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))
     .slice(0,Math.max(0,Math.min(6,limit)))
@@ -3787,6 +3831,7 @@ function CompassNarrationLibraryView({cfg,sv,flash}) {
   const [items,setItems]=useState(library);
   const [activeId,setActiveId]=useState(library[0]?.id||"");
   const [query,setQuery]=useState({theme:"",season:"",tag:"",keyword:"",official:""});
+  const [textbookImporting,setTextbookImporting]=useState(false);
   useEffect(()=>{const next=normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary);setItems(next);setActiveId(id=>id||next[0]?.id||"");},[JSON.stringify(cfg.compassNarrationLibrary)]);
   const active=items.find(i=>i.id===activeId)||items[0]||empty();
   const allTags=Array.from(new Set([...Object.values(COMPASS_LIBRARY_TAG_GROUPS).flat(),...items.flatMap(i=>i.tags)])).filter(Boolean).sort((a,b)=>a.localeCompare(b,"ja"));
@@ -3805,14 +3850,44 @@ function CompassNarrationLibraryView({cfg,sv,flash}) {
   const remove=id=>{const next=items.filter(i=>i.id!==id);setItems(next);setActiveId(next[0]?.id||"");};
   const toggleTag=tag=>update(active.id,{tags:active.tags.includes(tag)?active.tags.filter(t=>t!==tag):[...active.tags,tag]});
   const addFreeTag=()=>{const tag=String(query.tag||"").trim();if(tag&&!active.tags.includes(tag)) update(active.id,{tags:[...active.tags,tag]});};
+  const importTextbookFiles=async e=>{
+    const files=Array.from(e.target.files||[]);
+    e.target.value="";
+    if(!files.length) return;
+    setTextbookImporting(true);
+    try{
+      const imported=(await Promise.all(files.map(async file=>compassParseTextbookMarkdown(await file.text(),file.name))))
+        .filter(x=>x.openingNarration||x.closingNarration);
+      if(!imported.length){flash?.("取り込める教科書Markdownが見つかりませんでした");return;}
+      const map=new Map(items.map(item=>[item.id,item]));
+      imported.forEach(entry=>map.set(entry.id,{...(map.get(entry.id)||{}),...entry,updatedAt:new Date().toISOString()}));
+      const next=[...imported,...Array.from(map.values()).filter(item=>!imported.some(entry=>entry.id===item.id))];
+      saveAll(next);
+      setActiveId(imported[0].id);
+      flash?.(`教科書Markdownを${imported.length}件取り込みました`);
+    }catch(err){
+      console.error(err);
+      flash?.("教科書Markdownの取り込みに失敗しました");
+    }finally{
+      setTextbookImporting(false);
+    }
+  };
   const stat=(label,value,color=C.navy)=><div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:11,color:C.muted,fontWeight:800}}>{label}</div><div style={{fontSize:20,fontWeight:900,color}}>{value}</div></div>;
   return <div>
     <div style={GC}>
       <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:12}}>
         <div><h3 style={{margin:"0 0 4px",fontSize:18,color:C.navy}}>📚 ナレーションライブラリ</h3><div style={{fontSize:12,color:C.muted,fontWeight:700}}>Compass AIの文章知識ベース。承認済み・お気に入りのみが文体参照に使われます。</div></div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button onClick={add} style={{...Btn(C.green),padding:"11px 16px"}}>＋ 新規</button><button onClick={()=>saveAll(items)} style={{...Btn(C.navy),padding:"11px 16px"}}>保存</button></div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <label style={{...Btn(C.amber,"#fff"),padding:"11px 16px",cursor:textbookImporting?"wait":"pointer"}}>
+            {textbookImporting?"取り込み中...":"教科書Markdown取り込み"}
+            <input type="file" accept=".md,.markdown,text/markdown,text/plain" multiple disabled={textbookImporting} onChange={importTextbookFiles} style={{display:"none"}}/>
+          </label>
+          <button onClick={add} style={{...Btn(C.green),padding:"11px 16px"}}>＋ 新規</button>
+          <button onClick={()=>saveAll(items)} style={{...Btn(C.navy),padding:"11px 16px"}}>保存</button>
+        </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>{stat("登録",items.length)}{stat("Compass Official",items.filter(i=>i.compassOfficial).length,C.amber)}{stat("Favorite",items.filter(i=>i.favorite).length,C.amber)}{stat("Approved",items.filter(i=>i.approvedForAI).length,C.green)}{stat("AI reference",items.filter(i=>i.compassOfficial).length,C.blue)}</div>
+      <div style={{marginTop:10,fontSize:12,color:C.muted,lineHeight:1.7}}>Markdownのお手本を選ぶと、Compass Official / Approved / AI教科書として保存され、以後のAIナレーション作成で優先参照されます。複数ファイルをまとめて選べます。</div>
     </div>
     <div style={GC}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
