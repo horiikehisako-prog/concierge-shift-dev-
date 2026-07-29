@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.7";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.8";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -562,6 +562,27 @@ const hasStackedNounFragments = text => {
   return false;
 };
 
+const hasBrokenJapaneseGrammar = text => {
+  const value = String(text || "");
+  const sentences = value
+    .split(/[。！？\n]/u)
+    .map(part => part.trim())
+    .filter(Boolean);
+
+  return sentences.some(sentence => {
+    // Examples: 「明るく前向きにが残る」「家族を大切にしていたを大切にされた」
+    if (/(?:に|を|が|は)(?:に|を|が|は)(?=[ぁ-んァ-ヶ一-龠々])/u.test(sentence)) return true;
+    if (/して(?:いた|いる|おられた|こられた)を(?:大切|楽しみ|喜び)/u.test(sentence)) return true;
+
+    // A たり-list must reach a predicate; do not leave it attached directly to お姿/時間/日々.
+    if (/たり[^。！？]{0,35}たり(?:して|されて)?[^。！？]{0,18}(?:お姿|時間|日々)$/u.test(sentence)) return true;
+
+    // Catch common duplicated transformations produced from raw hearing-sheet wording.
+    if (/(?:大切にしていた|楽しんでいた|育てていた)を(?:大切にされた|楽しまれた|育てられた)/u.test(sentence)) return true;
+    return false;
+  });
+};
+
 const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) => {
   const opening = String(openingNarration || "");
   const closing = String(closingNarration || "");
@@ -595,6 +616,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (countDirectQuotes(full) > 1) failures.push("too many direct quotes");
   if (hasExcessiveConsecutivePoliteEndings(bodyWithoutRequiredClosings)) failures.push("excessive polite endings");
   if (hasStackedNounFragments(bodyWithoutRequiredClosings)) failures.push("stacked noun fragments");
+  if (hasBrokenJapaneseGrammar(bodyWithoutRequiredClosings)) failures.push("broken Japanese grammar");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
@@ -1090,6 +1112,7 @@ module.exports = async (req, res) => {
       "seasonal grammar",
       "stacked noun fragments",
       "excessive polite endings",
+      "broken Japanese grammar",
       "closing timeline",
       "closing too short",
       "response incomplete",
@@ -1106,7 +1129,7 @@ module.exports = async (req, res) => {
         temperature,
         maxTokens,
         prompt,
-        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
+        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
       });
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
@@ -1132,6 +1155,7 @@ module.exports = async (req, res) => {
         "opening order",
         "seasonal grammar",
         "stacked noun fragments",
+        "broken Japanese grammar",
         "opening closing overlap",
         "reused hearing facts",
         "closing timeline",
