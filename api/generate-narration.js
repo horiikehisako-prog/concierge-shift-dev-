@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-memory-first-20260729.55";
+const API_BUILD_ID = "sprint27-memory-first-20260729.56";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1114,14 +1114,16 @@ const buildSystemPrompt = extraInstruction => [
   "This is a memory-first narration, not a profile. Begin the body with opening.anchor and let the listener picture that remembered person before mentioning any supporting fact.",
   "Use opening.supports only when they deepen the same human picture. You may omit a support. Coverage is never a goal. Never turn the cards into a checklist of personality, hobbies, quotations, and family values.",
   "One paragraph must carry one movement of memory. Join facts only when they belong naturally in the same remembered scene; otherwise leave one out.",
+  "Keep each body sentence close to the selected card. Add no atmospheric filler such as そばにある時間, いつもの時間が流れる, 胸に浮かぶひととき, 言葉を飾ることなく, or 懐かしいひとこま.",
   "Describe supplied actions plainly. Safe generic motion is allowed: 手芸 may become 手を動かし少しずつ形にする; 野菜や花を育てる may become 日々手をかけ育つ様子を見守る. Do not add materials, finished objects, rooms, gardens, soil, weather, conversations, reactions, motives, or emotions.",
-  "Do not interpret an activity or quotation. Never add a life lesson, philosophy, evaluation, or abstract conclusion. After a supplied quotation, move on or end the paragraph.",
+  "Do not interpret an activity or quotation. Never add a life lesson, philosophy, evaluation, or abstract conclusion. If a quotation is used, end that paragraph with the exact quotation; never follow it with 耳に残ります, その言葉に人柄が表れます, or any explanation.",
   "Stay beside the family's memory. Do not expose the interview with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです. Do not speak for a family feeling unless it is a selected source fact.",
+  "Never replace the family with outsiders such as 見送る方々, 周りの方々, or 参列された皆様. When the selected card says ご家族, keep the viewpoint with ご家族.",
   "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; two or three short body paragraphs using no more than the selected opening cards; the exact opening final sentence.",
   "The opening seasonal sentence must describe only the season. Never put 別れ, 人生, ご生涯, 旅立ち, お見送り, or 葬送 in that sentence.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
-  "Closing structure: begin with closing.anchor, use at most one selected support, and leave a restrained factual aftertaste. Do not summarize the opening or the person's character again. Write one or two body paragraphs before the server's fixed guidance.",
+  "Closing structure: use only closing.anchor and write one short memory paragraph. Do not add a second fact, moral, personality summary, or general explanation. The fixed ceremony guidance follows immediately.",
   "Return only the closing narrative body. Do not write age-respect wording, attendee thanks, flower-farewell guidance, venue preparation, baggage instructions, or どうぞよろしくお願いいたします. The server appends those lines once.",
   "Never write another age phrase beyond the required opening life sentence. The server adds the age once in the fixed closing.",
   "Opening and closing cards are disjoint. Never repeat, paraphrase, summarize, or echo an opening trait, hobby, quotation, place, feeling, or episode in closing.",
@@ -1132,7 +1134,7 @@ const buildSystemPrompt = extraInstruction => [
   "Delete any sentence whose only job is to explain, evaluate, connect, or add length. Avoid 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, 確かな記録, 日々の重なり, 暮らしの形, and similar AI summaries.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
   "Use the single selected textbook only for calmness, paragraph movement, pauses, and warmth. Never reuse its wording, facts, scenes, nouns, or interpretations.",
-  "Aim for about 260-430 Japanese characters in openingNarration and 80-180 in the closing body when enough selected facts exist. A shorter truthful manuscript is better than padded prose.",
+  "Aim for about 220-380 Japanese characters in openingNarration and 60-140 in the closing body when enough selected facts exist. A shorter truthful manuscript is better than padded prose.",
   "Before returning, silently perform three checks: every fact exists in sourceFacts; each paragraph sounds like memory rather than a profile; every sentence is complete and natural when read aloud. Delete weak explanatory sentences instead of repairing them with more words.",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
@@ -1880,6 +1882,22 @@ const pickMemoryCards = compactSheet => {
   ].map(byField).find(Boolean) || null;
   if (openingAnchor) selectedOpening.push(openingAnchor);
 
+  const closingAnchor = [
+    "travelAnniversaryEffort",
+    "memorableEvents",
+    "hobbies",
+    "valuedThings",
+    "familyFeelings",
+    "favoritePhrases",
+    "personality",
+    "notes",
+  ].map(byField).find(card =>
+    card &&
+    card.field !== openingAnchor?.field &&
+    !memoryCardsOverlap(openingAnchor, card)
+  ) || null;
+  if (closingAnchor) selectedClosing.push(closingAnchor);
+
   [
     "memorableEvents",
     "favoritePhrases",
@@ -1888,28 +1906,11 @@ const pickMemoryCards = compactSheet => {
   ].map(byField).filter(Boolean).forEach(card => {
     if (selectedOpening.length >= 3) return;
     if (selectedOpening.some(selected => selected.field === card.field)) return;
+    if (selectedClosing.some(selected => selected.field === card.field)) return;
     if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
+    if (selectedClosing.some(selected => memoryCardsOverlap(selected, card))) return;
     selectedOpening.push(card);
   });
-
-  const openingFields = new Set(selectedOpening.map(card => card.field));
-  const closingCandidates = [
-    "travelAnniversaryEffort",
-    "familyFeelings",
-    "valuedThings",
-    "memorableEvents",
-    "hobbies",
-    "favoritePhrases",
-    "personality",
-    "notes",
-  ].map(byField).filter(card => card && !openingFields.has(card.field));
-
-  for (const card of closingCandidates) {
-    if (selectedClosing.length >= 2) break;
-    if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) continue;
-    if (selectedClosing.some(selected => memoryCardsOverlap(selected, card))) continue;
-    selectedClosing.push(card);
-  }
 
   return {
     opening: {
@@ -1920,9 +1921,9 @@ const pickMemoryCards = compactSheet => {
     },
     closing: {
       anchor: selectedClosing[0] || null,
-      supports: selectedClosing.slice(1),
-      maximumFacts: 2,
-      purpose: "開式前とは別の思い出を一つたどり、説明を加えず余韻へつなぐ",
+      supports: [],
+      maximumFacts: 1,
+      purpose: "開式前とは別の具体的な思い出を一つだけたどり、説明を加えず余韻へつなぐ",
     },
   };
 };
