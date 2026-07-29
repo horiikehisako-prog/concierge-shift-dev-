@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.11";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.12";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -605,6 +605,19 @@ const hasInventedMotivationalRewrite = text =>
 const hasOutsiderAtmosphereClaim = text =>
   /(?:その場|場の|周りの)[^。]{0,12}空気(?:まで|を)?[^。]{0,24}明る/u.test(String(text || ""));
 
+const hasUnsafeInterpretiveLanguage = (text, prompt) => {
+  const value = String(text || "");
+  if (/その場にある時間/u.test(value)) return true;
+  if (/前を向いて(?:動か|歩|進)/u.test(value)) return true;
+  if (/(?:知る方々|周りの方々?)にとって/u.test(value)) return true;
+  if (/忘れがたい声/u.test(value)) return true;
+  if (/どうぞ[^。]{0,60}(?:お進み|歩んで|携えながら)/u.test(value)) return true;
+  if (/(?:時間|日々)[、，]\s*そして[^。]{0,40}(?:時間|日々)/u.test(value)) return true;
+  if (/いつも可愛い方だった/u.test(value)) return true;
+  if (/手芸の品/u.test(value) && !/手芸の品/u.test(String(prompt || ""))) return true;
+  return false;
+};
+
 const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) => {
   const opening = String(openingNarration || "");
   const closing = String(closingNarration || "");
@@ -643,6 +656,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasAgeRepetition(full, prompt)) failures.push("age repetition");
   if (hasInventedMotivationalRewrite(full)) failures.push("invented family feeling");
   if (hasOutsiderAtmosphereClaim(full)) failures.push("outsider perspective");
+  if (hasUnsafeInterpretiveLanguage(full, prompt)) failures.push("unsafe interpretation");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
@@ -1143,6 +1157,7 @@ module.exports = async (req, res) => {
       "age repetition",
       "invented family feeling",
       "outsider perspective",
+      "unsafe interpretation",
       "closing timeline",
       "closing too short",
       "response incomplete",
@@ -1159,7 +1174,7 @@ module.exports = async (req, res) => {
         temperature,
         maxTokens,
         prompt,
-        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
+        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Do not invent artifacts such as 手芸の品, interpret a supplied action as 前を向いて動く, call a voice 忘れがたい, or instruct the family to お進みください. If the family says that singing and dancing looked cute, describe that specific姿 only; never rewrite it as いつも可愛い方だった. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
       });
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
@@ -1190,6 +1205,7 @@ module.exports = async (req, res) => {
         "age repetition",
         "invented family feeling",
         "outsider perspective",
+        "unsafe interpretation",
         "opening closing overlap",
         "closing timeline",
         "too many direct quotes",
