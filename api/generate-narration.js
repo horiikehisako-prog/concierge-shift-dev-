@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-two-pass-composition-20260729.70";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.71";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1153,6 +1153,8 @@ const buildSystemPrompt = extraInstruction => [
   "閉式後本文はclosing.anchorだけを静かにたどり、開式前の要約をしません。具体的な記憶から余韻へ進む二〜三文、90〜180字を目安にしてください。",
   "閉式後では、年齢への敬意、会葬御礼、献花、式場準備、手荷物案内を書かないでください。これらはサーバーが一度だけ追加します。",
   "開式前と閉式後で、同じ事実、表情、趣味、引用、場所、気持ちを重ねないでください。年齢は氏名定型文以外に書かないでください。",
+  "styleReferenceには、今回の人物像に近い教科書が一冊だけ入っています。語句や事実を借りず、記憶の始め方、段落の進み方、場面と余韻の配分、読み上げの間だけを参考にしてください。",
+  "完成後、styleReferenceと似た固有の言い回しや文が残っていないか確認し、似ていれば今回のsourceFactsに即した別の自然な表現へ書き直してください。",
   "宗派が浄土真宗の場合は「旅立ち」を使わないでください。会場名、参列者への一般的な挨拶、閉式宣言も書かないでください。",
   "文章を返す前に内部でのみ、①構成、②初稿、③音読を想定した推敲、④事実照合を行ってください。下書きや検査内容は出力せず、整えた完成稿だけを返してください。",
   "最終確認では、助詞と主述が正しいこと、文が途中で切れていないこと、同じ事実を言い換えて繰り返していないこと、家族の外側から評していないことを確かめてください。",
@@ -1963,6 +1965,9 @@ const compactNarrationPrompt = prompt => {
     title: compactText(ref.title, 100),
     theme: compactText(ref.theme, 100),
     tags: asArray(ref.tags).slice(0, 10),
+    openingNarration: compactText(ref.openingNarration, 900),
+    closingNarration: compactText(ref.closingNarration, 700),
+    writingNotes: compactText(ref.writingNotes || ref.approvalReason, 300),
   }))[0] || null;
 
   const memoryPlan = pickMemoryCards(compactSheet);
@@ -1995,7 +2000,7 @@ const compactNarrationPrompt = prompt => {
     "sourceFacts以外の事実は使わないでください。openingとclosingの材料は意図的に分けられています。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。",
-    "styleReferenceは文章の引用元ではありません。年代やテーマの近さを示す参考情報としてだけ扱ってください。",
+    "styleReferenceは最も近い教科書です。本文を読み、構成・呼吸・段落の運び・描写の距離だけを参考にしてください。教科書の事実、固有名詞、特徴的な語句、文章はコピーしないでください。",
     "返答は指定されたJSON一個だけです。",
     JSON.stringify({
       season: writingRules.season || "",

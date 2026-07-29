@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 27 Build 20260729.70";
+const DEV_BUILD_LABEL = "Sprint 27 Build 20260730.71";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -3657,74 +3657,14 @@ const compassFormatDraft=response=>{
     fallbackReason:clean(response?.fallbackReason||response?.reason||""),
   };
 };
-const compassFirstFilled=(sheet,keys)=>keys.map(k=>clean(sheet?.[k]||"")).find(Boolean)||"";
-const compassTrimSentence=(text,max=72)=>{
-  const value=clean(text).replace(/\s+/g," ");
-  if(value.length<=max)return value;
-  return value.slice(0,max).replace(/[、，][^、，]*$/,"");
-};
-const compassPreferredExpression=(text,compassKb=[])=>{
-  const value=clean(text);
-  if(!value)return "";
-  const entries=getCompassAIEntries(mergeCompassKbDefaults(compassKb)).filter(e=>e.dictionary==="personality"&&e.originalWord&&e.compassExpression);
-  const hit=entries.find(e=>value.includes(e.originalWord));
-  return hit?hit.compassExpression:value;
-};
-const compassNarrationSafeFragment=text=>clean(text)
-  .replace(/私も彼女を見習い[、，]*/g,"")
-  .replace(/私も彼を見習い[、，]*/g,"")
-  .replace(/歩んでいきたい。?/g,"")
-  .replace(/いつも可愛い。?/g,"かわいらしいお姿")
-  .replace(/。。+/g,"。")
-  .trim();
-const compassLocalNarrationDraft=({sheet,cfg,theme,reason,compassKb=[]})=>{
-  const s=compassSanitizeHearingSheet(sheet||{});
-  const fullName=clean(s.deceasedName).replace(/様$/,"")||"〇〇";
-  const fullLabel=`故${fullName}様`;
-  const name=compassNarrationGivenName(s.deceasedName)||"〇〇";
-  const honorName=/様$/.test(name)?name:`${name}様`;
-  const lifeYears=clean(s.age)||"〇〇";
-  const season=compassSeasonFromDate(s.deceasedDate);
-  const seasonOpeners={
-    spring:"やわらかな風に、草花がそっと揺れる頃となりました。",
-    summer:"木漏れ日が、静かに降り注ぐ頃となりました。",
-    autumn:"色づいた木々が、風に揺れる頃となりました。",
-    winter:"吐く息の白さに、季節の移ろいを感じる頃となりました。",
-  };
-  const personality=compassTrimSentence(compassNarrationSafeFragment(compassPreferredExpression(s.personality,compassKb)||s.personality||"日々を丁寧に重ね、まわりの方を大切にしてこられました"));
-  const memory=compassTrimSentence(compassNarrationSafeFragment(compassFirstFilled(s,["memorableEvents","familyMemories","travelAnniversaryEffort","hobbies","valuedThings"])));
-  const family=compassTrimSentence(compassNarrationSafeFragment(s.familyFeelings||s.familyMemories||"共に過ごした時間のぬくもり"));
-  const phrase=compassTrimSentence(compassNarrationSafeFragment(s.favoritePhrases));
-  const valued=compassTrimSentence(compassNarrationSafeFragment(s.valuedThings||s.hobbies));
-  const opening=[
-    seasonOpeners[season]||seasonOpeners.winter,
-    `${fullLabel}は、${lifeYears}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。`,
-    `${honorName}は、${personality}。そのお姿は、ご家族の記憶の中に今も穏やかに残っておられることと存じます。`,
-    memory?`ふと思い返されるのは、${memory}。その時の声や表情もまた、皆様の胸に静かによみがえります。`:"",
-    valued?`${valued}を大切にされた日々は、${honorName}らしい歩みとして、ご家族の心に息づいております。`:"",
-    phrase?`${phrase}という言葉も、これから先、折に触れて思い出されることでしょう。`:"",
-    "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
-  ].filter(Boolean).join("\n\n");
-  const closing=[
-    `お見送りの時を迎えた今、ご家族の胸には、${family}が静かに残っていることと存じます。`,
-    `${honorName}と過ごされた何気ない時間は、これからも皆様の暮らしの中で、ふと心に浮かぶことでしょう。`,
-    "そのお姿を胸に、どうぞこれからのお別れのひとときをお過ごしください。",
-    `${lifeYears}年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。`,
-    "本日はご会葬いただき、誠にありがとうございました。",
-    "これよりは、お花を手向けてのお別れのお時間でございます。",
-    "式場内は、お別れの準備へと移らせていただきます。",
-    "皆様には、お手荷物をお持ちいただき、後方でお待ちくださいますようお願いいたします。",
-    "どうぞよろしくお願いいたします。",
-  ].filter(Boolean).join("\n\n");
-  return compassFormatDraft({
-    openingNarration:opening,
-    closingNarration:closing,
-    detectedTheme:theme||compassDetectTheme(s,cfg),
-    improvementNotes:`AI接続が利用できなかったため、入力内容から予備の司会原稿を作成しました。必要に応じてHisakoさんの言葉に整えてください。\n原因: ${reason||"API unavailable"}`,
-    generationSource:"localDraft",
-    fallbackReason:reason||"API unavailable",
-  });
-};
+const compassUnavailableNarration=({theme,reason})=>compassFormatDraft({
+  openingNarration:"",
+  closingNarration:"",
+  detectedTheme:theme||"",
+  improvementNotes:"",
+  generationSource:"generationUnavailable",
+  fallbackReason:reason||"AI generation unavailable",
+});
 const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
   const ai=normalizeAISettings(cfg.aiSettings);
   try{
@@ -3741,7 +3681,7 @@ const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
     });
     let data=null;
     try{data=await res.json();}catch(e){}
-    if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:`OPENAI_API_KEY missing at ${apiPath}`});
+    if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") return compassUnavailableNarration({theme,reason:`OPENAI_API_KEY missing at ${apiPath}`});
     if(!res.ok){
       const openAiMsg=data?.openAiError?.message?` / ${data.openAiError.message}`:"";
       const failures=Array.isArray(data?.qualityFailures)&&data.qualityFailures.length?` / ${data.qualityFailures.join(", ")}`:"";
@@ -3755,11 +3695,11 @@ const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
           fallbackReason:`${data.code} ${res.status} at ${apiPath}${failures}`,
         });
       }
-      return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:`${data?.code||data?.error||"API_ERROR"} ${res.status} at ${apiPath}${openAiMsg}${failures}`});
+      return compassUnavailableNarration({theme,reason:`${data?.code||data?.error||"API_ERROR"} ${res.status} at ${apiPath}${openAiMsg}${failures}`});
     }
     return compassFormatDraft({...data,generationSource:"openai"});
   }catch(e){
-    return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:e?.message||"network error"});
+    return compassUnavailableNarration({theme,reason:e?.message||"network error"});
   }
 };
 
@@ -4081,9 +4021,11 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       const generated=await compassGenerateNarration({prompt:built,cfg,sheet,theme:selectedTheme,compassKb});
       setDraft(generated);
       if(generated.detectedTheme) setTheme(generated.detectedTheme);
-      if(generated.generationSource==="qualityRejected"){
+      if(generated.generationSource==="qualityRejected"||generated.generationSource==="generationUnavailable"){
         const reason=generated.fallbackReason||"GENERATION_QUALITY_CHECK_FAILED";
-        const qualityMsg=`日本語の品質検査に合格しなかったため、原稿は表示していません。もう一度生成してください。理由: ${reason}`;
+        const qualityMsg=generated.generationSource==="qualityRejected"
+          ?`日本語の品質検査に合格しなかったため、原稿は表示していません。もう一度生成してください。理由: ${reason}`
+          :`AI生成を完了できなかったため、不完全な予備原稿は表示していません。接続を確認して、もう一度生成してください。理由: ${reason}`;
         setAiError(qualityMsg);
         flash?.(qualityMsg);
         await writeUsage("failed",{error:reason,estimatedCostJpy:0,billingSource:"Quality rejected"});
@@ -4093,17 +4035,14 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       const usedOpenAI=generated.generationSource==="openai";
       if(!usedOpenAI){
         const reason=generated.fallbackReason||generated.improvementNotes||"理由を取得できませんでした";
-        const keyMissing=String(reason).includes("OPENAI_API_KEY");
-        const fallbackMsg=keyMissing
-          ?"OpenAI APIキーを確認できなかったため、無料下書きで作成しました。VercelのOPENAI_API_KEY設定を確認してください。"
-          :`GPT-5.5 APIのPOST呼び出しで問題が出たため、無料下書きで作成しました。理由: ${reason}`;
+        const fallbackMsg=`AI生成を完了できなかったため、原稿は表示していません。理由: ${reason}`;
         setAiError(fallbackMsg);
         flash?.(fallbackMsg);
       }
       await writeUsage("success",{
         estimatedOutputTokens:actualOutputTokens,
         estimatedCostJpy:usedOpenAI?estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens):0,
-        billingSource:usedOpenAI?"OpenAI":"無料下書き",
+        billingSource:usedOpenAI?"OpenAI":"生成なし",
       });
       if(usedOpenAI) flash?.("GPT-5.5でAIナレーション案を作成しました。内容を確認して保存してください。");
     }catch(e){
