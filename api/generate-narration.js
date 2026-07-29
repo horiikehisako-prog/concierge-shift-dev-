@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.27";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.28";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -446,6 +446,19 @@ const normalizeOpeningAgeMentions = (value, prompt) => {
 
 const normalizeSpokenNumerals = value => String(value || "")
   .replace(/10月/gu, "十月");
+
+const limitDirectQuotes = draft => {
+  let quoteCount = 0;
+  const clean = value => String(value || "").replace(/「([^」]*)」/gu, (_match, inner) => {
+    quoteCount += 1;
+    return quoteCount === 1 ? `「${inner}」` : inner;
+  });
+  return {
+    ...draft,
+    openingNarration: clean(draft?.openingNarration),
+    closingNarration: clean(draft?.closingNarration),
+  };
+};
 
 const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/今日(?:ここ|この場)に集う皆様/gu, "皆様")
@@ -1250,6 +1263,7 @@ module.exports = async (req, res) => {
       prompt,
       extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
+    parsed = limitDirectQuotes(parsed);
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
     } catch (qualityError) {
