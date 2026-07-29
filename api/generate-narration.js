@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.23";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.24";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -850,22 +850,22 @@ const buildSystemPrompt = extraInstruction => [
   "Do not infer personality from an activity. Never add phrases such as 笑みの奥に力があった, まめやかさ, 暮らしの形, 日々の重なり, or そこにいるだけで明るくなった.",
   "Stay close to the family's memory. Never expose the interview process with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです.",
   "Do not explain or interpret a supplied quotation. Place it once, then move on without calling it a philosophy, teaching, way of life, gaze, or attitude toward people.",
-  "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; two or three selected hearingSheet facts; the exact opening final sentence.",
+  "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; three short body paragraphs built from three or four selected hearingSheet fields; the exact opening final sentence.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
-  "Closing structure: use only one or two facts not used in opening; if a family feeling is explicitly supplied, state it without expanding it; leave a short factual aftertaste.",
+  "Closing structure: use only one or two facts not used in opening; if a family feeling is explicitly supplied, state it without expanding it; leave a short factual aftertaste. Write two body paragraphs before the server's fixed guidance.",
   "Return only the closing narrative body. Do not write age-respect wording, attendee thanks, flower-farewell guidance, venue preparation, baggage instructions, or どうぞよろしくお願いいたします. The server appends those lines once.",
   "Never write another age phrase beyond the required opening life sentence. The server adds the age once in the fixed closing.",
   "Opening and closing must use disjoint facts. Do not repeat a trait, hobby, quote, place, family feeling, or episode across sections.",
   "Use at most one direct quotation in the entire manuscript and only when hearingSheet contains the exact words.",
   "State the central trait once. If you write that the person often smiled, do not immediately repeat smile, laughter, brightness, or the same face in another sentence.",
   "Every sentence must be grammatically complete. Avoid fragments such as 家族を大切にされていたこと。 or 歌ったり、踊ったりして、いつも可愛い。",
-  "Use natural polite Japanese. Two polite endings may occur together when natural, but do not force ending variation with noun fragments or abstract wording.",
+  "Use natural spoken Japanese. Do not end three consecutive sentences with ました, でした, ございました, おりました, ます, です, or ございます. Vary the grammar itself: connect related actions with 〜ながら or 〜とき, use one restrained 〜ではないでしょうか question, and use present-historical 〜される only where natural. Never create fragments merely to vary endings.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
   "Do not write poetic or vague substitutions such as 耳に戻ってくる, 注がれたものへ, 日々の重なり, 暮らしに寄り添う, 確かな記録, or かけがえのないものとして重ねる.",
   "Do not invent what remains in the family's hearts. Use familyFeelings only when present and keep its meaning unchanged.",
   "Use a selected Compass Official textbook only for paragraph order, calm tone, sentence length, pauses, and warmth. Never reuse its facts, scenes, nouns, or interpretations.",
-  "Target openingNarration: about 450-650 Japanese characters. Target closingNarration body: about 160-260 Japanese characters.",
+  "Length is mandatory when hearingSheet has at least five non-empty memory fields: openingNarration must be 450-650 Japanese characters and closingNarration body must be 160-260 Japanese characters. Do not return a short profile summary.",
   "Before returning, silently read every sentence aloud once. Delete any sentence that contains a fact or interpretation not found in hearingSheet. Prefer a shorter truthful manuscript over padded prose.",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
@@ -1509,21 +1509,13 @@ const compactNarrationPrompt = prompt => {
   }));
 
   return [
-    "Compass AI narration request. Use only this compact data. Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, and improvementNotes. Put an empty string in improvementNotes. Never include [OPENING], [CLOSING], 【開式前】, or 【閉式後】 inside narration values. Never output analysis, explanations, markdown, or text outside the JSON object. ABSOLUTE FACT BOUNDARY: every concrete noun, action, place, conversation, reaction, expression, routine, motive, feeling, and scene must be explicitly present in hearingSheet. Never invent meals, rooms, windows, roads, scenery, photographs, homecoming, travel conversations, family reactions, or inner feelings merely to make a vivid scene. FAMILY PERSPECTIVE: stay close to the family's stated memories without outsider character judgments or invented family feelings. SENTENCE ENDINGS: two natural polite sentences may stand together, but outside fixed guidance never use three consecutive sentences with the same です/ます rhythm. Do not create stacked noun fragments; use at most one deliberate noun-ending sentence per paragraph. REPETITION: never restate the same family phrase in adjacent sentences. Do not repeat opening traits as a summary in closing. Do not interpret a supplied quote into an invented gaze, philosophy, or value. Never write 今日ここに集う皆様 or この場に集う皆様, and never turn 明るさを見習いたい into 前向きに歩んでいきたい. DIRECT QUOTES: at most one 「...」 quote across both sections, and only when hearingSheet contains those exact words. TIMELINE: closing is read after the officiant leaves but before flowers are offered; never write お別れのあと, お別れを済ませた今, お別れのひとときを過ごした今, or お別れのひとときを終えた今. Opening is 60-70%; closing is 30-40%. Opening begins with one seasonal sentence, then the fixed full-name life sentence, and ends exactly with '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'. Closing begins with a different concrete fact from hearingSheet and ends with the fixed flower-farewell guidance. Do not repeat opening facts in closing. Do not invent what remains in the family's hearts. Use only supplied facts. If input is sparse, write shorter. Use 故 plus the full name only in the opening life-introduction sentence. Never use venue names, 在りし日を, or a formal closing declaration.",
-    "FINAL OUTPUT OVERRIDE: before writing, divide Hearing Sheet facts into disjoint groups. openingNarration may use at most three facts. closingNarration may use only one or two facts that never appeared in openingNarration. Do not repeat an opening hobby, place, quote, trait, family feeling, or episode in closing, even as a summary. closingNarration must be only a 180-300 character narrative body. Do not write age-respect wording, 葬送のひととき, attendee thanks, お花を手向けてのお別れ, 式場内の準備, baggage instructions, or どうぞよろしくお願いいたします; the server appends the complete fixed guidance exactly once.",
-    "Most important quality standard: quiet afterglow, visible scenes, the deceased's character naturally felt, writing that does not explain too much, and a tone that never over-directs emotion. Do not write to make people cry; write so the family can feel as if the deceased is present in the room.",
-    "Spoken style guide: prioritize beauty when heard by ear. Use short sentences, natural punctuation, breath-friendly rhythm, one carefully drawn scene or gesture, and no packed lists of facts. Do not repeat the same ending three times in a row. Avoid repeating words such as 大切, 笑顔, 優しい, 温かい, 思い出, 感謝.",
-    "Highest priority: write grammatically correct, natural Japanese from the beginning. Match subjects and predicates correctly, complete every sentence, avoid unclear pronouns such as 彼, 彼女, or 私, and never speak for the family's feelings unless explicitly provided.",
-    "Prefer simple, readable Japanese over difficult or poetic expression. Do not output drafts, evaluation, correction process, step labels, alternate drafts, or notes. Output only the requested raw JSON object.",
-    "MC perspective: this is not a novel, essay, or profile introduction. Keep the air of 'the MC is speaking quietly in this ceremony hall right now.' Make the manuscript easy for the MC to read and comfortable for attendees to hear.",
-    "Name usage: do not repeat the deceased's given name more than necessary. After using the name once, use natural Japanese references such as そのお姿, ご本人, その笑顔, or omit the subject where clear. Do not use 故人様 or 個人様. Keep required final lines unchanged.",
-    "Gender and familyRelation are only auxiliary information for natural expression. Reflect them only when consistent with the hearing details, and never invent personality or episodes from them.",
-    "Information selection: before writing, internally choose exactly one theme that represents this deceased, such as family love, hard work, smile, challenge, compassion, sincerity, love of nature, teaching others, or community. Use that theme as the axis of both narrations.",
-    "Do not force every input detail into the narration. Give more space to the facts and episodes connected to the selected theme. Keep unrelated information short, or omit it when needed, and prioritize character clarity over information volume.",
-    "Expression variety: do not overuse convenient beautiful words such as 静かに, 穏やかに, やわらかく, 胸に, ぬくもり, 面影, 支え, or 心に残る. Keep a unified professional MC tone while changing vocabulary, atmosphere, and selected scenes so each narration feels like a different life.",
-    "Evidence boundary: do not infer inner life, life philosophy, forgiveness, purity of heart, or outlook beyond what the family actually said. Keep values grounded in observable actions, family quotes, habits, gestures, places, and memories.",
-    "When selectedStyleReferences are present, study them as the highest-priority textbook. Do not copy their facts or phrases. Learn the order of ideas, breath length, restraint, warmth, scene selection, how the opening moves from season to life, and how the closing leaves afterglow.",
-    "Before final output, silently compare the draft with the selectedStyleReferences. If the draft sounds like a generic profile, rewrite it so it has one concrete family memory, fewer adjectives, and a more natural spoken rhythm.",
+    "Use only hearingSheet facts. Return one raw JSON object with openingNarration, closingNarration, detectedTheme, and an empty improvementNotes. No labels, markdown, notes, or text outside JSON.",
+    "First partition the facts: opening uses three or four fields; closing uses one or two different fields. Never repeat a fact, trait, hobby, quotation, place, or family feeling between sections.",
+    "Opening must contain 450-650 Japanese characters when five or more hearing fields are present: one seasonal sentence, the fixed full-name life sentence, three natural body paragraphs, and the exact fixed opening final sentence. Do not compress it into a profile.",
+    "Closing must contain a 160-260 Japanese-character narrative body in two paragraphs. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
+    "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a scene, or add emotional meaning.",
+    "Do not end three consecutive sentences with ました・でした・ございました・おりました・ます・です・ございます. Vary sentence construction naturally, not with incomplete noun fragments. Read every sentence aloud and fix unnatural particles or missing predicates.",
+    "Use the selected textbook only for paragraph order, pauses, restraint, and warmth. Never copy its facts or wording.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
