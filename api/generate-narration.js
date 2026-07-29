@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.37";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.38";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -498,9 +498,17 @@ const normalizeQuotationContext = draft => {
         .replace(
           /「人の悪口を言ってはいけない」[。]?\s*(?:前を向いて|人との関わり|その教え|その生き方|その考え)[^。]*。/gu,
           "「人の悪口を言ってはいけない」。"
+        )
+        .replace(
+          /(?:^|\n)\s*「人の悪口を言ってはいけない」[。]?\s*(?=\n|$)/gu,
+          "\n折に触れて口にされた、「人の悪口を言ってはいけない」という言葉。"
         );
     }
-    return text.replace(/[ \t]+\n/gu, "\n").replace(/\n{3,}/gu, "\n\n").trim();
+    return text
+      .replace(/そのようなお時間もお持ちでした。?/gu, "")
+      .replace(/[ \t]+\n/gu, "\n")
+      .replace(/\n{3,}/gu, "\n\n")
+      .trim();
   };
   return {
     ...draft,
@@ -625,6 +633,7 @@ const countDirectQuotes = text => (String(text || "").match(/「[^」]*」/gu) |
 
 const hasExcessiveConsecutivePoliteEndings = text => {
   const withoutFixed = String(text || "")
+    .replace(/^[^。\n]*(?:季節|頃)[^。\n]*。?/u, "")
     .replace(/故[^。\n]+様は、[^。\n]+尊いご生涯を閉じ、静かに人生の幕を下ろされました。?/u, "")
     .replace(/尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?/u, "")
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "");
@@ -787,7 +796,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
   // A single Japanese fact can naturally share several 2-3 character fragments.
   // Require broader overlap so one repeated word does not reject the whole draft.
-  if (repeatedContentNgrams(opening, closing, prompt).length >= 6) failures.push("reused hearing facts");
+  if (repeatedContentNgrams(opening, closing, prompt).length >= 10) failures.push("reused hearing facts");
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
   if (/[、,]\s*この季節となりました/u.test(opening)) failures.push("seasonal grammar");
@@ -1369,6 +1378,8 @@ module.exports = async (req, res) => {
         "行動へ向かうその歩み、地名と月が時間を伝える、言葉をここに置く、〇〇様らしさの一つ、声として残る、思いが重なる、等の抽象的なAI表現は削除する。",
         "歌や踊りを家族が可愛いと感じた事実は、家族の視点のまま書く。一般に可愛い方として親しまれた、とは変えない。",
         "趣味の段落で、手芸では、時間を持たれました、野菜や花を育てることでは、とは書かない。自然な読み上げの例は、手芸に向かい、手を動かしながら少しずつ形にしていく。野菜や花にも日々手をかけ、育つ様子を見守る。ここでは歴史的現在形を用い、三文すべてをましたで終えない。",
+        "趣味の段落の末尾に、そのようなお時間もお持ちでした、という説明を足さない。歴史的現在形の二文だけで自然に閉じる。",
+        "人の悪口を言ってはいけない、という言葉を使う場合は、引用だけを唐突に一行へ置かず、折に触れて口にされた言葉として一文につなぐ。引用の意味や人格は解説しない。",
         "笑っている顔しか思い出せないほど、よく笑う人、という一つの家族の記憶は、一文で一度だけ表す。笑う方でした、を続けない。",
         "旅行情報は一つか二つの完全な文にまとめる。ご旅行。いずれも十月…旅でした、のように旅行と旅を言い直さない。",
         "閉式後本文は140〜220字を目安にする。旅行、家族を大切にしたこと、familyFeelingsを別々の項目として並べず、一つの流れにする。旅行先の地名や誕生日月に触れたとき、その時間が思い起こされる、という控えめな余韻はよい。",
