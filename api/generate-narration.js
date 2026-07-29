@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-clean-composition-20260729.67";
+const API_BUILD_ID = "sprint27-clean-composition-20260729.68";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1143,13 +1143,14 @@ const buildSystemPrompt = extraInstruction => [
   "これは人物紹介ではなく、ご家族がその方との時間を自然に重ねられるナレーションです。司会者が外から人物を評価したり、ご家族の気持ちを推測したりしないでください。",
   "sourceFactsは取材メモです。その語順や口語をコピーせず、意味を変えない範囲で、読み上げに適した自然な敬語へ整えてください。",
   "開式前は、季節の短い一文、氏名と年齢の定型文、記憶がゆるやかにつながる本文、感謝へ渡す一文、開式案内の順です。",
+  "季節の一文には、入力された季節に合う自然、光、風、音のうち一つだけを描いてください。葬儀の雰囲気を補う「静かな時」などの抽象表現は使わないでください。",
   "氏名と年齢の定型文は「故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。」です。",
   "開式前の最後は必ず「尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。」としてください。",
   "本文はopening.anchorを中心に始め、supportsは同じ人物像を深めるものだけを使ってください。項目を順番に紹介せず、一段落ごとに一つの記憶の動きを持たせます。",
-  "笑顔、趣味、言葉などの事実は一度ずつ描き、直後に性格や意味を解説しないでください。引用はsourceFactsにある場合だけ一回まで使い、独立した不完全な文にしないでください。",
+  "笑顔、趣味、言葉などの事実は一度ずつ描き、直後に性格や意味を解説しないでください。引用はsourceFactsにある場合だけ一回まで使い、必ず「話しておられました」など自然な述語を持つ文の中に置いてください。",
   "文末は意味に合わせて自然に変えてください。同じ「ました・でした・ございます」を三文続けず、避けるためだけの体言止めも重ねないでください。すべての文に自然な述語を置いてください。",
-  "開式前は、事実が十分なら320〜500字を目安にします。長さのための抽象表現は足さず、弱い説明文は削ってください。",
-  "閉式後本文はclosing.anchorだけを静かにたどり、開式前の要約をしません。具体的な記憶から余韻へ進む二〜四文、110〜190字を目安にしてください。",
+  "開式前は、三つ以上の記憶がある場合は360〜520字を目安にします。各記憶を一文だけで処理せず、事実の範囲で動作や時間の流れが伝わるよう整えてください。長さのための抽象表現は足さないでください。",
+  "閉式後本文はclosing.anchorだけを静かにたどり、開式前の要約をしません。具体的な記憶から余韻へ進む二〜四文、130〜210字を目安にしてください。",
   "閉式後では、年齢への敬意、会葬御礼、献花、式場準備、手荷物案内を書かないでください。これらはサーバーが一度だけ追加します。",
   "開式前と閉式後で、同じ事実、表情、趣味、引用、場所、気持ちを重ねないでください。年齢は氏名定型文以外に書かないでください。",
   "宗派が浄土真宗の場合は「旅立ち」を使わないでください。会場名、参列者への一般的な挨拶、閉式宣言も書かないでください。",
@@ -1266,7 +1267,7 @@ const requestNarration = async ({
       ].filter(Boolean).join(" ");
       const body = {
         model,
-        reasoning: { effort: "low" },
+        reasoning: { effort: "medium" },
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
