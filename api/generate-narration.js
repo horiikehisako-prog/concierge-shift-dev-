@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.25";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.26";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -860,7 +860,9 @@ const buildSystemPrompt = extraInstruction => [
   "Use at most one direct quotation in the entire manuscript and only when hearingSheet contains the exact words.",
   "State the central trait once. If you write that the person often smiled, do not immediately repeat smile, laughter, brightness, or the same face in another sentence.",
   "Every sentence must be grammatically complete. Avoid fragments such as 家族を大切にされていたこと。 or 歌ったり、踊ったりして、いつも可愛い。",
-  "Use natural spoken Japanese. Do not end three consecutive sentences with ました, でした, ございました, おりました, ます, です, or ございます. Vary the grammar itself: connect related actions with 〜ながら or 〜とき, use one restrained 〜ではないでしょうか question, and use present-historical 〜される only where natural. Never create fragments merely to vary endings.",
+  "Use natural spoken Japanese. Across the generated narrative body, sentence-final ました・でした・ございました・おりました may appear no more than five times in total, and ます・です・ございます no more than four times. Never use either family three sentences in a row.",
+  "Create rhythm through meaning, not mechanical substitution: use one restrained 〜ではないでしょうか question in opening, one complete present-historical sentence such as 〜に向かう・〜を楽しむ・〜を育てる where natural, and at most one dignified noun-ending sentence per paragraph such as 〜ひととき。 or 〜そのお姿。 Do not stack noun fragments.",
+  "Delete generic padding that merely explains the writing, including その言葉をここに置かせていただきます, そのままの響きで, 花子様らしさの一つ, 記憶として残されています, 歩みの中にある, 静かにここにあります, or the same idea with another name.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
   "Do not write poetic or vague substitutions such as 耳に戻ってくる, 注がれたものへ, 日々の重なり, 暮らしに寄り添う, 確かな記録, or かけがえのないものとして重ねる.",
   "Do not invent what remains in the family's hearts. Use familyFeelings only when present and keep its meaning unchanged.",
@@ -1519,7 +1521,9 @@ const compactNarrationPrompt = prompt => {
     "Opening must contain 450-650 Japanese characters when five or more hearing fields are present: one seasonal sentence, the fixed full-name life sentence, three natural body paragraphs, and the exact fixed opening final sentence. Do not compress it into a profile.",
     "Closing must contain a 160-260 Japanese-character narrative body in two paragraphs. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
     "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a scene, or add emotional meaning.",
-    "Do not end three consecutive sentences with ました・でした・ございました・おりました・ます・です・ございます. Vary sentence construction naturally, not with incomplete noun fragments. Read every sentence aloud and fix unnatural particles or missing predicates.",
+    "Use no more than five sentence-final ました・でした・ございました・おりました and no more than four sentence-final ます・です・ございます in the narrative body. Never place either family three sentences in a row. Use one natural 〜ではないでしょうか question, a few complete present-historical sentences, and at most one dignified noun-ending sentence per paragraph.",
+    "Do not pad with explanations such as その言葉をここに置かせていただきます, そのままの響きで, 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, or 静かにここにあります. Stay with the supplied action, expression, place, or exact words.",
+    "Closing must not begin with a season word even when a dated memory is used. Begin with the people or action, and place the season later in the sentence.",
     "Use the selected textbook only for paragraph order, pauses, restraint, and warmth. Never copy its facts or wording.",
     JSON.stringify({
       season: writingRules.season || "",
