@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.10";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.11";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -571,7 +571,7 @@ const hasBrokenJapaneseGrammar = text => {
 
   return sentences.some(sentence => {
     // Examples: 「明るく前向きにが残る」「家族を大切にしていたを大切にされた」
-    if (/(?:に|を|が|は)(?:に|を|が|は)(?=[ぁ-んァ-ヶ一-龠々])/u.test(sentence)) return true;
+    if (/(?:にが|をを|をが|がを|がが|はを|はが|にを|をに|がに|はに)(?=[ぁ-んァ-ヶ一-龠々])/u.test(sentence)) return true;
     if (/して(?:いた|いる|おられた|こられた)を(?:大切|楽しみ|喜び)/u.test(sentence)) return true;
 
     // A たり-list must reach a predicate; do not leave it attached directly to お姿/時間/日々.
