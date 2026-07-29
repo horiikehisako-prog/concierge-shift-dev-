@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 27 Build 20260705.1";
+const DEV_BUILD_LABEL = "Sprint 27 Build 20260729.1";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -684,11 +684,28 @@ const compassLibraryHasAllSeeds=v=>{
   const ids=new Set(normalizeCompassNarrationLibrary(v).map(e=>e.id));
   return DEFAULT_COMPASS_LIBRARY_SEEDS.every(e=>ids.has(e.id));
 };
+const compassLibraryDemographics=entry=>{
+  const text=[entry.title,entry.theme,...ensureArray(entry.tags)].join(" ");
+  const decadeMatch=text.match(/(\d{2})代/);
+  const ageMatch=text.match(/[（(](\d{1,3})歳[）)]/);
+  const age=ageMatch?Number(ageMatch[1]):null;
+  const decade=decadeMatch?Number(decadeMatch[1]):(Number.isFinite(age)?Math.floor(age/10)*10:null);
+  const gender=/女性|女児/.test(text)?"女性":/男性|男児/.test(text)?"男性":"";
+  return {decade,gender};
+};
 const compassTextScore=(entry,sheet,theme,season)=>{
   const hay=[entry.title,entry.theme,...entry.tags,entry.openingNarration,entry.closingNarration,entry.writingNotes,entry.approvalReason].join(" ").toLowerCase();
   const needles=[theme,SEASON_LABELS[season],season,sheet.personality,sheet.hobbies,sheet.familyMemories,sheet.memorableEvents,sheet.travelAnniversaryEffort,sheet.favoritePhrases,sheet.valuedThings,sheet.familyFeelings]
     .join(" ").toLowerCase().split(/[\s,、。・/]+/).map(s=>s.trim()).filter(s=>s.length>1);
+  const demographics=compassLibraryDemographics(entry);
+  const targetAge=Number(sheet.age);
+  const targetDecade=Number.isFinite(targetAge)&&targetAge>=10?Math.floor(targetAge/10)*10:null;
+  const targetGender=["男性","女性"].includes(sheet.gender)?sheet.gender:"";
   let score=0;
+  if(targetDecade!==null&&demographics.decade===targetDecade) score+=50;
+  else if(targetDecade!==null&&demographics.decade!==null) score-=30;
+  if(targetGender&&demographics.gender===targetGender) score+=40;
+  else if(targetGender&&demographics.gender) score-=30;
   if(entry.theme&&theme&&entry.theme===theme) score+=12;
   if(entry.tags.includes("Hisako Official")) score+=10;
   if(entry.tags.includes("AI教科書")||entry.tags.includes("お手本")) score+=12;
@@ -741,21 +758,30 @@ const compassParseTextbookMarkdown=(text,fileName="")=>{
     updatedAt:now,
   });
 };
-const compassSelectLibraryReferences=(sheet,cfg,theme,limit=6)=>{
+const compassSelectLibraryReferences=(sheet,cfg,theme,limit=3)=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
-  return normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary)
-    .filter(e=>e.compassOfficial&&e.approvedForAI&&(e.openingNarration||e.closingNarration))
+  const targetAge=Number(sheet.age);
+  const targetDecade=Number.isFinite(targetAge)&&targetAge>=10?Math.floor(targetAge/10)*10:null;
+  const targetGender=["男性","女性"].includes(sheet.gender)?sheet.gender:"";
+  const eligible=normalizeCompassNarrationLibrary(cfg.compassNarrationLibrary)
+    .filter(e=>e.compassOfficial&&e.approvedForAI&&(e.openingNarration||e.closingNarration));
+  const exact=eligible.filter(e=>{
+    const demographics=compassLibraryDemographics(e);
+    return targetDecade!==null&&targetGender&&demographics.decade===targetDecade&&demographics.gender===targetGender;
+  });
+  const pool=exact.length>=3?exact:eligible;
+  return pool
     .map(e=>({...e,_score:compassTextScore(e,sheet,selectedTheme,season)}))
     .sort((a,b)=>(b._score-a._score)||String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))
-    .slice(0,Math.max(0,Math.min(6,limit)))
+    .slice(0,Math.max(0,Math.min(3,limit)))
     .map(({_score,...e})=>e);
 };
 const mergeForbiddenWords=v=>Array.from(new Set([...ensureArray(v),...DEFAULT_FORBIDDEN_WORDS])).filter(Boolean);
 const DEFAULT_AI_SETTINGS = {
   provider:"openai",
   model:"gpt-5.5",
-  temperature:0.7,
+  temperature:0.2,
   maxTokens:2600,
   apiStatus:"server_required",
   enabled:true,
@@ -3477,8 +3503,8 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
       openingPurpose:"開式前ナレーションの目的は、これから始まるお別れの時間を静かに整えること。",
       openingStyle:"季節、人生の幕、ご家族が思い出す場面、趣味・仕事・家族、人柄、開式の順に構成する。会場名や参列者への挨拶は書かない。",
       openingFocus:["お人柄","人生の歩み","お仕事","趣味","家族との思い出","具体的なエピソード","人間的な温かさ"],
-      closingPurpose:"閉式後は、開式前と違う場面、ご家族との時間、その方が残したもの、余韻、閉式の順に構成し、ご家族が帰宅してからも心に残る文章にする。",
-      closingStyle:"閉式後は生涯を再度説明しない。開式前で使ったエピソードを描写し直さず、その出来事がなぜ大切だったのか、家族の心に何が残ったのかを短く深く言葉にする。閉式後ナレーションは季節の言葉で始めない。",
+      closingPurpose:"閉式後は、導師退場後・お花を手向ける前に読む原稿。開式前と違う事実を一つ選び、お花のお別れへ静かにつなぐ。",
+      closingStyle:"閉式後は生涯を再度説明しない。開式前で使ったエピソードを描写し直さず、ヒアリングシートにある別の事実を短く扱う。『お別れのあと』『お別れを済ませた今』『お別れのひとときを過ごした今』とは書かない。季節の言葉でも始めない。",
       closingFocus:["ご家族の思い","心に残るもの","静かな別れ","余韻","残された思い出"],
       mainFocus:["お人柄","趣味","家族との思い出","口癖","大切にしていたこと","具体的なエピソード"],
       endingStyle:"定型的な葬儀挨拶ではなく、ご家族の思いと、その方が残したものを受け止める静かな結びにする。",
@@ -3491,6 +3517,10 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
       closingAgeRepetitionRule:`閉式後の定型文が「${hearingSheet.age||"〇〇"}年のご生涯」で始まるため、直前の文章では「${hearingSheet.age||"〇〇"}年の歩み」「${hearingSheet.age||"〇〇"}年のご生涯」など年数表現を重ねない。必要な場合は「${narrationName}様の歩み」「その歩み」「そのご生涯」と言い換える。`,
       genderRelationRule:"性別とご遺族から見た故人様は、文章表現を自然にするための補助情報としてのみ使う。お母様らしい優しさ、お父様として家族を支えられた、お祖母様としてお孫様を見守られた等の表現は、聞き取り内容と矛盾しない場合だけ自然に反映する。性別や続柄だけで人物像を決めつけず、事実にない内容を創作しない。",
       repetitionRule:"openingNarrationで描いたエピソード、場面、思い出をclosingNarrationで再説明しない。同じ語、同じ言い回し、特に感謝表現を近い位置で繰り返さない。必要なら言い換えるか削る。",
+      factBoundaryRule:"ヒアリングシートに書かれた名詞・動作・場所・発言だけを事実として使う。会話、食事、部屋、車窓、道中、景色、写真、帰宅後の様子、物を見せたこと、育ち具合を確かめたこと、家族の反応、本人の心情や動機は、入力に明記されていない限り一切補わない。情景化のための創作も禁止する。",
+      familyPerspectiveRule:"第三者による人物評価ではなく、ご家族が実際に覚えている事実へ寄り添う。ただし『ご家族はこう感じた』と入力にない感情を代弁しない。観察できる行動や具体的な記憶を、そのまま自然な文章に整える。",
+      directQuoteRule:"かぎ括弧を使う直接引用は開式前・閉式後を合わせて一つまで。ヒアリングシートに実際の発言がある場合だけ使う。",
+      sentenceEndingRule:"固定案内を除き、一つの段落で『です・ます・ました・でした・ございます・ございました・おります・おりました・存じます・でしょう』系の文末を連続させない。同じ丁寧語の文末が二文続いたら、常体に崩さず、体言止め、連体形で次の文へつなぐ構文、引用、倒置を必要最小限に使って読み上げのリズムを整える。文法を壊した断片文は作らない。",
       styleReferenceRule:"Use only Compass Official narrations as writing style references. Do not copy, reuse, translate, or paraphrase the sample text. Learn only tone, rhythm, flow, warmth, sentence length, opening style, closing style, Writing Notes, and Reason for Approval.",
       professionalMcStandard:"一般的なAI文章ではなく、経験ある葬儀司会者が読み上げる原稿の水準にする。抽象語を重ねず、具体的な記憶から温度を出す。",
       writingDictionary:cfg.compassDictionary||DEFAULT_COMPASS_DICTIONARY,
@@ -3543,6 +3573,10 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
       "感謝という語の連続使用や、同じ意味の表現の反復を避ける",
       "抽象的な美辞麗句より、具体的な記憶と人間的な温かさを優先する",
       "Hearing Sheetにない事実は作らない",
+      "ヒアリングシートに明記のない会話、食事、部屋、車窓、道中、景色、写真、帰宅後の様子、家族の反応、本人の心情や動機を、情景化のために補わない",
+      "直接引用は開式前・閉式後を合わせて一つまでとし、入力に実際の発言がある場合だけ使う",
+      "固定案内以外では、です・ます・ました・でした・ございます・ございました・おります・おりました・存じます・でしょう系の文末を二文続けない。文法を壊さず、体言止めや文のつなぎ方でリズムを変える",
+      "閉式後は導師退場後・お花のお別れ前の時点で読む。お別れのあと、お別れを済ませた今、お別れのひとときを過ごした今、とは書かない",
       "一段落につき一つの場面だけを書く。説明や人物紹介を避け、家族目線の情景に変換する",
       "入力情報を均等に並べず、選んだ一つのテーマに関係する事実を優先する",
       "閉式後の末尾には、葬送のひととき・ご会葬御礼・お花を手向けてのお別れ案内の定型文を必ず付ける。ご葬儀を閉式いたします、初七日法要を執り納めます、などの締め文は使わない",
@@ -3984,7 +4018,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const selectedSamples=selectedLibraryReferences;
   const aiControl=normalizeAISettings(cfg.aiSettings);
   const makeDraft=async()=>{
-    const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,6);
+    const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,3);
     setSelectedLibraryReferences(libraryRefs);
     const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme,libraryRefs,compassKb);
     const ai=normalizeAISettings(cfg.aiSettings);
@@ -4055,7 +4089,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:compassSanitizeHearingSheet(sheet),generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint27-hisako-quality-20260708.1",templateVersion:"sprint27-hisako-quality-20260708.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint27-narration-grounding-20260729.1",templateVersion:"sprint27-narration-grounding-20260729.1",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
