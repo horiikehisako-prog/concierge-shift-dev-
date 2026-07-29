@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.33";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.34";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -397,6 +397,9 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
   if (!fullName || !givenName || fullName === givenName) return text;
   const fullLabel = `故${fullName}様`;
+  const payload = extractPromptPayload(prompt);
+  const age = String(payload?.hearingSheet?.age || "").trim();
+  const exactLifeSentence = `${fullLabel}は、${age ? `${age}年という` : ""}尊いご生涯を閉じ、静かに人生の幕を下ろされました。`;
   const escapedGiven = givenName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const escapedFull = fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   text = text
@@ -407,16 +410,35 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
   text = text
     .replace(new RegExp(`故${escapedFull}様は、?`, "u"), `${fullLabel}は、`)
     .replace(new RegExp(`故?${escapedGiven}様は、?`, "u"), `${fullLabel}は、`);
+  // The model sometimes duplicates the surname or the 故 prefix. Replace the
+  // entire fixed life-introduction sentence instead of trying to repair names.
+  text = text.replace(
+    /[^。\n]{0,140}(?:\d+|[〇零一二三四五六七八九十百]+)年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。/u,
+    exactLifeSentence
+  );
   if (!text.slice(0, 220).includes(fullName)) {
     const firstSentence = text.match(/^(.+?[。！？])/u)?.[1] || "";
-    const payload = extractPromptPayload(prompt);
-    const age = String(payload?.hearingSheet?.age || "").trim();
-    const bridge = `${fullLabel}は、${age ? `${age}年という` : ""}尊いご生涯を閉じ、静かに人生の幕を下ろされました。`;
     text = firstSentence
-      ? `${firstSentence}${bridge}${text.slice(firstSentence.length).trimStart()}`
-      : `${bridge}${text}`;
+      ? `${firstSentence}${exactLifeSentence}${text.slice(firstSentence.length).trimStart()}`
+      : `${exactLifeSentence}${text}`;
   }
   return text;
+};
+
+const normalizeOpeningSeasonSentence = (value, prompt) => {
+  const text = String(value || "").trim();
+  const firstSentence = text.match(/^(.+?[。！？])/u)?.[1] || "";
+  if (!firstSentence || !/(?:別れ|ご生涯|人生の幕|旅立|お見送り|葬送)/u.test(firstSentence)) return text;
+  const payload = extractPromptPayload(prompt) || {};
+  const season = String(payload.season || payload?.writingRules?.season || "").toLowerCase();
+  const replacement = season.includes("spring") || season.includes("春")
+    ? "やわらかな風に、春の気配を感じる頃となりました。"
+    : season.includes("autumn") || season.includes("秋")
+      ? "木々の葉が色づき始める頃となりました。"
+      : season.includes("winter") || season.includes("冬")
+        ? "澄んだ空気に、冬の深まりを感じる頃となりました。"
+        : "蝉の声が遠く近くに響く、この季節。";
+  return `${replacement}${text.slice(firstSentence.length).trimStart()}`;
 };
 
 const ensureOpeningFinalLine = value => {
@@ -472,7 +494,10 @@ const applyNameRule = (draft, prompt) => ({
     normalizeOpeningAgeMentions(
       ensureOpeningFinalLine(
         ensureOpeningFullNameIntro(
-          removeUnsupportedAudiencePhrasing(replaceFullName(draft.openingNarration, prompt)),
+          normalizeOpeningSeasonSentence(
+            removeUnsupportedAudiencePhrasing(replaceFullName(draft.openingNarration, prompt)),
+            prompt
+          ),
           prompt
         )
       ),
@@ -872,6 +897,7 @@ const buildSystemPrompt = extraInstruction => [
   "Stay close to the family's memory. Never expose the interview process with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです.",
   "Do not explain or interpret a supplied quotation. Place it once, then move on without calling it a philosophy, teaching, way of life, gaze, or attitude toward people.",
   "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; three short body paragraphs built from three or four selected hearingSheet fields; the exact opening final sentence.",
+  "The opening seasonal sentence must describe only the season. Never put 別れ, 人生, ご生涯, 旅立ち, お見送り, or 葬送 in that sentence.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   "Closing structure: use only one or two facts not used in opening; if a family feeling is explicitly supplied, state it without expanding it; leave a short factual aftertaste. Write two body paragraphs before the server's fixed guidance.",
