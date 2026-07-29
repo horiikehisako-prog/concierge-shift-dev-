@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.38";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.39";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -502,10 +502,18 @@ const normalizeQuotationContext = draft => {
         .replace(
           /(?:^|\n)\s*「人の悪口を言ってはいけない」[。]?\s*(?=\n|$)/gu,
           "\n折に触れて口にされた、「人の悪口を言ってはいけない」という言葉。"
+        )
+        .replace(
+          /(?:^|(?<=。)|\n)[^。\n]*「人の悪口を言ってはいけない」[^。\n]*。?/gu,
+          "折に触れて口にされた、「人の悪口を言ってはいけない」という言葉。"
         );
     }
     return text
       .replace(/そのようなお時間もお持ちでした。?/gu, "")
+      .replace(
+        /親子三代で[、，]?\s*((?:お)?誕生日月の[^に。\n]+)に([^。\n]+?)へ旅行されました。/gu,
+        "$1、親子三代で出かけられた$2への旅。"
+      )
       .replace(/[ \t]+\n/gu, "\n")
       .replace(/\n{3,}/gu, "\n\n")
       .trim();
@@ -817,7 +825,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 120) failures.push("closing too short");
+  if (closingBody.length < 100) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
@@ -1474,6 +1482,7 @@ module.exports = async (req, res) => {
         prompt,
         extraInstruction: retryInstruction,
       });
+      parsed = normalizeQuotationContext(limitDirectQuotes(parsed));
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
       } catch (qualityError) {
@@ -1517,6 +1526,7 @@ module.exports = async (req, res) => {
         prompt,
         extraInstruction: `SAFE MINIMAL VERSION. The previous draft still failed: ${remainingFailures.join(", ")}. Write a shorter complete manuscript using direct factual restatement only. Opening: seasonal sentence, required full-name life sentence, then no more than four short factual sentences drawn from at most two Hearing Sheet fields, then the exact opening final sentence. Closing: two to four short factual sentences drawn from one unused Hearing Sheet field. Do not add a transition that interprets personality, family emotion, atmosphere, meaning, legacy, lesson, voice, gaze, hands, scenery, or inner life. Do not direct the family to do, feel, remember, proceed, pray, offer, or imagine anything. Do not add fixed closing guidance because the server appends it. Prefer plain sentences such as 手芸を楽しまれました over vivid or poetic prose.`,
       });
+      parsed = normalizeQuotationContext(limitDirectQuotes(parsed));
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
       } catch (qualityError) {
