@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-family-inside-20260729.60";
+const API_BUILD_ID = "sprint27-family-inside-20260729.61";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -920,6 +920,7 @@ const hasAwkwardNarrationStyle = text => {
   if (/明るさを重ね/u.test(value)) return true;
   if (/ではないでしょうか/u.test(value)) return true;
   if (/ご家族には[^。]{0,40}映っておりました/u.test(value)) return true;
+  if ((value.match(/ご家族と(?:ともに)?過ごされた(?:日々|日常|時間)/gu) || []).length > 1) return true;
   if (/よく笑う人でいらっしゃいました/u.test(value)) return true;
   if (/可愛らしく感じておられたことと存じます/u.test(value)) return true;
   if (/(?:旅行|旅)[^。]{0,45}(?:月|十月|九月)[^。]{0,20}重ねられた/u.test(value)) return true;
@@ -1122,7 +1123,7 @@ const buildSystemPrompt = extraInstruction => [
   "Write from inside the family's shared life, not from an MC observing the family. Do not describe what the family probably sees, thinks, or feels. Let the remembered daily scene itself unfold.",
   "Use opening.supports only when they deepen the same human picture. You may omit a support. Coverage is never a goal. Never turn the cards into a checklist of personality, hobbies, quotations, and family values.",
   "Express the opening anchor exactly once. If there is no support card, write only one complete body sentence for that anchor; do not restate its face, smile, voice, gesture, or meaning in a second sentence.",
-  "When the opening anchor says what the family first remembers, place that face inside shared daily life. Write ご家族とともに過ごされた日々には、いつもよく笑っておられたお姿がありました. Do not write ではないでしょうか, ご家族の心にまず浮かぶのは, or よく笑う人でいらっしゃいました. Do not ask the family to agree with the MC.",
+  "When the opening anchor says what the family first remembers, place that face inside ordinary daily life. Write 何気ない毎日の中で、いつもよく笑っておられました. Do not write ではないでしょうか, ご家族の心にまず浮かぶのは, or よく笑う人でいらっしゃいました. Do not ask the family to agree with the MC.",
   "Source cards are interview notes, not finished prose. Never copy a casual ending or a shorthand fragment verbatim. Convert it into one dignified, grammatically complete MC sentence with respectful Japanese. For example, 穏やかに微笑んでいる姿が心に残っている becomes 穏やかに微笑んでおられたお姿が、ご家族の心に残っていることと存じます.",
   "One paragraph must carry one movement of memory. Join facts only when they belong naturally in the same remembered scene; otherwise leave one out.",
   "Keep each body sentence close to the selected card. Add no atmospheric filler such as そばにある時間, いつもの時間が流れる, 胸に浮かぶひととき, 言葉を飾ることなく, or 懐かしいひとこま.",
@@ -1130,12 +1131,12 @@ const buildSystemPrompt = extraInstruction => [
   "Do not interpret an activity or quotation. Never add a life lesson, philosophy, evaluation, or abstract conclusion. A quotation must be part of one complete sentence, such as また、折に触れて、「人の悪口を言ってはいけない」と話しておられました. Never leave it as the fragment 折に触れて口にされた、「…」という言葉。.",
   "Stay beside the family's memory. Do not expose the interview with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです. Do not speak for a family feeling unless it is a selected source fact.",
   "Never replace the family with outsiders such as 見送る方々, 周りの方々, or 参列された皆様. When the selected card says ご家族, keep the viewpoint with ご家族.",
-  "When a selected fact says the family found an action cute, keep the sourced adjective inside the remembered scene instead of reporting the family's reaction. Write 歌ったり、踊ったりされる、いつもの可愛らしいご様子も、ご家族と過ごされた日常の一場面でございました. Do not write ご家族には可愛らしく映っておりました, ご家族は可愛らしく感じておられました, or ことと存じます.",
+  "When a selected fact says the family found an action cute, keep the sourced adjective inside the remembered scene instead of reporting the family's reaction. Write 歌ったり、踊ったりされるご様子にも、いつもの可愛らしさがありました. Do not write ご家族には可愛らしく映っておりました, ご家族は可愛らしく感じておられました, or ことと存じます.",
   "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; two or three short body paragraphs using no more than the selected opening cards; the exact opening final sentence.",
   "The opening seasonal sentence must describe only the season. Never put 別れ, 人生, ご生涯, 旅立ち, お見送り, or 葬送 in that sentence.",
   "Do not use 続く, 続いております, 重なる, or 深まる merely to fill the seasonal sentence. Prefer one plain observation of the season.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
-  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. It may gather only memories already stated, without interpretation: 笑っておられたお顔も、歌い踊るお姿も、折に触れて聞いたその言葉も、ご家族とともに過ごされた日々の中から、一つひとつ思い返されます. Vary the wording naturally. This bridge must make the gratitude sentence feel earned, not sudden.",
+  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. It may gather only memories already stated, without interpretation: その笑顔も、可愛らしい仕草も、折に触れて聞いた言葉も、すべてはご家族とともに過ごされた日々の中にあります. Vary the wording naturally. Use a phrase such as ご家族とともに過ごされた日々 only here, no more than once in the manuscript. This bridge must make the gratitude sentence feel earned, not sudden.",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   "Closing structure: use only closing.anchor and write exactly one complete respectful sentence. Do not first copy the source as a noun fragment and then explain it. Do not add a second fact, aftertaste sentence, moral, personality summary, or general explanation. The fixed ceremony guidance follows immediately.",
   "For a travel anchor with several destinations and a birthday month, make the destinations remembered places: 六甲、小倉、下関、博多は、いずれもお誕生日月の十月に、親子三代で訪れた思い出の地でございます. Do not write 向かわれた旅行, 十月に重ねられた, or ご家族の大切な思い出 unless the source explicitly uses 大切.",
