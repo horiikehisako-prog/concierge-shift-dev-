@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-lived-memory-20260729.64";
+const API_BUILD_ID = "sprint27-lived-memory-20260729.65";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -885,6 +885,7 @@ const hasBrokenJapaneseGrammar = text => {
 
     // Catch common duplicated transformations produced from raw hearing-sheet wording.
     if (/(?:大切にしていた|楽しんでいた|育てていた)を(?:大切にされた|楽しまれた|育てられた)/u.test(sentence)) return true;
+    if (/(?:花|野菜|鉢植え)[^。！？]{0,12}を日々手をかけ/u.test(sentence)) return true;
     return false;
   });
 };
@@ -939,6 +940,7 @@ const hasAwkwardNarrationStyle = text => {
   if (/ではないでしょうか/u.test(value)) return true;
   if (/ご家族には[^。]{0,40}映っておりました/u.test(value)) return true;
   if ((value.match(/ご家族と(?:ともに)?過ごされた(?:日々|日常|時間)/gu) || []).length > 1) return true;
+  if ((value.match(/思い出の中にございます/gu) || []).length > 1) return true;
   if (/よく笑う人でいらっしゃいました/u.test(value)) return true;
   if (/可愛らしく感じておられたことと存じます/u.test(value)) return true;
   if (/(?:旅行|旅)[^。]{0,45}(?:月|十月|九月)[^。]{0,20}重ねられた/u.test(value)) return true;
@@ -1147,6 +1149,7 @@ const buildSystemPrompt = extraInstruction => [
   "One paragraph must carry one movement of memory. Join facts only when they belong naturally in the same remembered scene; otherwise leave one out.",
   "Keep each body sentence close to the selected card. Add no atmospheric filler such as そばにある時間, いつもの時間が流れる, 胸に浮かぶひととき, 言葉を飾ることなく, or 懐かしいひとこま.",
   "Describe supplied actions plainly. Safe generic motion is allowed: 手芸 may become 手を動かし少しずつ形にする; 野菜や花を育てる may become 日々手をかけ育つ様子を見守る. Do not add materials, finished objects, rooms, gardens, soil, weather, conversations, reactions, motives, or emotions.",
+  "For a selected hobbies card, use respectful remembered-present action without adding another memory summary: 手芸に向かい、野菜や花には日々手をかけておられる. Keep the particle に or には before 手をかける; never write 花を手をかける or 花を日々手をかける.",
   "Do not interpret an activity or quotation. Never add a life lesson, philosophy, evaluation, or abstract conclusion. A quotation must be part of one complete sentence, such as また、折に触れて、「人の悪口を言ってはいけない」と話しておられました. Never leave it as the fragment 折に触れて口にされた、「…」という言葉。.",
   "Stay beside the family's memory. Do not expose the interview with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです. Do not speak for a family feeling unless it is a selected source fact.",
   "Never replace the family with outsiders such as 見送る方々, 周りの方々, or 参列された皆様. When the selected card says ご家族, keep the viewpoint with ご家族.",
@@ -1166,7 +1169,7 @@ const buildSystemPrompt = extraInstruction => [
   "State the central memory once. If the anchor is a smiling face, do not add another sentence saying the person often laughed, was bright, or lightened the room.",
   "Every sentence must be grammatically complete. Avoid fragments such as 家族を大切にされていたこと。 or 歌ったり、踊ったりして、いつも可愛い。",
   "When one selected card contains two moments joined by と, keep them in one complete sentence. Do not write a noun fragment such as ゴルフへ出かける朝の〇〇様。 followed by そして.",
-  "Use at most one deliberate noun-ending sentence in the opening body and none in closing. Do not end a body sentence in casual plain form such as 〜ている。 or 〜だった。.",
+  "Use at most one deliberate noun-ending sentence in the opening body and none in closing. Respectful remembered-present endings such as 〜される。 and 〜おられる。 are allowed and useful for rhythm. Do not use casual plain endings such as 〜している。 or 〜だった。.",
   "Use natural spoken Japanese. After the fixed life sentence ending 下ろされました, the next two body sentences must not end in ました, でした, ございました, or おりました. Use remembered-present forms, sentence connection, or at most one deliberate noun ending. Never allow three past polite endings in a row across paragraph breaks.",
   "Delete any sentence whose only job is to explain, evaluate, connect, or add length. Avoid 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, 確かな記録, 日々の重なり, 暮らしの形, and similar AI summaries.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
