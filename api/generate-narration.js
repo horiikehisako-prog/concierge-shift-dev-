@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-memory-first-20260729.57";
+const API_BUILD_ID = "sprint27-memory-first-20260729.58";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1114,6 +1114,7 @@ const buildSystemPrompt = extraInstruction => [
   "This is a memory-first narration, not a profile. Begin the body with opening.anchor and let the listener picture that remembered person before mentioning any supporting fact.",
   "Use opening.supports only when they deepen the same human picture. You may omit a support. Coverage is never a goal. Never turn the cards into a checklist of personality, hobbies, quotations, and family values.",
   "Express the opening anchor exactly once. If there is no support card, write only one complete body sentence for that anchor; do not restate its face, smile, voice, gesture, or meaning in a second sentence.",
+  "Source cards are interview notes, not finished prose. Never copy a casual ending or a shorthand fragment verbatim. Convert it into one dignified, grammatically complete MC sentence with respectful Japanese. For example, 穏やかに微笑んでいる姿が心に残っている becomes 穏やかに微笑んでおられたお姿が、ご家族の心に残っていることと存じます.",
   "One paragraph must carry one movement of memory. Join facts only when they belong naturally in the same remembered scene; otherwise leave one out.",
   "Keep each body sentence close to the selected card. Add no atmospheric filler such as そばにある時間, いつもの時間が流れる, 胸に浮かぶひととき, 言葉を飾ることなく, or 懐かしいひとこま.",
   "Describe supplied actions plainly. Safe generic motion is allowed: 手芸 may become 手を動かし少しずつ形にする; 野菜や花を育てる may become 日々手をかけ育つ様子を見守る. Do not add materials, finished objects, rooms, gardens, soil, weather, conversations, reactions, motives, or emotions.",
@@ -1125,7 +1126,7 @@ const buildSystemPrompt = extraInstruction => [
   "Do not use 続く, 続いております, 重なる, or 深まる merely to fill the seasonal sentence. Prefer one plain observation of the season.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
-  "Closing structure: use only closing.anchor and write one short memory paragraph. Do not add a second fact, moral, personality summary, or general explanation. The fixed ceremony guidance follows immediately.",
+  "Closing structure: use only closing.anchor and write exactly one complete respectful sentence. Do not first copy the source as a noun fragment and then explain it. Do not add a second fact, aftertaste sentence, moral, personality summary, or general explanation. The fixed ceremony guidance follows immediately.",
   "Return only the closing narrative body. Do not write age-respect wording, attendee thanks, flower-farewell guidance, venue preparation, baggage instructions, or どうぞよろしくお願いいたします. The server appends those lines once.",
   "Never write another age phrase beyond the required opening life sentence. The server adds the age once in the fixed closing.",
   "Opening and closing cards are disjoint. Never repeat, paraphrase, summarize, or echo an opening trait, hobby, quotation, place, feeling, or episode in closing.",
@@ -1133,6 +1134,7 @@ const buildSystemPrompt = extraInstruction => [
   "State the central memory once. If the anchor is a smiling face, do not add another sentence saying the person often laughed, was bright, or lightened the room.",
   "Every sentence must be grammatically complete. Avoid fragments such as 家族を大切にされていたこと。 or 歌ったり、踊ったりして、いつも可愛い。",
   "When one selected card contains two moments joined by と, keep them in one complete sentence. Do not write a noun fragment such as ゴルフへ出かける朝の〇〇様。 followed by そして.",
+  "Do not use a noun-ending sentence when a section has only one selected fact. Do not end a body sentence in casual plain form such as 〜ている。 or 〜だった。.",
   "Use natural spoken Japanese. Vary rhythm through sentence length and syntax, not by forcing noun endings. Never use the same です・ます ending three sentences in a row, and never stack sentence fragments.",
   "Delete any sentence whose only job is to explain, evaluate, connect, or add length. Avoid 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, 確かな記録, 日々の重なり, 暮らしの形, and similar AI summaries.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
