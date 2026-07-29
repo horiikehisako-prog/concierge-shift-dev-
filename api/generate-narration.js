@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-lived-memory-20260729.65";
+const API_BUILD_ID = "sprint27-lived-memory-20260729.66";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1149,7 +1149,7 @@ const buildSystemPrompt = extraInstruction => [
   "One paragraph must carry one movement of memory. Join facts only when they belong naturally in the same remembered scene; otherwise leave one out.",
   "Keep each body sentence close to the selected card. Add no atmospheric filler such as そばにある時間, いつもの時間が流れる, 胸に浮かぶひととき, 言葉を飾ることなく, or 懐かしいひとこま.",
   "Describe supplied actions plainly. Safe generic motion is allowed: 手芸 may become 手を動かし少しずつ形にする; 野菜や花を育てる may become 日々手をかけ育つ様子を見守る. Do not add materials, finished objects, rooms, gardens, soil, weather, conversations, reactions, motives, or emotions.",
-  "For a selected hobbies card, use respectful remembered-present action without adding another memory summary: 手芸に向かい、野菜や花には日々手をかけておられる. Keep the particle に or には before 手をかける; never write 花を手をかける or 花を日々手をかける.",
+  "For a selected hobbies card containing two distinct activities, give each activity one respectful remembered-present sentence instead of compressing them. Example: 手芸に向かえば、手を動かしながら少しずつ形にしていかれる。野菜や花にも日々手をかけ、育つ様子を見守っておられる。 Keep the particle に or には before 手をかける; never write 花を手をかける or 花を日々手をかける. Do not add another memory-summary sentence after these actions.",
   "Do not interpret an activity or quotation. Never add a life lesson, philosophy, evaluation, or abstract conclusion. A quotation must be part of one complete sentence, such as また、折に触れて、「人の悪口を言ってはいけない」と話しておられました. Never leave it as the fragment 折に触れて口にされた、「…」という言葉。.",
   "Stay beside the family's memory. Do not expose the interview with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです. Do not speak for a family feeling unless it is a selected source fact.",
   "Never replace the family with outsiders such as 見送る方々, 周りの方々, or 参列された皆様. When the selected card says ご家族, keep the viewpoint with ご家族.",
