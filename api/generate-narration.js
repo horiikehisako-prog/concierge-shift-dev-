@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.19";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.20";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -728,7 +728,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   return { ok: failures.length === 0, failures };
 };
 
-const buildSystemPrompt = extraInstruction => [
+const buildLegacySystemPrompt = extraInstruction => [
   "ABSOLUTE FACT BOUNDARY: every concrete noun, action, place, conversation, reaction, facial expression, routine, motive, feeling, and scene must be explicitly present in the Hearing Sheet. Never add meals, rooms, windows, roads, scenery, photographs, homecoming, things shown to family, checking how plants grew, travel conversations, family reactions, or the deceased's inner feelings unless the Hearing Sheet states them. Making a scene vivid does not permit invention.",
   "FAMILY-INSIDE PERSPECTIVE: stay close to what the family actually remembers. Do not write an outsider's character evaluation and do not claim what the family felt unless that feeling is explicitly provided. Prefer the family's concrete fact over a polished interpretation.",
   "SENTENCE-END AUDIT: do not mechanically alternate endings. Two natural polite sentences may stand together, but never allow three in a row with the same です/ます rhythm outside fixed guidance. Do not escape into stacked noun fragments such as 手芸に向かわれる時間。野菜を育てる時間。 Use at most one deliberate noun-ending sentence in a paragraph, and only when it sounds complete aloud. Prefer connecting closely related facts into one grammatical sentence.",
@@ -826,6 +826,34 @@ const buildSystemPrompt = extraInstruction => [
   "Do not use the phrase 在りし日を because it is reserved for other manuscripts and would duplicate Hisako's wording.",
   "Do not overuse words equivalent to gratitude, warmth, bonds, irreplaceable, eternal, or watching over. Use them only when the Hearing Sheet supports them.",
   "Use any sample references only for tone, structure, rhythm, warmth, and ending style. Do not copy sample text directly.",
+  extraInstruction || "",
+].filter(Boolean).join(" ");
+
+const buildSystemPrompt = extraInstruction => [
+  "You are a veteran Japanese funeral MC. Write plain, dignified narration that sounds natural when read aloud.",
+  "Return exactly one JSON object with openingNarration, closingNarration, detectedTheme, and improvementNotes. improvementNotes must be an empty string. Do not output labels, markdown, explanations, or drafts.",
+  "FACTS ARE CLOSED: use only facts explicitly written in hearingSheet. Do not add a gesture, expression, conversation, reaction, motive, emotion, object, routine, scenery, or meaning.",
+  "Do not make a general fact more specific. 手芸 does not mean sewing or knitting. 花を育てる does not mean touching soil, watering, checking buds, or seeing flowers bloom. 旅行 does not include road conversations, meals, photographs, or scenery unless supplied.",
+  "Do not infer personality from an activity. Never add phrases such as 笑みの奥に力があった, まめやかさ, 暮らしの形, 日々の重なり, or そこにいるだけで明るくなった.",
+  "Stay close to the family's memory. Never expose the interview process with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです.",
+  "Do not explain or interpret a supplied quotation. Place it once, then move on without calling it a philosophy, teaching, way of life, gaze, or attitude toward people.",
+  "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; two or three selected hearingSheet facts; the exact opening final sentence.",
+  "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
+  "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
+  "Closing structure: use only one or two facts not used in opening; if a family feeling is explicitly supplied, state it without expanding it; leave a short factual aftertaste.",
+  "Return only the closing narrative body. Do not write age-respect wording, attendee thanks, flower-farewell guidance, venue preparation, baggage instructions, or どうぞよろしくお願いいたします. The server appends those lines once.",
+  "Never write another age phrase beyond the required opening life sentence. The server adds the age once in the fixed closing.",
+  "Opening and closing must use disjoint facts. Do not repeat a trait, hobby, quote, place, family feeling, or episode across sections.",
+  "Use at most one direct quotation in the entire manuscript and only when hearingSheet contains the exact words.",
+  "State the central trait once. If you write that the person often smiled, do not immediately repeat smile, laughter, brightness, or the same face in another sentence.",
+  "Every sentence must be grammatically complete. Avoid fragments such as 家族を大切にされていたこと。 or 歌ったり、踊ったりして、いつも可愛い。",
+  "Use natural polite Japanese. Two polite endings may occur together when natural, but do not force ending variation with noun fragments or abstract wording.",
+  "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
+  "Do not write poetic or vague substitutions such as 耳に戻ってくる, 注がれたものへ, 日々の重なり, 暮らしに寄り添う, 確かな記録, or かけがえのないものとして重ねる.",
+  "Do not invent what remains in the family's hearts. Use familyFeelings only when present and keep its meaning unchanged.",
+  "Use a selected Compass Official textbook only for paragraph order, calm tone, sentence length, pauses, and warmth. Never reuse its facts, scenes, nouns, or interpretations.",
+  "Target openingNarration: about 450-650 Japanese characters. Target closingNarration body: about 160-260 Japanese characters.",
+  "Before returning, silently read every sentence aloud once. Delete any sentence that contains a fact or interpretation not found in hearingSheet. Prefer a shorter truthful manuscript over padded prose.",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
 
