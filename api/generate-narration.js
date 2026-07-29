@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.53";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.54";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -625,6 +625,10 @@ const normalizeQuotationContext = draft => {
       .replace(
         /ご家族の胸には、([^。\n]*?笑顔)が思い出されます。/gu,
         "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
+      )
+      .replace(
+        /(?:これからも、)?ご家族の胸には、([^。\n]*?笑顔)が思い出されることでしょう。/gu,
+        "これから先も、その$1は、ご家族の胸に浮かぶことでしょう。"
       )
       .replace(
         /いまご家族は、([^。\n]+?)を思い出しておられます。/gu,
