@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.36";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.37";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -493,6 +493,10 @@ const normalizeQuotationContext = draft => {
         .replace(/[^。\n]*人の悪口を言わないことを大切にされていました。[ \t]*/gu, "")
         .replace(
           /「人の悪口を言ってはいけない」[。]?\s*その(?:お)?言葉[^。]*。/gu,
+          "「人の悪口を言ってはいけない」。"
+        )
+        .replace(
+          /「人の悪口を言ってはいけない」[。]?\s*(?:前を向いて|人との関わり|その教え|その生き方|その考え)[^。]*。/gu,
           "「人の悪口を言ってはいけない」。"
         );
     }
@@ -1361,8 +1365,10 @@ module.exports = async (req, res) => {
         "聞き取りの正確な言葉に対して、口にしてこられたのではないでしょうか、とは書かない。引用の後に哲学や人柄の解説を加えない。",
         "とのことです、といいます、と聞いております、など聞き取りを報告する文体は禁止。家族が可愛いと感じた事実は、ご家族にはいつも可愛らしく映っていたことでしょう、などと推測せず、ご家族はいつも可愛いと感じておられました、と直接書く。",
         "人の悪口を言わない、の直後に「人の悪口を言ってはいけない」と引用するなど、説明と引用が同じ意味なら引用だけを残す。",
+        "「人の悪口を言ってはいけない」の後に、前を向いて日々を重ねた、人との関わりを大切にした、教え、生き方、考え方などの解釈を足さない。引用だけで段落を閉じてよい。",
         "行動へ向かうその歩み、地名と月が時間を伝える、言葉をここに置く、〇〇様らしさの一つ、声として残る、思いが重なる、等の抽象的なAI表現は削除する。",
         "歌や踊りを家族が可愛いと感じた事実は、家族の視点のまま書く。一般に可愛い方として親しまれた、とは変えない。",
+        "趣味の段落で、手芸では、時間を持たれました、野菜や花を育てることでは、とは書かない。自然な読み上げの例は、手芸に向かい、手を動かしながら少しずつ形にしていく。野菜や花にも日々手をかけ、育つ様子を見守る。ここでは歴史的現在形を用い、三文すべてをましたで終えない。",
         "笑っている顔しか思い出せないほど、よく笑う人、という一つの家族の記憶は、一文で一度だけ表す。笑う方でした、を続けない。",
         "旅行情報は一つか二つの完全な文にまとめる。ご旅行。いずれも十月…旅でした、のように旅行と旅を言い直さない。",
         "閉式後本文は140〜220字を目安にする。旅行、家族を大切にしたこと、familyFeelingsを別々の項目として並べず、一つの流れにする。旅行先の地名や誕生日月に触れたとき、その時間が思い起こされる、という控えめな余韻はよい。",
@@ -1688,6 +1694,7 @@ const compactNarrationPrompt = prompt => {
     "In closing, connect travelAnniversaryEffort, valuedThings, and familyFeelings as one memory flow rather than three profile statements. It is acceptable to say that a supplied place name or birthday month may bring the shared time back to mind; do not invent what happened during the trip.",
     "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a new episode, or add emotional meaning.",
     "Use safe concrete paraphrase so the family can picture the supplied fact: 人と接する→人と言葉を交わす時間, 手芸→手を動かし少しずつ形にする, 野菜や花を育てる→日々手をかけ育つ様子を見守る. Do not add specific materials, finished objects, locations, weather, conversations, or reactions.",
+    "For a hobbies paragraph, prefer natural historical present: 手芸に向かい、手を動かしながら少しずつ形にしていく。野菜や花にも日々手をかけ、育つ様子を見守る. Never write 手芸では、時間を持たれました or 野菜や花を育てることでは. Do not end every hobby sentence with ました.",
     "Use no more than five sentence-final ました・でした・ございました・おりました and no more than four sentence-final ます・です・ございます in the narrative body. Never place either family three sentences in a row. Use one natural 〜ではないでしょうか question, a few complete present-historical sentences, and at most one dignified noun-ending sentence per paragraph.",
     "Do not pad with explanations such as その言葉をここに置かせていただきます, そのままの響きで, 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, or 静かにここにあります. Stay with the supplied action, expression, place, or exact words.",
     "Closing must not begin with a season word even when a dated memory is used. Begin with the people or action, and place the season later in the sentence.",
