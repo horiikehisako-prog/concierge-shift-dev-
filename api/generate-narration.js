@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.29";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.30";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -977,13 +977,22 @@ const buildFastSystemPrompt = extraInstruction => [
   extraInstruction || "",
 ].filter(Boolean).join(" ");
 
-const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction, timeoutMs = 0 }) => {
+const requestNarration = async ({
+  apiKey,
+  model,
+  temperature,
+  maxTokens,
+  prompt,
+  extraInstruction,
+  timeoutMs = 0,
+  systemPromptOverride = "",
+}) => {
   if (shouldUseResponsesApi(model)) {
     // A complete Japanese narration fits comfortably in this range. The old
     // 4,200-token floor increased GPT-5.5 latency without improving the draft.
     const outputTokenLimit = Math.min(Math.max(maxTokens, 1800), 3200);
     const callResponses = async forcePlainJson => {
-      const systemPrompt = (forcePlainJson
+      const systemPrompt = systemPromptOverride || (forcePlainJson
         ? "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, improvementNotes. Put an empty string in improvementNotes. You are the dedicated veteran funeral MC for Asuka Hall with more than 20 years of funeral MC experience. Write Hisako-style narration as text to listen to, not text to read silently. The goal is not to invite tears; the highest priority is that the family feels, 'this is truly who they were.' Opening must be 60-70% and closing 30-40%. Opening structure: one refined seasonal sentence ending like この季節 or 頃となりました, then '故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。', then personality, family, hobbies and work or life path if provided, one memorable scene, and final sentence exactly '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'. Closing must begin naturally from the afterglow after the farewell, not with a fixed attendee greeting such as '本日はご多用の中、ご会葬いただき誠にありがとうございました。'. Then use a memory not used in opening, the family's feelings, what the deceased left behind, and the deceased living on in everyone's hearts. Closing must end exactly with: '{age}年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。 本日はご会葬いただき、誠にありがとうございました。 これよりは、お花を手向けてのお別れのお時間でございます。 式場内は、お別れの準備へと移らせていただきます。 皆様には、お手荷物をお持ちいただき、後方でお待ちくださいますようお願いいたします。 どうぞよろしくお願いいたします。'. Because the fixed closing begins with '{age}年のご生涯', do not write another age phrase such as '{age}年の歩み' immediately before it; use the given name plus 様, その歩み, or そのご生涯 instead. Use 故 plus the full name only in the opening life-introduction sentence; everywhere else use the given name plus 様 only when a name is needed. The closing fixed guidance does not use the deceased's name. Do not also write '本日、故{fullName}様とのお別れの時を迎えました。'. Do not rely on fixed funeral phrases such as 'そのお気持ちが何よりの供養となることでしょう。', '安らかなるご冥福をお祈り申し上げます。', or '在りし日のお姿を偲び'. Do not write a resume or strict chronology; express what kind of life they lived, what character they had, what ordinary days they treasured, and what they left with the family as one gentle story. Use only facts from the Hearing Sheet; do not invent. Do not infer inner life, life philosophy, forgiveness, purity of heart, or outlook beyond what the family actually said. Lines such as 自分の心を濁さずに生きる, 人生を前向きに受け止めた, or 人を許すことを大切にした are allowed only when directly supported by the Hearing Sheet. Do not keep the deceased waiting: mention the full name in the required life-introduction sentence immediately after the seasonal sentence. After using the given name once in a section, do not repeat it unnecessarily; use そのお姿, ご本人, その笑顔, or omit the subject where Japanese sounds natural, while keeping required fixed final lines unchanged. One sentence should carry one scene or one feeling. Turn facts into small remembered moments, not polished summaries. Avoid explanatory personality sentences such as '〇〇な人でした.' Show character through actions, facial expressions, daily habits, conversations, hobbies, family time, and relationships with others. Avoid preachy or strongly religious wording. Avoid taboo or repetitive funeral words: 重ね重ね, たびたび, ますます, いよいよ, くれぐれも, 返す返す, 次々, 続く, 追って, 再び, またまた, 浮かばれない. Do not overuse sentence endings such as でございました, ことでしょう, or ことと存じます. Use details from the Hearing Sheet so each scene feels specific to this deceased, not anyone. Do not directly explain personality as 優しかった, 前向きだった, 明るかった, or 家族思いだった; show the action, habit, words, or family scene that makes listeners feel it. Do not repeat episodes. Do not use venue names or the phrase 在りし日を."
         : buildSystemPrompt(extraInstruction));
       const body = {
@@ -1278,18 +1287,36 @@ module.exports = async (req, res) => {
       const closingBodyForEdit = String(parsed?.closingNarration || "")
         .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し[\s\S]*$/u, "")
         .trim();
-      const draftForEdit = JSON.stringify({
+      const draftForEdit = {
         openingNarration: parsed?.openingNarration || "",
         closingNarration: closingBodyForEdit,
+      };
+      const compactPayload = extractPromptPayload(prompt) || {};
+      const copyEditPrompt = JSON.stringify({
+        hearingSheet: compactPayload.hearingSheet || {},
+        draft: draftForEdit,
       });
+      const copyEditSystemPrompt = [
+        "あなたは日本語の葬儀司会原稿を整える校正者です。新しい原稿を創作せず、DRAFTの事実と意味を保ったまま、日本語だけを自然に直してください。",
+        "返答は openingNarration、closingNarration、detectedTheme、improvementNotes を持つJSON一個だけ。improvementNotesは空文字。見出し、説明、Markdownは禁止。",
+        "hearingSheetにない人物、感情、評価、場面、動作、関係、意味を一つも足さない。親しい方々、周りの方々、確かな歩み、日々の中にあった喜び等を補わない。",
+        "同じ事実は全原稿で一度だけ。笑う顔とよく笑う人を隣接させない。明るい・笑顔・朗らかを同じ説明として重ねない。",
+        "家族の一人称を司会者の一人称にしない。私も彼女を見習い、明るく前向きに歩んでいきたい、は、その明るさを見習いたいという思いも、ご家族の胸にあります、程度の間接話法に直す。彼・彼女は使わない。",
+        "聞き取りの正確な言葉に対して、口にしてこられたのではないでしょうか、とは書かない。引用の後に哲学や人柄の解説を加えない。",
+        "行動へ向かうその歩み、地名と月が時間を伝える、言葉をここに置く、〇〇様らしさの一つ、声として残る、思いが重なる、等の抽象的なAI表現は削除する。",
+        "歌や踊りを家族が可愛いと感じた事実は、家族の視点のまま書く。一般に可愛い方として親しまれた、とは変えない。",
+        "体言止めは一段落に一つまで。述語のない不完全な文を作らない。同じです・ます系の文末を三文続けない。",
+        "開式前の季節文、氏名と年齢の定型文、最後の感謝文は保持する。閉式後は物語本文だけを返し、年齢・会葬御礼・献花・式場準備・手荷物案内を出さない。",
+        "文章を長くするための補足は禁止。不自然な文は、新しい説明で置き換えず、短く削ってつなぎ直す。",
+      ].join(" ");
       parsed = await requestNarration({
         apiKey,
         model,
         temperature: 0.1,
         maxTokens: Math.min(maxTokens, 2400),
-        prompt,
+        prompt: copyEditPrompt,
         timeoutMs: 18000,
-        extraInstruction: `FINAL COPY-EDIT PASS. Edit the supplied DRAFT; do not compose a new life story. Preserve every supported fact and the division of facts between opening and closing. Add no scene, action, emotion, judgment, relationship, or meaning. Correct unnatural Japanese, particles, and sentence endings. Remove explanatory AI phrases such as その言葉を口にしてこられたのではないでしょうか, 行動へ向かうその歩みの中に, 地名と月が時間を伝える, その言葉をここに置く, or 〇〇様らしさの一つ. Do not express uncertainty about an exact supplied quotation. Never copy a family first-person sentence into the MC voice. Rewrite 私も彼女を見習い、明るく前向きに歩んでいきたい only as restrained indirect narration such as その明るさを見習いたいという思いも、ご家族の胸にあります, without adding advice. Do not write 彼 or 彼女. If the hearing says the family found singing and dancing cute, keep the viewpoint with the family; do not say the person was generally 親しまれた. State the central smile memory once only. Keep the required opening introduction and exact final opening sentence. Return only the closing narrative body; do not include fixed ceremony guidance. Avoid stacked noun fragments and avoid three consecutive です・ます endings. DRAFT: ${draftForEdit}`,
+        systemPromptOverride: copyEditSystemPrompt,
       });
     } catch (copyEditError) {
       console.warn("[generate-narration] copy edit skipped", {
