@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.45";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.46";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -512,6 +512,10 @@ const normalizeQuotationContext = draft => {
     return text
       .replace(/そのようなお時間もお持ちでした。?/gu, "")
       .replace(/帰宅後には、ご自宅で/gu, "帰宅後には、")
+      .replace(
+        /帰宅された後には、ゆっくりと過ごされる。その姿が、/gu,
+        "帰宅された後、ゆっくりと過ごされるお姿が、"
+      )
       .replace(/家を出ていかれる/gu, "出かけられる")
       .replace(
         /休日にはゴルフを楽しみ、広い空の下で、仲間とゴルフをする時間を楽しみにされていました。/gu,
@@ -599,6 +603,7 @@ const normalizeQuotationContext = draft => {
     openingNarration = openingNarration
       .replace(/ご家族にはよく微笑んでおられ、その表情が心に残ります。?/gu, "")
       .replace(/言葉は少なくとも、ご家族にはよく微笑んでおられました。?/gu, "")
+      .replace(/言葉を多く重ねることはなく、ご家族にはよく微笑んでおられました。?/gu, "")
       .replace(
         /穏やかで多くを語らず、ご家族にはよく微笑んでおられました。?/gu,
         "穏やかで、多くを語らない方でした。"
