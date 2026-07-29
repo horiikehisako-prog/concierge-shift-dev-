@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.80";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.81";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1963,7 +1963,13 @@ const memoryCardsOverlap = (left, right) => {
   if (meaningfulFragmentOverlap(left.text, right.text)) return true;
   const leftConcepts = memoryConceptsFor(left.text);
   const rightConcepts = memoryConceptsFor(right.text);
-  return [...leftConcepts].some(concept => rightConcepts.has(concept));
+  const sharedConcepts = [...leftConcepts].filter(concept => rightConcepts.has(concept));
+  if (!sharedConcepts.length) return false;
+  // Keep a card when it also contains a genuinely different memory. For
+  // example, "旅行とカラオケ" must not lose the karaoke detail merely
+  // because another card already contains a trip. The prompt tells the model
+  // to use only the non-overlapping detail from such a support card.
+  return ![...rightConcepts].some(concept => !leftConcepts.has(concept));
 };
 
 const pickMemoryCards = compactSheet => {
@@ -2007,6 +2013,7 @@ const pickMemoryCards = compactSheet => {
     "favoritePhrases",
     "hobbies",
     "personality",
+    "valuedThings",
   ].map(byField).filter(Boolean).forEach(card => {
     if (selectedOpening.length >= 3) return;
     if (selectedOpening.some(selected => selected.field === card.field)) return;
@@ -2103,9 +2110,11 @@ const compactNarrationPrompt = prompt => {
     "sourceFacts以外の事実は使わないでください。openingとclosingの材料は意図的に分けられています。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
-    "openingは定型文を含めて380〜600字を目安にしてください。二つか三つの事実を一度ずつ使い、同じ事実の言い換えで字数を増やさないでください。",
+    "openingは定型文を含めて320〜500字を目安にしてください。二つか三つの事実を一度ずつ使い、同じ事実の言い換えで字数を増やさないでください。",
     "closingはサーバーが後で加える式次第案内を除き、140〜240字を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
+    "anchorと各supportに使えるのは、それぞれ最大二文です。一つの事実を説明し直す三文目は書かないでください。",
+    "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
     "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を従属節でつなぐ、歴史的現在を一度だけ使う、体言止めを一段落に一度だけ使う、という方法で自然な呼吸を作ってください。",
     "「時間を重ねる」「日々を重ねる」「時間が記憶につながる」「身近な記憶」「日常の一こま」「お姿がそこにある」「その声にのせて」「ひと続きの記憶」「胸に静かに留められる」は使わないでください。事実を抽象語へ置き換えず、その場面を平明に書いてください。",
     "各段落の最後に抽象的なまとめを足さないでください。場面そのものが人柄を伝えるところで止めてください。",

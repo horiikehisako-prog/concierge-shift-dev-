@@ -84,6 +84,7 @@ const main = async () => {
   const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
+    signal: AbortSignal.timeout(180_000),
     body: JSON.stringify({
       prompt: `Create narration from this JSON:\n${JSON.stringify(promptPayload)}`,
       model: "gpt-5.5",
