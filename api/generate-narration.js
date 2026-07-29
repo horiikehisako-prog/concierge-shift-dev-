@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.51";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.52";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -510,6 +510,10 @@ const normalizeQuotationContext = draft => {
         );
     }
     return text
+      .replace(
+        /夏の陽ざしが、深まる季節でございます。/gu,
+        "夏の陽ざしがまぶしさを増す頃でございます。"
+      )
       .replace(/そのようなお時間もお持ちでした。?/gu, "")
       .replace(/帰宅後には、ご自宅で/gu, "帰宅後には、")
       .replace(
@@ -549,6 +553,7 @@ const normalizeQuotationContext = draft => {
         /同じ時をともにするひとときは、[^。\n]+?にとって大切な楽しみの一つでございました。/gu,
         ""
       )
+      .replace(/クラブを手に、そのひとときへ向かわれました。?/gu, "")
       .replace(
         /ご家族の記憶にまず浮かぶのは、(?:いつも)?笑っておられたお顔で、よく笑う方として思い出されます。/gu,
         "ご家族の記憶にまず浮かぶのは、よく笑っておられたお顔です。"
@@ -616,6 +621,10 @@ const normalizeQuotationContext = draft => {
       .replace(
         /今、ご家族の胸には、その([^。\n]*?笑顔)が思い出されています。/gu,
         "ご家族の胸に浮かぶのは、あの$1ではないでしょうか。"
+      )
+      .replace(
+        /ご家族の胸には、([^。\n]*?笑顔)が思い出されます。/gu,
+        "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
       )
       .replace(
         /いまご家族は、([^。\n]+?)を思い出しておられます。/gu,
