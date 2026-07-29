@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.31";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.32";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -863,8 +863,9 @@ const buildLegacySystemPrompt = extraInstruction => [
 const buildSystemPrompt = extraInstruction => [
   "You are a veteran Japanese funeral MC. Write plain, dignified narration that sounds natural when read aloud.",
   "Return exactly one JSON object with openingNarration, closingNarration, detectedTheme, and improvementNotes. improvementNotes must be an empty string. Do not output labels, markdown, explanations, or drafts.",
-  "FACTS ARE CLOSED: use only facts explicitly written in hearingSheet. Do not add a gesture, expression, conversation, reaction, motive, emotion, object, routine, scenery, or meaning.",
-  "Do not make a general fact more specific. 手芸 does not mean sewing or knitting. 花を育てる does not mean touching soil, watering, checking buds, or seeing flowers bloom. 旅行 does not include road conversations, meals, photographs, or scenery unless supplied.",
+  "FACTS ARE CLOSED: use only facts explicitly written in hearingSheet. Do not add a new conversation, reaction, motive, emotion, object, routine, place, scenery, or meaning.",
+  "SAFE CONCRETIZATION IS ALLOWED: express a supplied activity through only the generic actions necessarily contained in it. 人と接することが好き may become 人と言葉を交わすひとときを喜ばれる. 手芸 may become 手を動かし、少しずつ形にしていく. 野菜や花を育てる may become 日々手をかけ、育つ様子を見守る. These describe the supplied fact; they are not new episodes.",
+  "Do not make a generic fact specifically different. 手芸 does not establish sewing, knitting, fabric, thread, or a finished gift. Growing flowers does not establish soil, watering, buds, a garden, or a season. Travel does not establish road conversations, meals, photographs, vehicles, or scenery unless supplied.",
   "Do not infer personality from an activity. Never add phrases such as 笑みの奥に力があった, まめやかさ, 暮らしの形, 日々の重なり, or そこにいるだけで明るくなった.",
   "Stay close to the family's memory. Never expose the interview process with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです.",
   "Do not explain or interpret a supplied quotation. Place it once, then move on without calling it a philosophy, teaching, way of life, gaze, or attitude toward people.",
@@ -1300,7 +1301,8 @@ module.exports = async (req, res) => {
       const copyEditSystemPrompt = [
         "あなたは日本語の葬儀司会原稿を整える校正者です。新しい原稿を創作せず、DRAFTの事実と意味を保ったまま、日本語だけを自然に直してください。",
         "返答は openingNarration、closingNarration、detectedTheme、improvementNotes を持つJSON一個だけ。improvementNotesは空文字。見出し、説明、Markdownは禁止。",
-        "hearingSheetにない人物、感情、評価、場面、動作、関係、意味を一つも足さない。親しい方々、周りの方々、確かな歩み、日々の中にあった喜び等を補わない。",
+        "hearingSheetにない人物、感情、評価、出来事、関係、意味を足さない。親しい方々、周りの方々、確かな歩み、日々の中にあった喜び等を補わない。",
+        "ただし事実を目に浮かぶ日本語にするため、必ず含まれる一般的な動作への言い換えはよい。人と接することが好き→人と言葉を交わすひとときを喜ぶ。手芸→手を動かし少しずつ形にする。野菜や花を育てる→日々手をかけ、育つ様子を見守る。材料、完成品、庭、土、水やり、会話内容、周囲の反応は足さない。",
         "同じ事実は全原稿で一度だけ。笑う顔とよく笑う人を隣接させない。明るい・笑顔・朗らかを同じ説明として重ねない。",
         "sectionPlanの配置を厳守し、家族のお気持ちを開式前へ移さない。",
         "家族の一人称を司会者の一人称にしない。私も彼女を見習い、明るく前向きに歩んでいきたい、は、その明るさを見習いたいという思いも、ご家族の胸にあります、程度の間接話法に直す。彼・彼女は使わない。",
@@ -1619,7 +1621,8 @@ const compactNarrationPrompt = prompt => {
     "Follow sectionPlan exactly. Facts assigned to opening must not move to closing, and facts assigned to closing must not move to opening. Never repeat a fact, trait, hobby, quotation, place, or family feeling between sections.",
     "Opening must contain 450-650 Japanese characters when five or more hearing fields are present: one seasonal sentence, the fixed full-name life sentence, three natural body paragraphs, and the exact fixed opening final sentence. Do not compress it into a profile.",
     "Closing must contain a 160-260 Japanese-character narrative body in two paragraphs. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
-    "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a scene, or add emotional meaning.",
+    "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a new episode, or add emotional meaning.",
+    "Use safe concrete paraphrase so the family can picture the supplied fact: 人と接する→人と言葉を交わす時間, 手芸→手を動かし少しずつ形にする, 野菜や花を育てる→日々手をかけ育つ様子を見守る. Do not add specific materials, finished objects, locations, weather, conversations, or reactions.",
     "Use no more than five sentence-final ました・でした・ございました・おりました and no more than four sentence-final ます・です・ございます in the narrative body. Never place either family three sentences in a row. Use one natural 〜ではないでしょうか question, a few complete present-historical sentences, and at most one dignified noun-ending sentence per paragraph.",
     "Do not pad with explanations such as その言葉をここに置かせていただきます, そのままの響きで, 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, or 静かにここにあります. Stay with the supplied action, expression, place, or exact words.",
     "Closing must not begin with a season word even when a dated memory is used. Begin with the people or action, and place the season later in the sentence.",
