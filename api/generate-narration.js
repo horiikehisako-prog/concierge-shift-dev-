@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.39";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.40";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -505,7 +505,7 @@ const normalizeQuotationContext = draft => {
         )
         .replace(
           /(?:^|(?<=。)|\n)[^。\n]*「人の悪口を言ってはいけない」[^。\n]*。?/gu,
-          "折に触れて口にされた、「人の悪口を言ってはいけない」という言葉。"
+          "\n折に触れて口にされた、「人の悪口を言ってはいけない」という言葉。"
         );
     }
     return text
@@ -513,6 +513,18 @@ const normalizeQuotationContext = draft => {
       .replace(
         /親子三代で[、，]?\s*((?:お)?誕生日月の[^に。\n]+)に([^。\n]+?)へ旅行されました。/gu,
         "$1、親子三代で出かけられた$2への旅。"
+      )
+      .replace(
+        /親子三代で[、，]\s*[^。\n]*?誕生日月(?:である|の)([^に、。\n]+)に[、，]\s*([^。\n]+?)へ旅行されました。/gu,
+        "誕生日月の$1、親子三代で出かけられた$2への旅。"
+      )
+      .replace(
+        /それぞれの地名や十月という時期が思い起こされます。/gu,
+        "その地名や十月に触れるたび、共に過ごした時間が思い起こされることでしょう。"
+      )
+      .replace(
+        /その明るさを見習い、前向きに歩んでいきたいという思いを胸に、ご家族は今日の日を迎えておられます。/gu,
+        "その明るさを見習い、前向きに歩んでいきたいという思いも、ご家族の胸にあります。"
       )
       .replace(/[ \t]+\n/gu, "\n")
       .replace(/\n{3,}/gu, "\n\n")
