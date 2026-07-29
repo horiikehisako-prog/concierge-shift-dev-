@@ -1,13 +1,13 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-clean-composition-20260729.68";
+const API_BUILD_ID = "sprint27-two-pass-composition-20260729.69";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
 // quality report below handle the remaining non-critical issues.
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
-const ENABLE_GUARDED_COPY_EDIT = false;
+const ENABLE_GUARDED_COPY_EDIT = true;
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -1563,35 +1563,23 @@ module.exports = async (req, res) => {
       };
       const compactPayload = extractPromptPayload(prompt) || {};
       const copyEditPrompt = JSON.stringify({
-        hearingSheet: compactPayload.hearingSheet || {},
-        sectionPlan: compactPayload.sectionPlan || {},
+        sourceFacts: compactPayload.sourceFacts || {},
+        composition: compactPayload.composition || {},
         draft: draftForEdit,
       });
       const copyEditSystemPrompt = [
-        "あなたは日本語の葬儀司会原稿を整える校正者です。新しい原稿を創作せず、DRAFTの事実と意味を保ったまま、日本語だけを自然に直してください。",
-        "返答は openingNarration、closingNarration、detectedTheme、improvementNotes を持つJSON一個だけ。improvementNotesは空文字。見出し、説明、Markdownは禁止。",
-        "hearingSheetにない人物、感情、評価、出来事、関係、意味を足さない。親しい方々、周りの方々、確かな歩み、日々の中にあった喜び等を補わない。",
-        "ただし事実を目に浮かぶ日本語にするため、必ず含まれる一般的な動作への言い換えはよい。人と接することが好き→人と言葉を交わすひとときを喜ぶ。手芸→手を動かし少しずつ形にする。野菜や花を育てる→日々手をかけ、育つ様子を見守る。材料、完成品、庭、土、水やり、会話内容、周囲の反応は足さない。",
-        "同じ事実は全原稿で一度だけ。笑う顔とよく笑う人を隣接させない。明るい・笑顔・朗らかを同じ説明として重ねない。",
-        "sectionPlanの配置を厳守し、家族のお気持ちを開式前へ移さない。",
-        "開式前の氏名定型文に続く最初の本文段落は、familyMemoriesがあればその記憶から始める。明るく前向きな方でした、という人物紹介から始めない。",
-        "性格は形容詞の一覧にしない。明るく前向きで、行動力がある方でした、ではなく、人との時間を喜び、思い立ったことにはすぐに動かれる、のようにhearingSheetの行動で表す。",
-        "家族の一人称を司会者の一人称にしない。私も彼女を見習い、明るく前向きに歩んでいきたい、は、その明るさを見習いたいという思いも、ご家族の胸にあります、程度の間接話法に直す。彼・彼女は使わない。",
-        "聞き取りの正確な言葉に対して、口にしてこられたのではないでしょうか、とは書かない。引用の後に哲学や人柄の解説を加えない。",
-        "とのことです、といいます、と聞いております、など聞き取りを報告する文体は禁止。家族が可愛いと感じた事実は、ご家族にはいつも可愛らしく映っていたことでしょう、などと推測せず、ご家族はいつも可愛いと感じておられました、と直接書く。",
-        "人の悪口を言わない、の直後に「人の悪口を言ってはいけない」と引用するなど、説明と引用が同じ意味なら引用だけを残す。",
-        "「人の悪口を言ってはいけない」の後に、前を向いて日々を重ねた、人との関わりを大切にした、教え、生き方、考え方などの解釈を足さない。引用だけで段落を閉じてよい。",
-        "行動へ向かうその歩み、地名と月が時間を伝える、言葉をここに置く、〇〇様らしさの一つ、声として残る、思いが重なる、等の抽象的なAI表現は削除する。",
-        "歌や踊りを家族が可愛いと感じた事実は、家族の視点のまま書く。一般に可愛い方として親しまれた、とは変えない。",
-        "趣味の段落で、手芸では、時間を持たれました、野菜や花を育てることでは、とは書かない。自然な読み上げの例は、手芸に向かい、手を動かしながら少しずつ形にしていく。野菜や花にも日々手をかけ、育つ様子を見守る。ここでは歴史的現在形を用い、三文すべてをましたで終えない。",
-        "趣味の段落の末尾に、そのようなお時間もお持ちでした、という説明を足さない。歴史的現在形の二文だけで自然に閉じる。",
-        "人の悪口を言ってはいけない、という言葉を使う場合は、引用だけを唐突に一行へ置かず、折に触れて口にされた言葉として一文につなぐ。引用の意味や人格は解説しない。",
-        "笑っている顔しか思い出せないほど、よく笑う人、という一つの家族の記憶は、一文で一度だけ表す。笑う方でした、を続けない。",
-        "旅行情報は一つか二つの完全な文にまとめる。ご旅行。いずれも十月…旅でした、のように旅行と旅を言い直さない。",
-        "閉式後本文は100〜200字を目安にする。旅行、家族を大切にしたこと、familyFeelingsを別々の項目として並べず、一つの流れにする。旅行先の地名や誕生日月に触れたとき、その時間が思い起こされる、という控えめな余韻はよい。",
-        "体言止めは一段落に一つまで。述語のない不完全な文を作らない。同じです・ます系の文末を三文続けない。",
-        "開式前の季節文、氏名と年齢の定型文、最後の感謝文は保持する。閉式後は物語本文だけを返し、年齢・会葬御礼・献花・式場準備・手荷物案内を出さない。",
-        "文章を長くするための補足は禁止。不自然な文は、新しい説明で置き換えず、短く削ってつなぎ直す。",
+        "あなたは、日本語の葬儀司会原稿を最終確認する熟練校正者です。新しい原稿を創作せず、draftを読み上げに適した自然な日本語へ整えてください。",
+        "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
+        "sourceFactsにない事実、人物、感情、意味、評価、場面を一つも足さないでください。draftに創作があれば削ってください。",
+        "季節文、氏名と年齢の定型文、開式前の最終案内は保持してください。閉式後は定型案内を除いた本文だけを返してください。",
+        "openingとclosingの事実の分担を変えず、同じ事実を両方へ出さないでください。",
+        "同じ記憶を言い換えて説明し直している文は一つにまとめてください。引用の後に意味や人格を解説しないでください。",
+        "司会者が外から人物を評価する文、ご家族の気持ちを推測する文、聞き取りを報告する文を削ってください。",
+        "助詞、主語と述語、修飾関係を確認し、途中で切れた文を残さないでください。体言止めは原則使わないでください。",
+        "同じ「ました・でした・ございます」が三文続かないよう、文のつながり自体を整えてください。不自然な歴史的現在形へ機械的に変えないでください。",
+        "抽象的な美辞、人生訓、標語、AIらしいまとめを加えないでください。事実だけでは支えられない文は、別の美文へ置き換えず削ってください。",
+        "開式前は320〜500字、閉式後本文は110〜190字を目安にします。ただし、長さを満たすための創作や重複は禁止です。",
+        "最後に音読を想定し、一度で意味が伝わるか確認してから完成稿だけを返してください。",
       ].join(" ");
       parsed = await requestNarration({
         apiKey,
