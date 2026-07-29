@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-family-inside-20260729.62";
+const API_BUILD_ID = "sprint27-lived-memory-20260729.63";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -832,6 +832,24 @@ const hasExcessiveConsecutivePoliteEndings = text => {
   });
 };
 
+const hasConsecutivePastPoliteEndings = text => {
+  const withoutFixed = String(text || "")
+    .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "");
+  const sentences = withoutFixed
+    .split(/[。！？]/u)
+    .map(value => value.trim())
+    .filter(Boolean);
+  const pastEnding = /(?:ました|でした|ございました|おりました)$/u;
+  for (let index = 2; index < sentences.length; index += 1) {
+    if (
+      pastEnding.test(sentences[index - 2]) &&
+      pastEnding.test(sentences[index - 1]) &&
+      pastEnding.test(sentences[index])
+    ) return true;
+  }
+  return false;
+};
+
 const hasStackedNounFragments = text => {
   const sentences = String(text || "")
     .split(/[。！？]/u)
@@ -997,6 +1015,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (BAD_CLOSING_TIMELINE_RE.test(closing)) failures.push("closing timeline");
   if (countDirectQuotes(full) > 1) failures.push("too many direct quotes");
   if (hasExcessiveConsecutivePoliteEndings(bodyWithoutRequiredClosings)) failures.push("excessive polite endings");
+  if (hasConsecutivePastPoliteEndings(bodyWithoutRequiredClosings)) failures.push("repetitive past endings");
   if (hasStackedNounFragments(bodyWithoutRequiredClosings)) failures.push("stacked noun fragments");
   if (hasBrokenJapaneseGrammar(bodyWithoutRequiredClosings)) failures.push("broken Japanese grammar");
   if (hasExcessiveSmileRepetition(opening)) failures.push("excessive trait repetition");
@@ -1010,7 +1029,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 40) failures.push("closing too short");
+  if (closingBody.length < 90) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
@@ -1120,10 +1139,10 @@ const buildSystemPrompt = extraInstruction => [
   "Return exactly one JSON object with openingNarration, closingNarration, detectedTheme, and improvementNotes. improvementNotes must be an empty string. Do not output labels, markdown, explanations, or drafts.",
   "SOURCE FACTS ARE CLOSED: use only sourceFacts. Unselected hearing information is deliberately hidden; do not reconstruct, guess, or compensate for it.",
   "This is a memory-first narration, not a profile. Begin the body with opening.anchor and let the listener picture that remembered person before mentioning any supporting fact.",
-  "Write from inside the family's shared life, not from an MC observing the family. Do not describe what the family probably sees, thinks, or feels. Let the remembered daily scene itself unfold.",
+  "Write from inside the family's remembered time, not from an MC observing the family. The deceased should feel present inside memory. Do not describe what the family probably sees, thinks, or feels.",
   "Use opening.supports only when they deepen the same human picture. You may omit a support. Coverage is never a goal. Never turn the cards into a checklist of personality, hobbies, quotations, and family values.",
   "Express the opening anchor exactly once. If there is no support card, write only one complete body sentence for that anchor; do not restate its face, smile, voice, gesture, or meaning in a second sentence.",
-  "When the opening anchor says what the family first remembers, place that face inside ordinary daily life. Write 何気ない毎日の中で、いつもよく笑っておられました. Do not write ではないでしょうか, ご家族の心にまず浮かぶのは, or よく笑う人でいらっしゃいました. Do not ask the family to agree with the MC.",
+  "When the opening anchor says what the family first remembers, use remembered-present form: 思い出の中の〇〇様は、いつも笑っておられます. Do not write 何気ない毎日の中で、いつもよく笑っておられました, ではないでしょうか, ご家族の心にまず浮かぶのは, or よく笑う人でいらっしゃいました. Do not define the person or ask the family to agree.",
   "Source cards are interview notes, not finished prose. Never copy a casual ending or a shorthand fragment verbatim. Convert it into one dignified, grammatically complete MC sentence with respectful Japanese. For example, 穏やかに微笑んでいる姿が心に残っている becomes 穏やかに微笑んでおられたお姿が、ご家族の心に残っていることと存じます.",
   "One paragraph must carry one movement of memory. Join facts only when they belong naturally in the same remembered scene; otherwise leave one out.",
   "Keep each body sentence close to the selected card. Add no atmospheric filler such as そばにある時間, いつもの時間が流れる, 胸に浮かぶひととき, 言葉を飾ることなく, or 懐かしいひとこま.",
@@ -1131,15 +1150,15 @@ const buildSystemPrompt = extraInstruction => [
   "Do not interpret an activity or quotation. Never add a life lesson, philosophy, evaluation, or abstract conclusion. A quotation must be part of one complete sentence, such as また、折に触れて、「人の悪口を言ってはいけない」と話しておられました. Never leave it as the fragment 折に触れて口にされた、「…」という言葉。.",
   "Stay beside the family's memory. Do not expose the interview with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです. Do not speak for a family feeling unless it is a selected source fact.",
   "Never replace the family with outsiders such as 見送る方々, 周りの方々, or 参列された皆様. When the selected card says ご家族, keep the viewpoint with ご家族.",
-  "When a selected fact says the family found an action cute, keep the sourced adjective inside the remembered scene instead of reporting the family's reaction. Write 歌ったり、踊ったりされるご様子にも、いつもの可愛らしさがありました. Do not write ご家族には可愛らしく映っておりました, ご家族は可愛らしく感じておられました, or ことと存じます.",
+  "When a selected fact says the family found an action cute, keep the sourced adjective inside remembered-present action. Write 歌ったり、踊ったりされるときには、いつもの愛らしさがのぞきます. Do not write 可愛らしさがありました, ご家族には可愛らしく映っておりました, ご家族は可愛らしく感じておられました, or ことと存じます.",
   "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; two or three short body paragraphs using no more than the selected opening cards; the exact opening final sentence.",
   "The opening seasonal sentence must describe only the season. Never put 別れ, 人生, ご生涯, 旅立ち, お見送り, or 葬送 in that sentence.",
   "Do not use 続く, 続いております, 重なる, or 深まる merely to fill the seasonal sentence. Prefer one plain observation of the season.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
-  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. It may gather only memories already stated, without interpretation: その笑顔も、可愛らしい仕草も、折に触れて聞いた言葉も、いずれもご家族がともに過ごしてこられた日々の一場面でございます. Vary the wording naturally. Use a shared-life phrase only here, no more than once in the manuscript. Do not write the translated-sounding すべては日々の中にあります. This bridge must make the gratitude sentence feel earned, not sudden.",
+  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. It may gather only memories already stated, without interpretation: その笑顔も、愛らしい仕草も、折に触れて聞いた言葉も、今もご家族の思い出の中にございます. Vary the wording naturally. This bridge must make the gratitude sentence feel earned, not sudden.",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
-  "Closing structure: use only closing.anchor and write exactly one complete respectful sentence. Do not first copy the source as a noun fragment and then explain it. Do not add a second fact, aftertaste sentence, moral, personality summary, or general explanation. The fixed ceremony guidance follows immediately.",
-  "For a travel anchor with several destinations and a birthday month, make the destinations remembered places: 六甲、小倉、下関、博多は、いずれもお誕生日月の十月に、親子三代で訪れた思い出の地でございます. Do not write 向かわれた旅行, 十月に重ねられた, or ご家族の大切な思い出 unless the source explicitly uses 大切.",
+  "Closing structure: stay with closing.anchor but give it enough room. Write two or three complete sentences, about 110-190 Japanese characters, in one or two paragraphs: first state the concrete memory, then remain with the shared time, then add one restrained future reminder. Do not add a new fact, moral, or personality summary. The fixed ceremony guidance follows.",
+  "For a travel anchor with several destinations and a birthday month, develop only that supplied memory: 親子三代で訪れた六甲、小倉、下関、博多は、いずれもお誕生日月の十月の旅でございました。訪れた土地の数だけ、ご家族で過ごされた時間がございます。これから先、その地名に触れるたび、旅の日のお姿が思い出の中によみがえります. Vary the wording. Do not write 向かわれた旅行, 十月に重ねられた, or invent meals, conversations, scenery, vehicles, photographs, or feelings.",
   "Return only the closing narrative body. Do not write age-respect wording, attendee thanks, flower-farewell guidance, venue preparation, baggage instructions, or どうぞよろしくお願いいたします. The server appends those lines once.",
   "Never write another age phrase beyond the required opening life sentence. The server adds the age once in the fixed closing.",
   "Opening and closing cards are disjoint. Never repeat, paraphrase, summarize, or echo an opening trait, hobby, quotation, place, feeling, or episode in closing.",
@@ -1147,12 +1166,12 @@ const buildSystemPrompt = extraInstruction => [
   "State the central memory once. If the anchor is a smiling face, do not add another sentence saying the person often laughed, was bright, or lightened the room.",
   "Every sentence must be grammatically complete. Avoid fragments such as 家族を大切にされていたこと。 or 歌ったり、踊ったりして、いつも可愛い。",
   "When one selected card contains two moments joined by と, keep them in one complete sentence. Do not write a noun fragment such as ゴルフへ出かける朝の〇〇様。 followed by そして.",
-  "Do not use a noun-ending sentence when a section has only one selected fact. Do not end a body sentence in casual plain form such as 〜ている。 or 〜だった。.",
-  "Use natural spoken Japanese. Vary rhythm through sentence length and syntax, not by forcing noun endings. Never use the same です・ます ending three sentences in a row, and never stack sentence fragments.",
+  "Use at most one deliberate noun-ending sentence in the opening body and none in closing. Do not end a body sentence in casual plain form such as 〜ている。 or 〜だった。.",
+  "Use natural spoken Japanese. After the fixed life sentence ending 下ろされました, the next two body sentences must not end in ました, でした, ございました, or おりました. Use remembered-present forms, sentence connection, or at most one deliberate noun ending. Never allow three past polite endings in a row across paragraph breaks.",
   "Delete any sentence whose only job is to explain, evaluate, connect, or add length. Avoid 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, 確かな記録, 日々の重なり, 暮らしの形, and similar AI summaries.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
   "Use the single selected textbook only for calmness, paragraph movement, pauses, and warmth. Never reuse its wording, facts, scenes, nouns, or interpretations.",
-  "Aim for about 220-380 Japanese characters in openingNarration and 60-140 in the closing body when enough selected facts exist. A shorter truthful manuscript is better than padded prose.",
+  "Aim for about 280-460 Japanese characters in openingNarration and 110-190 in the closing body when enough selected facts exist. A shorter truthful manuscript is better than invented prose, but do not reduce closing to one or two lines when a concrete memory is available.",
   "Before returning, silently perform three checks: every fact exists in sourceFacts; each paragraph sounds like memory rather than a profile; every sentence is complete and natural when read aloud. Delete weak explanatory sentences instead of repairing them with more words.",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
