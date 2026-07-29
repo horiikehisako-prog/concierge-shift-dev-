@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.81";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.82";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1347,7 +1347,7 @@ const requestNarration = async ({
     // still carry the old 1,200-token setting, which can cut the response off
     // before the closing body. Keep one model call, but reserve enough room for
     // reasoning plus both narration sections.
-    const outputTokenLimit = Math.min(Math.max(maxTokens, 4200), 5200);
+    const outputTokenLimit = Math.min(Math.max(maxTokens, 3200), 4000);
     const callResponses = async forcePlainJson => {
       const systemPrompt = systemPromptOverride || [
         buildSystemPrompt(extraInstruction),
@@ -1355,7 +1355,11 @@ const requestNarration = async ({
       ].filter(Boolean).join(" ");
       const body = {
         model,
-        reasoning: { effort: "medium" },
+        // A funeral narration needs disciplined grounding and copy quality,
+        // not a long chain of internal reasoning. "medium" intermittently
+        // exceeded Vercel's 60-second function limit. "low" also reduces the
+        // model's tendency to over-explain one supplied memory.
+        reasoning: { effort: "low" },
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
