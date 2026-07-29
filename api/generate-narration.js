@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.46";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.47";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -513,6 +513,14 @@ const normalizeQuotationContext = draft => {
       .replace(/そのようなお時間もお持ちでした。?/gu, "")
       .replace(/帰宅後には、ご自宅で/gu, "帰宅後には、")
       .replace(
+        /ゴルフへ出かける朝には、支度を整え、その一日へ向かわれる([^。\n]+?)の姿がありました。/gu,
+        "ゴルフへ出かける朝、支度を整えられる$1のお姿。"
+      )
+      .replace(
+        /帰宅されたあとは、ゆっくりと過ごされる時間がありました。その前後の静かな流れが、ご家族の記憶に残っております。/gu,
+        "帰宅された後、ゆっくりと過ごされるお姿も、ご家族の記憶に残っています。"
+      )
+      .replace(
         /帰宅された後には、ゆっくりと過ごされる。その姿が、/gu,
         "帰宅された後、ゆっくりと過ごされるお姿が、"
       )
@@ -524,6 +532,14 @@ const normalizeQuotationContext = draft => {
       .replace(
         /休日にはゴルフを楽しんでおられました。広い空の下で仲間とゴルフをする時間を、心待ちにされていました。/gu,
         "休日には、広い空の下で仲間と楽しむゴルフの時間を、心待ちにされていました。"
+      )
+      .replace(
+        /穏やかで、多くを語らないお人柄でございました。/gu,
+        "穏やかで、多くを語らないお人柄。"
+      )
+      .replace(
+        /同じ時をともにするひとときは、[^。\n]+?にとって大切な楽しみの一つでございました。/gu,
+        ""
       )
       .replace(
         /ご家族の記憶にまず浮かぶのは、(?:いつも)?笑っておられたお顔で、よく笑う方として思い出されます。/gu,
@@ -582,7 +598,15 @@ const normalizeQuotationContext = draft => {
         "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
       )
       .replace(
+        /いまご家族は、([^。\n]+?)を思い出しておられます。/gu,
+        "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
+      )
+      .replace(
         /[^。\n]+?へ向かわれた時間も、その表情とともに思い起こされます。/gu,
+        ""
+      )
+      .replace(
+        /近くの山へ向かった時間も、その日常の中にあった一場面でございました。/gu,
         ""
       )
       .replace(
@@ -1048,7 +1072,7 @@ const buildSystemPrompt = extraInstruction => [
   "Do not write poetic or vague substitutions such as 耳に戻ってくる, 注がれたものへ, 日々の重なり, 暮らしに寄り添う, 確かな記録, or かけがえのないものとして重ねる.",
   "Do not invent what remains in the family's hearts. Use familyFeelings only when present and keep its meaning unchanged.",
   "Use a selected Compass Official textbook only for paragraph order, calm tone, sentence length, pauses, and warmth. Never reuse its facts, scenes, nouns, or interpretations.",
-  "Length is mandatory when hearingSheet has at least five non-empty memory fields: openingNarration must be 450-650 Japanese characters and closingNarration body must be 160-260 Japanese characters. Do not return a short profile summary.",
+  "When hearingSheet has at least five non-empty memory fields, aim for 320-520 Japanese characters in openingNarration and 100-220 in the closing body. Never add padding or interpretation to reach a length target; a shorter truthful narration is better.",
   "Before returning, silently read every sentence aloud once. Delete any sentence that contains a fact or interpretation not found in hearingSheet. Prefer a shorter truthful manuscript over padded prose.",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
@@ -1481,7 +1505,7 @@ module.exports = async (req, res) => {
         "人の悪口を言ってはいけない、という言葉を使う場合は、引用だけを唐突に一行へ置かず、折に触れて口にされた言葉として一文につなぐ。引用の意味や人格は解説しない。",
         "笑っている顔しか思い出せないほど、よく笑う人、という一つの家族の記憶は、一文で一度だけ表す。笑う方でした、を続けない。",
         "旅行情報は一つか二つの完全な文にまとめる。ご旅行。いずれも十月…旅でした、のように旅行と旅を言い直さない。",
-        "閉式後本文は140〜220字を目安にする。旅行、家族を大切にしたこと、familyFeelingsを別々の項目として並べず、一つの流れにする。旅行先の地名や誕生日月に触れたとき、その時間が思い起こされる、という控えめな余韻はよい。",
+        "閉式後本文は100〜200字を目安にする。旅行、家族を大切にしたこと、familyFeelingsを別々の項目として並べず、一つの流れにする。旅行先の地名や誕生日月に触れたとき、その時間が思い起こされる、という控えめな余韻はよい。",
         "体言止めは一段落に一つまで。述語のない不完全な文を作らない。同じです・ます系の文末を三文続けない。",
         "開式前の季節文、氏名と年齢の定型文、最後の感謝文は保持する。閉式後は物語本文だけを返し、年齢・会葬御礼・献花・式場準備・手荷物案内を出さない。",
         "文章を長くするための補足は禁止。不自然な文は、新しい説明で置き換えず、短く削ってつなぎ直す。",
@@ -1816,8 +1840,8 @@ const compactNarrationPrompt = prompt => {
     "When two Hearing Sheet fields describe the same memory, write that memory once. When familyFeelings repeats a smile or trait already present in personality, reserve that shared image for closing and omit the overlapping clause from opening.",
     "Within opening, follow sectionPlan order. After the fixed life sentence, begin with familyMemories when present, so the family first encounters a recognizable face or scene. Do not begin the body with a profile sentence such as 明るく前向きな方でした.",
     "Do not list personality adjectives. Replace 明るく前向きで、行動力がある方でした with the supplied actions: 人との時間を喜び、思い立ったことにはすぐ動かれる. Do not add an evaluation after those actions.",
-    "Opening must contain 450-650 Japanese characters when five or more hearing fields are present: one seasonal sentence, the fixed full-name life sentence, three natural body paragraphs, and the exact fixed opening final sentence. Do not compress it into a profile.",
-    "Closing must contain a 160-260 Japanese-character narrative body in two paragraphs. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
+    "When five or more hearing fields are present, aim for 320-520 Japanese characters in opening: one seasonal sentence, the fixed full-name life sentence, natural body paragraphs, and the exact fixed opening final sentence. Never invent or pad merely to reach the target.",
+    "Aim for a 100-220 Japanese-character closing narrative body. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
     "In closing, connect travelAnniversaryEffort, valuedThings, and familyFeelings as one memory flow rather than three profile statements. It is acceptable to say that a supplied place name or birthday month may bring the shared time back to mind; do not invent what happened during the trip.",
     "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a new episode, or add emotional meaning.",
     "Use safe concrete paraphrase so the family can picture the supplied fact: 人と接する→人と言葉を交わす時間, 手芸→手を動かし少しずつ形にする, 野菜や花を育てる→日々手をかけ育つ様子を見守る. Do not add specific materials, finished objects, locations, weather, conversations, or reactions.",
