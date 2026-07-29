@@ -6,6 +6,27 @@ const endpoint = process.env.NARRATION_ENDPOINT
 const caseName = process.argv[2] || "calm-male";
 
 const cases = {
+  chieno: {
+    textbook: "032_90代女性_笑顔と親子三代の旅を重ねた人生.md",
+    theme: "家族愛",
+    tags: ["90代", "女性", "家族", "笑顔", "旅行"],
+    hearingSheet: {
+      deceasedName: "堀池 チエノ",
+      narrationName: "チエノ",
+      age: "91",
+      gender: "女性",
+      familyRelation: "子",
+      deceasedDate: "2026-07-20",
+      ceremonyType: "葬儀",
+      familyMemories: "いつも笑っている顔しか思い出せないほど、よく笑う人だった。歌ったり、踊ったりする姿を、家族はいつも可愛いと感じていた。",
+      memorableEvents: "親子三代で六甲、小倉、下関、博多へ旅行した。いずれも誕生日月の十月だった。",
+      hobbies: "手芸を楽しみ、野菜やお花を育てていた。",
+      personality: "明るく前向きで、人と接することが大好きだった。思い立ったらすぐに行動へ移した。",
+      favoritePhrases: "「人の悪口を言ってはいけない」とよく言っていた。",
+      valuedThings: "家族を大切にしていた。",
+      familyFeelings: "その明るさを見習い、前向きに過ごしていきたい。",
+    },
+  },
   "calm-male": {
     textbook: "003_80代男性_穏やかな笑顔で日々を重ねた人生.md",
     theme: "穏やかな日常",

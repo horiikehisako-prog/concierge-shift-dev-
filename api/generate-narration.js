@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.83";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.84";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -751,6 +751,18 @@ const normalizeQuotationContext = draft => {
         ""
       )
       .replace(
+        /出かけた先で見聞きされたことが、帰宅されてからの語らいへと移り、ご家族のもとに届いておりました。/gu,
+        ""
+      )
+      .replace(
+        /カラオケを好まれ、歌に親しまれるひとときもございました。/gu,
+        "カラオケを楽しまれるひとときもございました。"
+      )
+      .replace(
+        /犬や猫を見かけると、自然に足を止めておられたことも、[^。\n]*場面のひとつでございます。/gu,
+        "犬や猫を見かけると、自然に足を止められました。"
+      )
+      .replace(
         /好きなことに向かうひとときも、ふと立ち止まる仕草も、暮らしの中に穏やかに刻まれております。/gu,
         ""
       )
@@ -759,7 +771,7 @@ const normalizeQuotationContext = draft => {
         ""
       )
       .replace(
-        /(?:ここに集う思いは|これまで共に過ごされた数々の場面を思い返しながら)[^。\n]*。/gu,
+        /(?:ここに集う思いは|これまで(?:共|とも)に過ごされた(?:数々の場面|折々))[^\n。]*。/gu,
         ""
       )
       .replace(
@@ -2061,7 +2073,7 @@ const pickMemoryCards = compactSheet => {
     "personality",
     "valuedThings",
   ].map(byField).filter(Boolean).forEach(card => {
-    if (selectedOpening.length >= 3) return;
+    if (selectedOpening.length >= 4) return;
     if (selectedOpening.some(selected => selected.field === card.field)) return;
     if (selectedClosing.some(selected => selected.field === card.field)) return;
     if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
@@ -2091,7 +2103,7 @@ const pickMemoryCards = compactSheet => {
     opening: {
       anchor: selectedOpening[0] || null,
       supports: selectedOpening.slice(1),
-      maximumFacts: 3,
+      maximumFacts: 4,
       purpose: "ご家族が最初に思い浮かべる、その人らしい一場面から始める",
     },
     closing: {
@@ -2165,13 +2177,15 @@ const compactNarrationPrompt = prompt => {
     "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
-    "openingは定型文を含めて320〜500字を目安にしてください。二つか三つの事実を一度ずつ使い、同じ事実の言い換えで字数を増やさないでください。",
+    "openingは定型文を含めて320〜500字を目安にしてください。二つから四つの事実を一度ずつ使い、同じ事実の言い換えで字数を増やさないでください。",
     "closingはサーバーが後で加える式次第案内を除き、140〜240字を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
     "anchorと各supportに使えるのは、それぞれ最大二文です。一つの事実を説明し直す三文目は書かないでください。",
     "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
     "各カードにdoNotRepeatTopicsがある場合、その話題は同じカードの文章に含まれていても使用禁止です。別の固有の内容だけを使ってください。",
     "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を従属節でつなぐ、歴史的現在を一度だけ使う、体言止めを一段落に一度だけ使う、という方法で自然な呼吸を作ってください。",
+    "同じ主語の近い動作は一文にまとめてください。悪い例は「朝には支度を整えておられました。帰宅後は居間で過ごしておられました。」です。自然な例は「朝、支度を整えておられるお姿。帰宅後は、居間で静かに過ごされる。」です。",
+    "別の場所へ出向く二つの動作は「人と言葉を交わし、地域の集まりにも欠かさず出かけられました」のように一文へつないでください。短い敬体文を二つ並べないでください。",
     "「時間を重ねる」「日々を重ねる」「時間が記憶につながる」「身近な記憶」「日常の一こま」「お姿がそこにある」「その声にのせて」「ひと続きの記憶」「胸に静かに留められる」「旅の余韻」「暮らしに刻まれる」「時間が流れる」「いつもの席」「ここに集う思い」「お見送りいたします」は使わないでください。事実を抽象語へ置き換えず、その場面を平明に書いてください。",
     "各段落の最後に抽象的なまとめを足さないでください。場面そのものが人柄を伝えるところで止めてください。",
     "styleReferenceは最も近い教科書です。本文を読み、構成・呼吸・段落の運び・描写の距離だけを参考にしてください。教科書の事実、固有名詞、特徴的な語句、文章はコピーしないでください。",
