@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.71";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.72";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1450,7 +1450,13 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  // Some deployment dashboards can accidentally store the same key more than
+  // once on separate lines. Use only the first non-empty token and never place
+  // the raw environment value in a request header or diagnostic response.
+  const apiKey = String(process.env.OPENAI_API_KEY || "")
+    .trim()
+    .split(/\s+/)
+    .find(Boolean) || "";
   const diagnostics = {
     ok: true,
     buildId: API_BUILD_ID,
