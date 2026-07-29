@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.15";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.16";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -1192,13 +1192,33 @@ module.exports = async (req, res) => {
         buildId: API_BUILD_ID,
         failures: firstFailures,
       });
+      const focusedEditorialFailures = new Set([
+        "repeated expression",
+        "reused hearing facts",
+        "excessive polite endings",
+        "excessive trait repetition",
+        "age repetition",
+        "awkward narration style",
+        "reporter distance",
+      ]);
+      const useFocusedEditorialPass = firstFailures.every(failure => focusedEditorialFailures.has(failure));
+      const draftClosingBody = String(parsed?.closingNarration || "")
+        .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*$/u, "")
+        .trim();
+      const focusedDraft = JSON.stringify({
+        openingNarration: parsed?.openingNarration || "",
+        closingNarration: draftClosingBody,
+      });
+      const retryInstruction = useFocusedEditorialPass
+        ? `Act as a meticulous Japanese funeral-MC copy editor. Edit the DRAFT below instead of inventing a new composition. Preserve its selected facts, section allocation, and meaning. Remove repetition, reporter distance, abstract AI phrases, incomplete noun endings, and mechanical です・ます rhythm. Do not add a single new fact, emotion, object, interpretation, or scene. Keep the required opening introduction and opening final sentence. Return only the closing narrative body because the server appends the fixed guidance. DRAFT TO EDIT: ${focusedDraft}`
+        : `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Never repeat お姿 twice in one sentence. Do not write flat reporting such as 歌ったり踊ったりすることもありました, いつも笑っていたお顔とのことです, お方でいらっしゃいました, 皆様がよくご存じです, or ご家族が語ってくださった. Stay inside the family's remembered scene instead of reporting the interview. Never write 明るさを重ねる or leave a sentence as 家族を大切にしておられたこと。 Complete it with a natural predicate. After a supplied quotation, do not explain it as 人との向き合い方, 生き方, 考え方, 教え, or philosophy; let the words stand quietly. Avoid AI-like abstractions such as 暮らしに寄り添う楽しみ. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Do not invent artifacts such as 手芸の品, interpret a supplied action as 前を向いて動く, call a voice 忘れがたい, or instruct the family to お進みください. If the family says that singing and dancing looked cute, describe that specific姿 only; never rewrite it as いつも可愛い方だった. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`;
       parsed = await requestNarration({
         apiKey,
         model,
         temperature,
         maxTokens,
         prompt,
-        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Never repeat お姿 twice in one sentence. Do not write flat reporting such as 歌ったり踊ったりすることもありました, いつも笑っていたお顔とのことです, お方でいらっしゃいました, 皆様がよくご存じです, or ご家族が語ってくださった. Stay inside the family's remembered scene instead of reporting the interview. Never write 明るさを重ねる or leave a sentence as 家族を大切にしておられたこと。 Complete it with a natural predicate. After a supplied quotation, do not explain it as 人との向き合い方, 生き方, 考え方, 教え, or philosophy; let the words stand quietly. Avoid AI-like abstractions such as 暮らしに寄り添う楽しみ. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Do not invent artifacts such as 手芸の品, interpret a supplied action as 前を向いて動く, call a voice 忘れがたい, or instruct the family to お進みください. If the family says that singing and dancing looked cute, describe that specific姿 only; never rewrite it as いつも可愛い方だった. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
+        extraInstruction: retryInstruction,
       });
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
