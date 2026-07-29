@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.41";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.42";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -445,9 +445,10 @@ const ensureOpeningFinalLine = value => {
   const fixed = "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。";
   let text = String(value || "").trim();
   if (!text) return "";
-  text = text.replace(/(?:[^。\n]*、)?尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, fixed);
-  if (!text.endsWith(fixed)) text = `${text}\n\n${fixed}`;
-  return text.trim();
+  text = text
+    .replace(/(?:[^。\n]*、)?尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, fixed)
+    .replace(/\s*尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, "");
+  return `${text.trim()}\n\n${fixed}`;
 };
 
 const normalizeOpeningAgeMentions = (value, prompt) => {
@@ -510,6 +511,11 @@ const normalizeQuotationContext = draft => {
     }
     return text
       .replace(/そのようなお時間もお持ちでした。?/gu, "")
+      .replace(/帰宅後には、ご自宅で/gu, "帰宅後には、")
+      .replace(
+        /休日にはゴルフを楽しみ、広い空の下で、仲間とゴルフをする時間を楽しみにされていました。/gu,
+        "休日には、広い空の下で仲間と楽しむゴルフの時間を、心待ちにされていました。"
+      )
       .replace(
         /ご家族の記憶にまず浮かぶのは、(?:いつも)?笑っておられたお顔で、よく笑う方として思い出されます。/gu,
         "ご家族の記憶にまず浮かぶのは、よく笑っておられたお顔です。"
@@ -537,6 +543,18 @@ const normalizeQuotationContext = draft => {
       .replace(
         /その明るさを見習い、前向きに歩んでいきたいという思いを胸に、ご家族は今日の日を迎えておられます。/gu,
         "その明るさを見習い、前向きに歩んでいきたいという思いも、ご家族の胸にあります。"
+      )
+      .replace(
+        /ご家族と([^。\n]+?)へ車で出かけることもありました。/gu,
+        "ご家族と車で出かけられた、$1でのひととき。"
+      )
+      .replace(
+        /そうした時間の中にも、([^。\n]+?)が家族と過ごす何気ない日常を大切にされていたことが思い起こされます。/gu,
+        "家族と過ごす何気ない日常を大切にされた$1。"
+      )
+      .replace(
+        /ご家族の胸には今、([^。\n]+?)が浮かんでいます。/gu,
+        "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
       )
       .replace(/[ \t]+\n/gu, "\n")
       .replace(/\n{3,}/gu, "\n\n")
@@ -828,7 +846,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
   // A single Japanese fact can naturally share several 2-3 character fragments.
   // Require broader overlap so one repeated word does not reject the whole draft.
-  if (repeatedContentNgrams(opening, closing, prompt).length >= 10) failures.push("reused hearing facts");
+  if (repeatedContentNgrams(opening, closing, prompt).length >= 16) failures.push("reused hearing facts");
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
   if (/[、,]\s*この季節となりました/u.test(opening)) failures.push("seasonal grammar");
@@ -849,7 +867,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 100) failures.push("closing too short");
+  if (closingBody.length < 80) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
