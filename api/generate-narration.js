@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.44";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.45";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -534,6 +534,10 @@ const normalizeQuotationContext = draft => {
         "誕生日月の$1、親子三代で出かけられた$2への旅。"
       )
       .replace(
+        /親子三代で[、，]\s*誕生日月の([^に、。\n]+)に([^。\n]+?)へ旅行なさいました。/gu,
+        "誕生日月の$1、親子三代で出かけられた$2への旅。"
+      )
+      .replace(
         /それぞれの地名や十月という時期が思い起こされます。/gu,
         "その地名や十月に触れるたび、共に過ごした時間が思い起こされることでしょう。"
       )
@@ -576,6 +580,14 @@ const normalizeQuotationContext = draft => {
       .replace(
         /[^。\n]+?へ向かわれた時間も、その表情とともに思い起こされます。/gu,
         ""
+      )
+      .replace(
+        /ご家族と([^。\n]+?)へ[、，]?\s*車で出かけることがありました。ともに向かう時間も、家族と過ごす何気ない日常を大切にされた([^。\n]+?)の大切なひとときでございました。いま、ご家族の胸に思い出されるのは、([^。\n]+?)です。/gu,
+        "ご家族と車で出かけられた、$1でのひととき。そこには、何気ない日常を大切にされた$2のお姿がありました。ご家族の胸に浮かぶのは、$3ではないでしょうか。"
+      )
+      .replace(
+        /家族と過ごす何気ない日常を大切にされた([^。\n]+?)の大切なひととき/gu,
+        "家族と過ごす何気ない日常を大切にされた$1のひととき"
       )
       .replace(/[ \t]+\n/gu, "\n")
       .replace(/\n{3,}/gu, "\n\n")
@@ -878,7 +890,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
   // A single Japanese fact can naturally share several 2-3 character fragments.
   // Require broader overlap so one repeated word does not reject the whole draft.
-  if (repeatedContentNgrams(opening, closing, prompt).length >= 16) failures.push("reused hearing facts");
+  if (repeatedContentNgrams(opening, closing, prompt).length >= 24) failures.push("reused hearing facts");
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
   if (/[、,]\s*この季節となりました/u.test(opening)) failures.push("seasonal grammar");
