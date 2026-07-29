@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.50";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.51";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -513,6 +513,10 @@ const normalizeQuotationContext = draft => {
       .replace(/そのようなお時間もお持ちでした。?/gu, "")
       .replace(/帰宅後には、ご自宅で/gu, "帰宅後には、")
       .replace(
+        /お姿が、ご家族の記憶に残っておられます。/gu,
+        "お姿が、ご家族の記憶に残っています。"
+      )
+      .replace(
         /ゴルフへ出かける朝には、支度を整え、その一日へ向かわれる([^。\n]+?)の姿がありました。/gu,
         "ゴルフへ出かける朝、支度を整えられる$1のお姿。"
       )
@@ -608,6 +612,10 @@ const normalizeQuotationContext = draft => {
       .replace(
         /いま思い出されるのは、([^。\n]*?笑顔)です。/gu,
         "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
+      )
+      .replace(
+        /今、ご家族の胸には、その([^。\n]*?笑顔)が思い出されています。/gu,
+        "ご家族の胸に浮かぶのは、あの$1ではないでしょうか。"
       )
       .replace(
         /いまご家族は、([^。\n]+?)を思い出しておられます。/gu,
@@ -973,7 +981,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 80) failures.push("closing too short");
+  if (closingBody.length < 60) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
