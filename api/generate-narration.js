@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.4";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.6";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -179,6 +179,17 @@ const ensureClosingFinalLine = (value, prompt) => {
     /(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/gu,
   ];
   for (const pattern of closingFinalPatterns) text = text.replace(pattern, "").trim();
+  const generatedGuidanceMarkers = [
+    /[^。\n]{0,80}葬送のひととき[^。]*お花を手向けてのお別れ/u,
+    /本日は(?:誠に)?ご会葬いただき/u,
+    /これよりは、?お花を手向けて/u,
+    /式場内は、?お別れの準備へ/u,
+    /皆様には、?お手荷物をお持ちいただき/u,
+  ];
+  const guidanceIndexes = generatedGuidanceMarkers
+    .map(pattern => text.search(pattern))
+    .filter(index => index >= 0);
+  if (guidanceIndexes.length) text = text.slice(0, Math.min(...guidanceIndexes)).trim();
   // Never expose a model fragment such as "歌ったり、踊ったりするお姿は".
   text = text.replace(/(?:^|\n{2,})[^。！？\n]{1,100}$/u, "").trim();
   if (age) {
@@ -296,6 +307,37 @@ const haveDifferentContent = (opening, closing) => {
   if (!openingSentences.length || !closingSentences.size) return true;
   const overlap = openingSentences.filter(s => closingSentences.has(s)).length;
   return overlap / Math.min(openingSentences.length, closingSentences.size) < 0.4;
+};
+
+const repeatedContentNgrams = (opening, closing, prompt) => {
+  const payload = extractPromptPayload(prompt);
+  const sheet = payload?.hearingSheet || {};
+  const source = [
+    sheet.personality,
+    sheet.hobbies,
+    sheet.memorableEvents,
+    sheet.familyMemories,
+    sheet.travelAnniversaryEffort,
+    sheet.favoritePhrases,
+    sheet.valuedThings,
+  ].filter(Boolean).join("。");
+  const stop = new Set([
+    "こと", "もの", "その", "この", "家族", "皆様", "時間", "日々", "お姿", "思い", "記憶",
+    "大切", "本人", "され", "られ", "ました", "でした", "ござい", "こられ", "歩まれ",
+  ]);
+  const candidates = new Set();
+  String(source || "").split(/[、。・,/\s「」『』（）()]+/u).forEach(part => {
+    const compact = normalizeText(part);
+    for (const size of [3, 2]) {
+      for (let index = 0; index <= compact.length - size; index += 1) {
+        const token = compact.slice(index, index + size);
+        if (!stop.has(token) && !/[0-9０-９]/u.test(token)) candidates.add(token);
+      }
+    }
+  });
+  const a = normalizeText(opening);
+  const b = normalizeText(closing);
+  return [...candidates].filter(token => a.includes(token) && b.includes(token));
 };
 
 const startsWithSeasonDeceasedLife = opening => {
@@ -503,6 +545,23 @@ const hasExcessiveConsecutivePoliteEndings = text => {
   });
 };
 
+const hasStackedNounFragments = text => {
+  const sentences = String(text || "")
+    .split(/[。！？]/u)
+    .map(value => value.trim())
+    .filter(Boolean);
+  const nounEnding = /(?:時間|日々|お姿|笑顔|思い出|記憶|ひととき|歩み|毎日|言葉)$/u;
+  for (let index = 1; index < sentences.length; index += 1) {
+    if (
+      sentences[index - 1].length <= 28 &&
+      sentences[index].length <= 28 &&
+      nounEnding.test(sentences[index - 1]) &&
+      nounEnding.test(sentences[index])
+    ) return true;
+  }
+  return false;
+};
+
 const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) => {
   const opening = String(openingNarration || "");
   const closing = String(closingNarration || "");
@@ -525,12 +584,15 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasRepeatedExpressions(full)) failures.push("repeated expression");
   if (hasWeakGenericNarration(full)) failures.push("weak generic narration");
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
+  if (repeatedContentNgrams(opening, closing, prompt).length >= 3) failures.push("reused hearing facts");
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
+  if (/[、,]\s*この季節となりました/u.test(opening)) failures.push("seasonal grammar");
   if (hasForbiddenExpression(closing.slice(0, 120))) failures.push("closing fixed greeting");
   if (BAD_CLOSING_TIMELINE_RE.test(closing)) failures.push("closing timeline");
   if (countDirectQuotes(full) > 1) failures.push("too many direct quotes");
   if (hasExcessiveConsecutivePoliteEndings(bodyWithoutRequiredClosings)) failures.push("excessive polite endings");
+  if (hasStackedNounFragments(bodyWithoutRequiredClosings)) failures.push("stacked noun fragments");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
@@ -574,17 +636,18 @@ const buildSystemPrompt = extraInstruction => [
   "The opening narration must always begin in this order: season, then the deceased, then life. Never begin with venue, attendees, or greetings.",
   "Do not keep the deceased waiting behind a long seasonal preface. The seasonal sentence is only atmosphere. Immediately after it, write the single required life-introduction sentence with the full name. Do not add a separate farewell bridge sentence.",
   "The first seasonal sentence should preferably end with この季節, 季節となりました, 頃となりました, or 頃でございます. Examples: '青葉を渡る風がやわらかく感じられるこの季節。' '夏の陽射しがまぶしく降り注ぐ頃となりました。'",
+  "Seasonal grammar: choose either '蝉の声が遠く近くに響くこの季節。' or '蝉の声が遠く近くに響く季節となりました。'. Never write the mixed and unnatural form '響く、この季節となりました。'. Do not place a comma immediately before この季節.",
   "Seasonal language is allowed only in openingNarration. closingNarration must never start with seasonal language or seasonal scenery.",
   "Before writing, internally determine exactly one life theme for this deceased, such as family love, hard work, smile, challenge, compassion, sincerity, love of nature, teaching others, or community. This theme is the axis of the whole narration.",
   "Do not treat all input facts equally. Give the most space to facts and episodes that support the selected theme. Keep facts unrelated to the theme short, or omit them when the narration would become a list.",
   "Put the selected theme in detectedTheme when JSON is requested, but never display the theme label, analysis, or selection process to the user. The user should see only the completed narration.",
   "Opening narration and closing narration have different jobs. Do not make the closing a shorter summary of the opening.",
   "The narration is not a resume. Do not arrange life in strict chronological order. Express personality, daily life, family time, hobbies, and treasured values as one gentle story.",
-  "Opening narration should be 60-70% of the total. It reflects on life, personality, work or life path, hobbies, family memories, and one memorable episode that shows the deceased's character.",
+  "Opening narration should be 60-70% of the total. Select no more than three Hearing Sheet facts that best show this person. Do not try to include personality, family, hobbies, work, travel, and favorite words all at once.",
   "Closing narration should be 30-40% of the total. It begins with a different Hearing Sheet fact from openingNarration and connects quietly to the flower-farewell guidance.",
   "Closing narration must not retell the life story or announce that farewell has already finished. Use only family feelings explicitly supplied in the Hearing Sheet. Do not invent what remains in their hearts. Do not begin with fixed attendee thanks such as '本日はご多用の中、ご会葬いただき誠にありがとうございました。'.",
-  "Use this opening structure exactly: 1) one refined seasonal sentence ending like この季節 or 頃となりました, 2) '故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。', 3) personality shown through episodes, 4) family, 5) hobbies and work or life path if provided, 6) one impressive scene that feels specific to the deceased, 7) close exactly with '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'.",
-  "Use this closing structure: 1) begin with a different concrete fact from the Hearing Sheet, 2) connect that fact to the family's memory without inventing feelings, 3) leave one restrained afterglow sentence, 4) close with the fixed flower-farewell guidance, not with a formal closing declaration. Closing must end exactly with: '{age}年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。 本日はご会葬いただき、誠にありがとうございました。 これよりは、お花を手向けてのお別れのお時間でございます。 式場内は、お別れの準備へと移らせていただきます。 皆様には、お手荷物をお持ちいただき、後方でお待ちくださいますようお願いいたします。 どうぞよろしくお願いいたします。'. Do not repeat opening content.",
+  "Use this opening structure exactly: 1) one refined seasonal sentence ending like この季節 or 頃となりました, 2) '故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。', 3) no more than three selected facts or memories, 4) close exactly with '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'.",
+  "Use this closing structure: 1) begin with one or two concrete Hearing Sheet facts not used anywhere in openingNarration, 2) connect them to an explicitly supplied family feeling without retelling personality, 3) leave one restrained afterglow sentence. Do not write the flower-farewell guidance, attendee thanks, age-respect sentence, or any formal closing declaration; the server appends the fixed guidance exactly once after generation.",
   "Because the fixed flower-farewell guidance begins with '{age}年のご生涯', do not write another age phrase such as '{age}年の歩み' or '{age}年のご生涯' immediately before it. If you need that idea, use the given name plus 様, その歩み, or そのご生涯 instead.",
   "If the hearing sheet is sparse, write a shorter dignified narration instead of padding. Never fill missing details with generic praise.",
   "Specific memory is stronger than a beautiful adjective. Prefer one true detail from the hearing sheet over abstract phrases such as warmth, bonds, gratitude, precious, irreplaceable, or watching over.",
@@ -614,7 +677,7 @@ const buildSystemPrompt = extraInstruction => [
   "Prioritize what the family can understand in one hearing. It is better to leave one clear scene than to list many beautiful images.",
   "Line breaks are direction for performance. Do not chop the manuscript into many tiny fragments. Break lines only where an MC would naturally pause or let emotion remain.",
   "Shape the text so an MC can breathe between thoughts. One paragraph should carry one scene or one feeling. Do not pack too many facts into one sentence.",
-  "Target length: openingNarration about 680-900 Japanese characters; closingNarration about 330-520 Japanese characters.",
+  "Target length: openingNarration about 550-750 Japanese characters. closingNarration must contain only a 180-300 character narrative body; the server adds the fixed guidance later.",
   "Total spoken length should feel like about 90 seconds to 2 minutes when read by an MC. Do not make the manuscript too long.",
   "Avoid generic AI phrases, repetitive wording, unnecessary greetings, overused abstract words, and repeated gratitude wording. Use concrete memories first, then quiet feeling.",
   "Opening narration should create the quiet time before the farewell begins. Closing narration should not make the family directly say thank you; it should connect naturally into their hearts through afterglow.",
@@ -642,6 +705,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "DIRECT-QUOTE LIMIT: use at most one 「...」 quotation in the whole manuscript, only when the exact words appear in the Hearing Sheet.",
   "CEREMONY TIMELINE: closing is read after the officiant leaves but before flowers are offered. Never write お別れのあと, お別れを済ませた今, お別れのひとときを過ごした今, or お別れのひとときを終えた今.",
   "REPETITION AUDIT: state a key family memory once, not twice in neighboring sentences. If using 笑っている顔しか思い出せない, do not follow it with another sentence saying the person often laughed. Do not summarize opening traits again in closing.",
+  "FACT PARTITION BEFORE WRITING: divide Hearing Sheet facts into two disjoint groups. Use at most three facts in openingNarration. Reserve one or two unused facts for closingNarration. A fact, hobby, place, quote, trait, or family feeling used in opening must not appear again in closing, even as a short summary.",
   "Do not interpret a supplied quote into an invented gaze, philosophy, or value. Never write 今日ここに集う皆様 or この場に集う皆様. Do not turn 明るさを見習いたい into 前向きに歩んでいきたい.",
   "You are the dedicated funeral MC for Asuka Hall with more than 20 years of funeral MC experience. Write narration to be read aloud, not an essay.",
   "Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, and improvementNotes. Put an empty string in improvementNotes. Never place [OPENING], [CLOSING], or Japanese section labels inside narration values.",
@@ -683,10 +747,11 @@ const buildFastSystemPrompt = extraInstruction => [
   "A good opening may be as simple as: 'The sound of cicadas is quietly reaching us in this season.' Then move immediately to the deceased and the farewell.",
   "After the opening seasonal sentence, move directly into the required life-introduction sentence with the full name. Do not pass through a separate today's-farewell sentence.",
   "The first two sentences should be close to this rhythm: one short seasonal atmosphere sentence, then the required life-introduction sentence. Do not spend several sentences on season before the name.",
+  "Seasonal grammar: choose either '蝉の声が遠く近くに響くこの季節。' or '蝉の声が遠く近くに響く季節となりました。'. Never write '響く、この季節となりました。' and never place a comma immediately before この季節.",
   "Opening ending: the final sentence must be exactly: \u5c3d\u304d\u308b\u3053\u3068\u306e\u306a\u3044\u611f\u8b1d\u306e\u601d\u3044\u3092\u80f8\u306b\u3001\u307e\u3082\u306a\u304f\u958b\u5f0f\u306e\u304a\u6642\u9593\u3067\u3054\u3056\u3044\u307e\u3059\u3002",
-  "Closing: do not start with seasonal language, attendee thanks, or wording that says farewell has already ended. Begin with a different concrete Hearing Sheet fact from the opening. Use family feelings only when explicitly supplied, and do not invent what remains in their hearts.",
+  "Closing: do not start with seasonal language, attendee thanks, or wording that says farewell has already ended. Use only one or two Hearing Sheet facts reserved and unused in opening. Use family feelings only when explicitly supplied, and do not invent what remains in their hearts.",
   "In closing, avoid motivational wording such as 'walk forward', 'turn toward brightness', or 'be strong'. Funeral MC narration should leave memory and support, not a slogan.",
-  "Closing ending: leave a quiet afterglow, then naturally connect to the fixed flower-farewell guidance. Do not write a formal closing declaration such as これをもちまして or ご葬儀を閉式いたします.",
+  "Closing ending: return only the narrative body. Do not write 葬送のひととき, attendee thanks, お花を手向けてのお別れ, 式場内の準備, お手荷物の案内, or どうぞよろしくお願いいたします. The server appends that fixed guidance exactly once.",
   "Do not repeat the same episode in opening and closing. Opening recalls life; closing supports the family after farewell.",
   "Family perspective is most important. Do not write profile-like sentences such as 'liked X' or 'did Y' as plain explanation. Translate facts into how the family remembers them and feels them now.",
   "Do not overuse one opening phrase such as '\u3054\u5bb6\u65cf\u304c\u601d\u3044\u6d6e\u304b\u3079\u308b\u304a\u59ff\u306f'. Rotate memory-inviting expressions naturally: '\u4eca\u3082\u7686\u69d8\u306e\u80f8\u306b\u3088\u307f\u304c\u3048\u308b\u306e\u306f', '\u3075\u3068\u601d\u3044\u8fd4\u3055\u308c\u308b\u306e\u306f', '\u7686\u69d8\u306e\u5fc3\u306b\u6d6e\u304b\u3076\u306e\u306f', '\u3054\u5bb6\u65cf\u306e\u8a18\u61b6\u306e\u4e2d\u306b\u306f', '\u4eca\u65e5\u3053\u306e\u6642\u3001\u81ea\u7136\u3068\u601d\u3044\u51fa\u3055\u308c\u308b\u306e\u306f'.",
@@ -712,7 +777,7 @@ const buildFastSystemPrompt = extraInstruction => [
   "Do not write to make people cry. Write the deceased's ordinary days carefully; the emotion should come from recognizable truth, not from dramatic language. Quiet presence is stronger than dramatic emotion.",
   "Closing should not become a lesson such as 'live this way' or 'move forward'. Prefer words such as support, warmth, face remembered, memory, remaining in the heart, and inherited feeling, but only when connected to a concrete memory. Do not write abstract expressions such as 'smile temperature'.",
   "Closing should not directly make the family say thank you. Create afterglow that naturally connects into the family's heart.",
-  "Opening length: 680-900 Japanese characters. Closing length: 330-520 Japanese characters. Opening must feel clearly longer.",
+  "Opening length: about 550-750 Japanese characters. Closing narrative body: about 180-300 Japanese characters before the server-appended guidance. Opening must feel clearly longer.",
   "The whole narration should feel like about 90 seconds to 2 minutes when read aloud.",
   "Avoid taboo or repetitive funeral words: \u91cd\u306d\u91cd\u306d, \u305f\u3073\u305f\u3073, \u307e\u3059\u307e\u3059, \u3044\u3088\u3044\u3088, \u304f\u308c\u3050\u308c\u3082, \u8fd4\u3059\u8fd4\u3059, \u6b21\u3005, \u7d9a\u304f, \u8ffd\u3063\u3066, \u518d\u3073, \u307e\u305f\u307e\u305f, \u6d6e\u304b\u3070\u308c\u306a\u3044.",
   "Before returning, remove repetition, venue names, copied sample wording, and formal closing declarations. Keep the full name only in the opening first mention.",
@@ -999,7 +1064,7 @@ module.exports = async (req, res) => {
       temperature,
       maxTokens,
       prompt,
-      extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, required opening life-introduction, fixed flower-farewell closing, and removal of AI-like phrasing.",
+      extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
@@ -1016,6 +1081,42 @@ module.exports = async (req, res) => {
         failures: Array.from(new Set([...(lastCheck?.failures || []), "response incomplete"])),
       };
     }
+    const retryableFailures = new Set([
+      "control label leaked",
+      "opening closing overlap",
+      "reused hearing facts",
+      "seasonal grammar",
+      "stacked noun fragments",
+      "closing timeline",
+      "closing too short",
+      "response incomplete",
+    ]);
+    const firstFailures = lastCheck?.failures || [];
+    if (!lastCheck?.ok && firstFailures.some(failure => retryableFailures.has(failure))) {
+      console.warn("[generate-narration] retrying one quality revision", {
+        buildId: API_BUILD_ID,
+        failures: firstFailures,
+      });
+      parsed = await requestNarration({
+        apiKey,
+        model,
+        temperature,
+        maxTokens,
+        prompt,
+        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
+      });
+      try {
+        lastCheck = qualityCheckNarration(parsed, rawPrompt);
+      } catch (qualityError) {
+        lastCheck = { ok: false, failures: ["quality check error"] };
+      }
+      if (parsed?.generationDiagnostics?.possibleTruncation) {
+        lastCheck = {
+          ok: false,
+          failures: Array.from(new Set([...(lastCheck?.failures || []), "response incomplete"])),
+        };
+      }
+    }
 
     if (!lastCheck?.ok) {
       console.warn("[generate-narration] quality check failed", {
@@ -1026,6 +1127,10 @@ module.exports = async (req, res) => {
         "missing narration",
         "control label leaked",
         "opening order",
+        "seasonal grammar",
+        "stacked noun fragments",
+        "opening closing overlap",
+        "reused hearing facts",
         "closing timeline",
         "too many direct quotes",
         "closing too short",
@@ -1157,10 +1262,11 @@ const compactNarrationPrompt = prompt => {
 
   return [
     "Compass AI narration request. Use only this compact data. Return exactly one raw JSON object with openingNarration, closingNarration, detectedTheme, and improvementNotes. Put an empty string in improvementNotes. Never include [OPENING], [CLOSING], 【開式前】, or 【閉式後】 inside narration values. Never output analysis, explanations, markdown, or text outside the JSON object. ABSOLUTE FACT BOUNDARY: every concrete noun, action, place, conversation, reaction, expression, routine, motive, feeling, and scene must be explicitly present in hearingSheet. Never invent meals, rooms, windows, roads, scenery, photographs, homecoming, travel conversations, family reactions, or inner feelings merely to make a vivid scene. FAMILY PERSPECTIVE: stay close to the family's stated memories without outsider character judgments or invented family feelings. SENTENCE ENDINGS: two natural polite sentences may stand together, but outside fixed guidance never use three consecutive sentences with the same です/ます rhythm. Do not create stacked noun fragments; use at most one deliberate noun-ending sentence per paragraph. REPETITION: never restate the same family phrase in adjacent sentences. Do not repeat opening traits as a summary in closing. Do not interpret a supplied quote into an invented gaze, philosophy, or value. Never write 今日ここに集う皆様 or この場に集う皆様, and never turn 明るさを見習いたい into 前向きに歩んでいきたい. DIRECT QUOTES: at most one 「...」 quote across both sections, and only when hearingSheet contains those exact words. TIMELINE: closing is read after the officiant leaves but before flowers are offered; never write お別れのあと, お別れを済ませた今, お別れのひとときを過ごした今, or お別れのひとときを終えた今. Opening is 60-70%; closing is 30-40%. Opening begins with one seasonal sentence, then the fixed full-name life sentence, and ends exactly with '尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。'. Closing begins with a different concrete fact from hearingSheet and ends with the fixed flower-farewell guidance. Do not repeat opening facts in closing. Do not invent what remains in the family's hearts. Use only supplied facts. If input is sparse, write shorter. Use 故 plus the full name only in the opening life-introduction sentence. Never use venue names, 在りし日を, or a formal closing declaration.",
+    "FINAL OUTPUT OVERRIDE: before writing, divide Hearing Sheet facts into disjoint groups. openingNarration may use at most three facts. closingNarration may use only one or two facts that never appeared in openingNarration. Do not repeat an opening hobby, place, quote, trait, family feeling, or episode in closing, even as a summary. closingNarration must be only a 180-300 character narrative body. Do not write age-respect wording, 葬送のひととき, attendee thanks, お花を手向けてのお別れ, 式場内の準備, baggage instructions, or どうぞよろしくお願いいたします; the server appends the complete fixed guidance exactly once.",
     "Most important quality standard: quiet afterglow, visible scenes, the deceased's character naturally felt, writing that does not explain too much, and a tone that never over-directs emotion. Do not write to make people cry; write so the family can feel as if the deceased is present in the room.",
     "Spoken style guide: prioritize beauty when heard by ear. Use short sentences, natural punctuation, breath-friendly rhythm, one carefully drawn scene or gesture, and no packed lists of facts. Do not repeat the same ending three times in a row. Avoid repeating words such as 大切, 笑顔, 優しい, 温かい, 思い出, 感謝.",
     "Highest priority: write grammatically correct, natural Japanese from the beginning. Match subjects and predicates correctly, complete every sentence, avoid unclear pronouns such as 彼, 彼女, or 私, and never speak for the family's feelings unless explicitly provided.",
-    "Prefer simple, readable Japanese over difficult or poetic expression. Do not output drafts, evaluation, correction process, step labels, alternate drafts, or notes. Output only completed [OPENING] and [CLOSING].",
+    "Prefer simple, readable Japanese over difficult or poetic expression. Do not output drafts, evaluation, correction process, step labels, alternate drafts, or notes. Output only the requested raw JSON object.",
     "MC perspective: this is not a novel, essay, or profile introduction. Keep the air of 'the MC is speaking quietly in this ceremony hall right now.' Make the manuscript easy for the MC to read and comfortable for attendees to hear.",
     "Name usage: do not repeat the deceased's given name more than necessary. After using the name once, use natural Japanese references such as そのお姿, ご本人, その笑顔, or omit the subject where clear. Do not use 故人様 or 個人様. Keep required final lines unchanged.",
     "Gender and familyRelation are only auxiliary information for natural expression. Reflect them only when consistent with the hearing details, and never invent personality or episodes from them.",
