@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-family-inside-20260729.61";
+const API_BUILD_ID = "sprint27-family-inside-20260729.62";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1136,7 +1136,7 @@ const buildSystemPrompt = extraInstruction => [
   "The opening seasonal sentence must describe only the season. Never put 別れ, 人生, ご生涯, 旅立ち, お見送り, or 葬送 in that sentence.",
   "Do not use 続く, 続いております, 重なる, or 深まる merely to fill the seasonal sentence. Prefer one plain observation of the season.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
-  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. It may gather only memories already stated, without interpretation: その笑顔も、可愛らしい仕草も、折に触れて聞いた言葉も、すべてはご家族とともに過ごされた日々の中にあります. Vary the wording naturally. Use a phrase such as ご家族とともに過ごされた日々 only here, no more than once in the manuscript. This bridge must make the gratitude sentence feel earned, not sudden.",
+  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. It may gather only memories already stated, without interpretation: その笑顔も、可愛らしい仕草も、折に触れて聞いた言葉も、いずれもご家族がともに過ごしてこられた日々の一場面でございます. Vary the wording naturally. Use a shared-life phrase only here, no more than once in the manuscript. Do not write the translated-sounding すべては日々の中にあります. This bridge must make the gratitude sentence feel earned, not sudden.",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   "Closing structure: use only closing.anchor and write exactly one complete respectful sentence. Do not first copy the source as a noun fragment and then explain it. Do not add a second fact, aftertaste sentence, moral, personality summary, or general explanation. The fixed ceremony guidance follows immediately.",
   "For a travel anchor with several destinations and a birthday month, make the destinations remembered places: 六甲、小倉、下関、博多は、いずれもお誕生日月の十月に、親子三代で訪れた思い出の地でございます. Do not write 向かわれた旅行, 十月に重ねられた, or ご家族の大切な思い出 unless the source explicitly uses 大切.",
