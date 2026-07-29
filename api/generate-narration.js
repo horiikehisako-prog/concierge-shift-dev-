@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.32";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.33";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -445,7 +445,9 @@ const normalizeOpeningAgeMentions = (value, prompt) => {
 };
 
 const normalizeSpokenNumerals = value => String(value || "")
-  .replace(/10月/gu, "十月");
+  .replace(/10月/gu, "十月")
+  .replace(/親子3代/gu, "親子三代")
+  .replace(/故\s*故\s*/gu, "故");
 
 const limitDirectQuotes = draft => {
   let quoteCount = 0;
@@ -1307,6 +1309,7 @@ module.exports = async (req, res) => {
         "sectionPlanの配置を厳守し、家族のお気持ちを開式前へ移さない。",
         "家族の一人称を司会者の一人称にしない。私も彼女を見習い、明るく前向きに歩んでいきたい、は、その明るさを見習いたいという思いも、ご家族の胸にあります、程度の間接話法に直す。彼・彼女は使わない。",
         "聞き取りの正確な言葉に対して、口にしてこられたのではないでしょうか、とは書かない。引用の後に哲学や人柄の解説を加えない。",
+        "人の悪口を言わない、の直後に「人の悪口を言ってはいけない」と引用するなど、説明と引用が同じ意味なら引用だけを残す。",
         "行動へ向かうその歩み、地名と月が時間を伝える、言葉をここに置く、〇〇様らしさの一つ、声として残る、思いが重なる、等の抽象的なAI表現は削除する。",
         "歌や踊りを家族が可愛いと感じた事実は、家族の視点のまま書く。一般に可愛い方として親しまれた、とは変えない。",
         "笑っている顔しか思い出せないほど、よく笑う人、という一つの家族の記憶は、一文で一度だけ表す。笑う方でした、を続けない。",
@@ -1576,7 +1579,14 @@ const compactNarrationPrompt = prompt => {
     "notes",
   ].forEach(key => {
     if (sheet[key] !== undefined && sheet[key] !== null && String(sheet[key]).trim()) {
-      compactSheet[key] = compactText(sheet[key], 900);
+      let fieldText = compactText(sheet[key], 900);
+      if (key === "familyMemories") {
+        fieldText = fieldText.replace(
+          /いつも笑っている顔しか思い出せないほど、?よく笑う人[。.]?/gu,
+          "ご家族の記憶にまず浮かぶのは、よく笑っておられたお顔。"
+        );
+      }
+      compactSheet[key] = fieldText;
     }
   });
 
