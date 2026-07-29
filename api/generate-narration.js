@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.30";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.31";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1294,6 +1294,7 @@ module.exports = async (req, res) => {
       const compactPayload = extractPromptPayload(prompt) || {};
       const copyEditPrompt = JSON.stringify({
         hearingSheet: compactPayload.hearingSheet || {},
+        sectionPlan: compactPayload.sectionPlan || {},
         draft: draftForEdit,
       });
       const copyEditSystemPrompt = [
@@ -1301,10 +1302,13 @@ module.exports = async (req, res) => {
         "返答は openingNarration、closingNarration、detectedTheme、improvementNotes を持つJSON一個だけ。improvementNotesは空文字。見出し、説明、Markdownは禁止。",
         "hearingSheetにない人物、感情、評価、場面、動作、関係、意味を一つも足さない。親しい方々、周りの方々、確かな歩み、日々の中にあった喜び等を補わない。",
         "同じ事実は全原稿で一度だけ。笑う顔とよく笑う人を隣接させない。明るい・笑顔・朗らかを同じ説明として重ねない。",
+        "sectionPlanの配置を厳守し、家族のお気持ちを開式前へ移さない。",
         "家族の一人称を司会者の一人称にしない。私も彼女を見習い、明るく前向きに歩んでいきたい、は、その明るさを見習いたいという思いも、ご家族の胸にあります、程度の間接話法に直す。彼・彼女は使わない。",
         "聞き取りの正確な言葉に対して、口にしてこられたのではないでしょうか、とは書かない。引用の後に哲学や人柄の解説を加えない。",
         "行動へ向かうその歩み、地名と月が時間を伝える、言葉をここに置く、〇〇様らしさの一つ、声として残る、思いが重なる、等の抽象的なAI表現は削除する。",
         "歌や踊りを家族が可愛いと感じた事実は、家族の視点のまま書く。一般に可愛い方として親しまれた、とは変えない。",
+        "笑っている顔しか思い出せないほど、よく笑う人、という一つの家族の記憶は、一文で一度だけ表す。笑う方でした、を続けない。",
+        "旅行情報は一つか二つの完全な文にまとめる。ご旅行。いずれも十月…旅でした、のように旅行と旅を言い直さない。",
         "体言止めは一段落に一つまで。述語のない不完全な文を作らない。同じです・ます系の文末を三文続けない。",
         "開式前の季節文、氏名と年齢の定型文、最後の感謝文は保持する。閉式後は物語本文だけを返し、年齢・会葬御礼・献花・式場準備・手荷物案内を出さない。",
         "文章を長くするための補足は禁止。不自然な文は、新しい説明で置き換えず、短く削ってつなぎ直す。",
@@ -1595,16 +1599,32 @@ const compactNarrationPrompt = prompt => {
     compassExpression: compactText(entry.compassExpression, 120),
     reason: compactText(entry.reason || entry.explanation, 160),
   }));
+  const sectionPlan = {
+    opening: [
+      "personality",
+      "hobbies",
+      "memorableEvents",
+      "familyMemories",
+      "favoritePhrases",
+    ].filter(key => compactSheet[key]),
+    closing: [
+      "travelAnniversaryEffort",
+      "valuedThings",
+      "familyFeelings",
+    ].filter(key => compactSheet[key]),
+  };
 
   return [
     "Use only hearingSheet facts. Return one raw JSON object with openingNarration, closingNarration, detectedTheme, and an empty improvementNotes. No labels, markdown, notes, or text outside JSON.",
-    "First partition the facts: opening uses three or four fields; closing uses one or two different fields. Never repeat a fact, trait, hobby, quotation, place, or family feeling between sections.",
+    "Follow sectionPlan exactly. Facts assigned to opening must not move to closing, and facts assigned to closing must not move to opening. Never repeat a fact, trait, hobby, quotation, place, or family feeling between sections.",
     "Opening must contain 450-650 Japanese characters when five or more hearing fields are present: one seasonal sentence, the fixed full-name life sentence, three natural body paragraphs, and the exact fixed opening final sentence. Do not compress it into a profile.",
     "Closing must contain a 160-260 Japanese-character narrative body in two paragraphs. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
     "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a scene, or add emotional meaning.",
     "Use no more than five sentence-final ました・でした・ございました・おりました and no more than four sentence-final ます・です・ございます in the narrative body. Never place either family three sentences in a row. Use one natural 〜ではないでしょうか question, a few complete present-historical sentences, and at most one dignified noun-ending sentence per paragraph.",
     "Do not pad with explanations such as その言葉をここに置かせていただきます, そのままの響きで, 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, or 静かにここにあります. Stay with the supplied action, expression, place, or exact words.",
     "Closing must not begin with a season word even when a dated memory is used. Begin with the people or action, and place the season later in the sentence.",
+    "When familyMemories already says both 笑っている顔 and よく笑う人, express that family memory only once. Do not follow it with another sentence saying the person often laughed.",
+    "Write travel information as a complete sentence. Do not write ご旅行。 followed by another sentence ending 旅でした, and do not repeat 旅行・旅・出かける as labels for the same event.",
     "Use the selected textbook only for paragraph order, pauses, restraint, and warmth. Never copy its facts or wording.",
     JSON.stringify({
       season: writingRules.season || "",
@@ -1612,6 +1632,7 @@ const compactNarrationPrompt = prompt => {
       nameUsageRule: writingRules.nameUsageRule || "",
       forbiddenWords: asArray(writingRules.forbiddenWords).slice(0, 20),
       hearingSheet: compactSheet,
+      sectionPlan,
       selectedStyleReferences: references,
       hisakoSampleGuides: guides,
       replacementDictionary: dictionaryEntries,
