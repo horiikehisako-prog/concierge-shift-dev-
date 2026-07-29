@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.52";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.53";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -676,6 +676,10 @@ const normalizeQuotationContext = draft => {
       .replace(/ご家族にはよく微笑まれ、その表情をご家族は思い出されています。?/gu, "")
       .replace(/家族にはよく微笑んでおられ、その穏やかな表情も思い出されます。?/gu, "")
       .replace(
+        /穏やかで、多くを語らない([^。\n]*?)は、ご家族によく微笑んでおられました。?/gu,
+        "穏やかで、多くを語らない$1。"
+      )
+      .replace(
         /穏やかで多くを語らず、ご家族にはよく微笑んでおられました。?/gu,
         "穏やかで、多くを語らない方でした。"
       )
@@ -973,7 +977,10 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
   if (/[、,]\s*この季節となりました/u.test(opening)) failures.push("seasonal grammar");
-  if (hasForbiddenExpression(closing.slice(0, 120))) failures.push("closing fixed greeting");
+  const closingNarrativePrefix = closing.split(
+    /(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し/u
+  )[0];
+  if (hasForbiddenExpression(closingNarrativePrefix)) failures.push("closing fixed greeting");
   if (BAD_CLOSING_TIMELINE_RE.test(closing)) failures.push("closing timeline");
   if (countDirectQuotes(full) > 1) failures.push("too many direct quotes");
   if (hasExcessiveConsecutivePoliteEndings(bodyWithoutRequiredClosings)) failures.push("excessive polite endings");
