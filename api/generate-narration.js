@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.16";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.17";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",

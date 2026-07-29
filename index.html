@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 27 Build 20260729.16";
+const DEV_BUILD_LABEL = "Sprint 27 Build 20260729.17";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -758,7 +758,7 @@ const compassParseTextbookMarkdown=(text,fileName="")=>{
     updatedAt:now,
   });
 };
-const compassSelectLibraryReferences=(sheet,cfg,theme,limit=3)=>{
+const compassSelectLibraryReferences=(sheet,cfg,theme,limit=1)=>{
   const season=compassSeasonFromDate(sheet.deceasedDate);
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   const targetAge=Number(sheet.age);
@@ -770,11 +770,14 @@ const compassSelectLibraryReferences=(sheet,cfg,theme,limit=3)=>{
     const demographics=compassLibraryDemographics(e);
     return targetDecade!==null&&targetGender&&demographics.decade===targetDecade&&demographics.gender===targetGender;
   });
-  const pool=exact.length>=3?exact:eligible;
+  // A single close demographic match is more useful than blending several
+  // unrelated ages and genders. Fall back to the full library only when no
+  // same-decade/same-gender textbook exists.
+  const pool=exact.length?exact:eligible;
   return pool
     .map(e=>({...e,_score:compassTextScore(e,sheet,selectedTheme,season)}))
     .sort((a,b)=>(b._score-a._score)||String(b.updatedAt||"").localeCompare(String(a.updatedAt||"")))
-    .slice(0,Math.max(0,Math.min(3,limit)))
+    .slice(0,Math.max(0,Math.min(1,limit)))
     .map(({_score,...e})=>e);
 };
 const mergeForbiddenWords=v=>Array.from(new Set([...ensureArray(v),...DEFAULT_FORBIDDEN_WORDS])).filter(Boolean);
@@ -3490,7 +3493,9 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
     closingNarration:compassStyleReferenceText(closingNarration),
     writingNotes,approvalReason,compassOfficial,officialVersion,officialScore,mostReferenced,aiLearningWeight
   }));
-  const hisakoSampleGuides=normalizeNarrationSamples(cfg.narrationSamples).slice(0,8).map(s=>({title:s.title,tags:s.tags,text:compassStyleReferenceText(s.text)}));
+  // The closest Compass Official textbook is the sole style reference.
+  // Mixing the legacy sample set caused contradictory voices and structures.
+  const hisakoSampleGuides=[];
   const approvedDictionary=getCompassAIEntries(mergeCompassKbDefaults(compassKb)).map(({dictionary,originalWord,compassExpression,explanation,reason,tags,priority})=>({dictionary,originalWord,compassExpression,explanation,reason,tags,priority})).slice(0,120);
   const payload={
     workflow:"Hearing Sheet -> Prompt Builder -> Serverless API -> OpenAI API -> Draft -> MC edits -> Save",
@@ -3563,7 +3568,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
     outputRules:[
       "日本語の葬儀司会ナレーション下書きを作成する",
       "開式前ナレーション、閉式後ナレーション、detectedTheme、improvementNotesをJSONで返す",
-      "openingNarrationは600〜900日本語文字程度、closingNarrationは500〜700日本語文字程度で、短く終わらせない",
+      "openingNarrationは550〜750日本語文字程度、closingNarrationは定型案内を含めず180〜300日本語文字程度とする",
       "書き始める前に人生のテーマを一つだけ決め、detectedThemeに入れる",
       "会場名、会場に集まったことへの挨拶、本日はご参列ありがとうございます等の定型挨拶は書かない",
       "会場は入力・保存・送信対象ではない。会場名を推測して書かない",
@@ -4038,7 +4043,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const selectedSamples=selectedLibraryReferences;
   const aiControl=normalizeAISettings(cfg.aiSettings);
   const makeDraft=async()=>{
-    const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,3);
+    const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,1);
     setSelectedLibraryReferences(libraryRefs);
     const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme,libraryRefs,compassKb);
     const ai=normalizeAISettings(cfg.aiSettings);
@@ -4117,7 +4122,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
     const rec={id:activeId||Date.now(),deceasedName:clean(sheet.deceasedName)||"未入力",ceremonyType:sheet.ceremonyType||"通夜",
       mcName:uname||"未入力",hearingSheet:compassSanitizeHearingSheet(sheet),generatedDraft:draft,editedDraft:draft,generatedPrompt:prompt,theme:selectedTheme,season:selectedSeason,
       createdAt:records.find(r=>r.id===activeId)?.createdAt||now,updatedAt:now,notes:sheet.notes||"",
-      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint27-narration-grounding-20260729.16",templateVersion:"sprint27-narration-grounding-20260729.16",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
+      aiMeta:{provider:cfg.aiSettings?.provider||"openai",model:cfg.aiSettings?.model||"",promptVersion:"sprint27-narration-grounding-20260729.17",templateVersion:"sprint27-narration-grounding-20260729.17",theme:selectedTheme,detectedTheme:draft.detectedTheme||selectedTheme,season:selectedSeason,selectedLibraryReferenceIds:selectedSamples.map(s=>s.id),selectedLibraryReferenceTitles:selectedSamples.map(s=>s.title),selectedLibraryReferences:selectedSamples,promptBuilt:!!prompt,apiCalled:!!(draft.openingNarration||draft.closingNarration),improvementNotes:draft.improvementNotes||"",future:cfg.compassFuture},
       practice:{readingAloud:false,audioRecordings:[],feedback:[]},template:{id:"compass-asuka-kaikan",label:"Compass AI / Asuka Kaikan"}};
     setSaving(true);
     const next=activeId?records.map(r=>r.id===activeId?rec:r):[rec,...records];
@@ -4152,7 +4157,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       </div>
       <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fffaf7",marginBottom:12,lineHeight:1.6}}>
         <div style={{fontSize:12,color:C.muted,fontWeight:800,marginBottom:4}}>ナレーションライブラリ自動参照</div>
-        <div style={{fontSize:13,color:C.text}}>Compass AI first searches the Compass Official Library and selects the best matching 3 narrations. They are used only for writing style, tone, rhythm, flow, warmth, and sentence length. Do not copy.</div>
+        <div style={{fontSize:13,color:C.text}}>Compass AI first searches the Compass Official Library and selects the single closest narration. It is used only for writing style, tone, rhythm, flow, warmth, and sentence length. Do not copy.</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
         {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["gender","性別","radio"],["familyRelation","ご遺族から見た故人様","relation"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
