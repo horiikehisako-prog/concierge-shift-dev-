@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.26";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.27";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -627,8 +627,13 @@ const hasAgeRepetition = (text, prompt) => {
   return (String(text || "").match(new RegExp(`${escapedAge}年`, "gu")) || []).length > 2;
 };
 
-const hasInventedMotivationalRewrite = text =>
-  /明るく前向きに(?:歩んで|進んで|生きて|過ごして)いきたい/u.test(String(text || ""));
+const hasInventedMotivationalRewrite = (text, prompt) => {
+  const motivational = /明るく前向きに(?:歩んで|進んで|生きて|過ごして)いきたい/u;
+  const outputHasPhrase = motivational.test(String(text || ""));
+  if (!outputHasPhrase) return false;
+  // This wording is not an invention when the family supplied it themselves.
+  return !motivational.test(String(prompt || ""));
+};
 
 const hasOutsiderAtmosphereClaim = text =>
   /(?:その場|場の|周りの)[^。]{0,12}空気(?:まで|を)?[^。]{0,24}明る/u.test(String(text || ""));
@@ -728,7 +733,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasBrokenJapaneseGrammar(bodyWithoutRequiredClosings)) failures.push("broken Japanese grammar");
   if (hasExcessiveSmileRepetition(opening)) failures.push("excessive trait repetition");
   if (hasAgeRepetition(full, prompt)) failures.push("age repetition");
-  if (hasInventedMotivationalRewrite(full)) failures.push("invented family feeling");
+  if (hasInventedMotivationalRewrite(full, prompt)) failures.push("invented family feeling");
   if (hasOutsiderAtmosphereClaim(full)) failures.push("outsider perspective");
   if (hasUnsafeInterpretiveLanguage(full, prompt)) failures.push("unsafe interpretation");
   if (hasAwkwardNarrationStyle(bodyWithoutRequiredClosings)) failures.push("awkward narration style");
