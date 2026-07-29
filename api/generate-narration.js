@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.6";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.7";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -584,7 +584,9 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasRepeatedExpressions(full)) failures.push("repeated expression");
   if (hasWeakGenericNarration(full)) failures.push("weak generic narration");
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
-  if (repeatedContentNgrams(opening, closing, prompt).length >= 3) failures.push("reused hearing facts");
+  // A single Japanese fact can naturally share several 2-3 character fragments.
+  // Require broader overlap so one repeated word does not reject the whole draft.
+  if (repeatedContentNgrams(opening, closing, prompt).length >= 6) failures.push("reused hearing facts");
   if (!startsWithSeasonDeceasedLife(opening)) failures.push("opening order");
   if (closingStartsWithSeasonalLanguage(closing)) failures.push("closing seasonal opening");
   if (/[、,]\s*この季節となりました/u.test(opening)) failures.push("seasonal grammar");
@@ -1087,6 +1089,7 @@ module.exports = async (req, res) => {
       "reused hearing facts",
       "seasonal grammar",
       "stacked noun fragments",
+      "excessive polite endings",
       "closing timeline",
       "closing too short",
       "response incomplete",
