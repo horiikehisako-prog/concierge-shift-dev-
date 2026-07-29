@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.75";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.76";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1307,7 +1307,7 @@ const requestNarration = async ({
       ].filter(Boolean).join(" ");
       const body = {
         model,
-        reasoning: { effort: "high" },
+        reasoning: { effort: "medium" },
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
