@@ -1,13 +1,13 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.74";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.75";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
 // quality report below handle the remaining non-critical issues.
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
-const ENABLE_GUARDED_COPY_EDIT = true;
+const ENABLE_GUARDED_COPY_EDIT = false;
 const redactSecrets = value => String(value || "")
   .replace(/sk-(?:proj-)?[A-Za-z0-9_-]+/g, "[REDACTED_API_KEY]");
 
@@ -1184,9 +1184,11 @@ const buildSystemPrompt = extraInstruction => [
   "開式前の最後は必ず「尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。」としてください。",
   "本文はopening.anchorを中心に始め、supportsは同じ人物像を深めるものだけを使ってください。項目を順番に紹介せず、一段落ごとに一つの記憶の動きを持たせます。",
   "笑顔、趣味、言葉などの事実は一度ずつ描き、直後に性格や意味を解説しないでください。引用はsourceFactsにある場合だけ一回まで使い、必ず「話しておられました」など自然な述語を持つ文の中に置いてください。",
+  "引用を置いた段落は、その引用を含む一文で閉じてください。引用の意味、人柄、生き方、家族への影響を説明する文を後ろへ足さないでください。",
+  "ご家族を文の観察者として何度も登場させないでください。「ご家族が思い出される」のように書かず、記憶の中の表情や動作を文の中心に置いてください。",
   "文末は意味に合わせて自然に変えてください。同じ「ました・でした・ございます」を三文続けず、避けるためだけの体言止めも重ねないでください。すべての文に自然な述語を置いてください。",
   "開式前は、事実が十分なら280〜480字を目安にします。短い段落を並べるだけにせず、関係する記憶を自然につないでください。長さのための抽象表現は足さないでください。",
-  "閉式後本文はclosing.anchorだけを静かにたどり、開式前の要約をしません。具体的な記憶から余韻へ進む二〜三文、90〜180字を目安にしてください。",
+  "閉式後本文はclosing.anchorを静かにたどり、開式前の要約をしません。closing.supportsにご家族のお気持ちがある場合だけ、内容を変えずに結んでください。具体的な記憶から余韻へ進む二〜三文、90〜180字を目安にしてください。",
   "閉式後では、年齢への敬意、会葬御礼、献花、式場準備、手荷物案内を書かないでください。これらはサーバーが一度だけ追加します。",
   "開式前と閉式後で、同じ事実、表情、趣味、引用、場所、気持ちを重ねないでください。年齢は氏名定型文以外に書かないでください。",
   "styleReferenceには、今回の人物像に近い教科書が一冊だけ入っています。語句や事実を借りず、記憶の始め方、段落の進み方、場面と余韻の配分、読み上げの間だけを参考にしてください。",
@@ -1305,7 +1307,7 @@ const requestNarration = async ({
       ].filter(Boolean).join(" ");
       const body = {
         model,
-        reasoning: { effort: "medium" },
+        reasoning: { effort: "high" },
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
@@ -1958,7 +1960,7 @@ const pickMemoryCards = compactSheet => {
     "hobbies",
     "personality",
   ].map(byField).filter(Boolean).forEach(card => {
-    if (selectedOpening.length >= 4) return;
+    if (selectedOpening.length >= 3) return;
     if (selectedOpening.some(selected => selected.field === card.field)) return;
     if (selectedClosing.some(selected => selected.field === card.field)) return;
     if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
@@ -1966,18 +1968,29 @@ const pickMemoryCards = compactSheet => {
     selectedOpening.push(card);
   });
 
+  const closingFeeling = byField("familyFeelings");
+  if (
+    closingFeeling &&
+    !selectedClosing.some(selected => selected.field === closingFeeling.field) &&
+    !selectedOpening.some(selected => selected.field === closingFeeling.field) &&
+    !selectedOpening.some(selected => meaningfulFragmentOverlap(selected.text, closingFeeling.text, 6)) &&
+    !selectedClosing.some(selected => meaningfulFragmentOverlap(selected.text, closingFeeling.text, 6))
+  ) {
+    selectedClosing.push(closingFeeling);
+  }
+
   return {
     opening: {
       anchor: selectedOpening[0] || null,
       supports: selectedOpening.slice(1),
-      maximumFacts: 4,
+      maximumFacts: 3,
       purpose: "ご家族が最初に思い浮かべる、その人らしい一場面から始める",
     },
     closing: {
       anchor: selectedClosing[0] || null,
-      supports: [],
-      maximumFacts: 1,
-      purpose: "開式前とは別の具体的な思い出を一つだけたどり、説明を加えず余韻へつなぐ",
+      supports: selectedClosing.slice(1),
+      maximumFacts: 2,
+      purpose: "開式前とは別の具体的な思い出をたどり、入力にご家族のお気持ちがある場合だけ自然に結んで余韻へつなぐ",
     },
   };
 };
@@ -2041,7 +2054,7 @@ const compactNarrationPrompt = prompt => {
     "以下のJSONを材料に、葬儀ナレーションの完成稿を書いてください。",
     "sourceFacts以外の事実は使わないでください。openingとclosingの材料は意図的に分けられています。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
-    "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。",
+    "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
     "styleReferenceは最も近い教科書です。本文を読み、構成・呼吸・段落の運び・描写の距離だけを参考にしてください。教科書の事実、固有名詞、特徴的な語句、文章はコピーしないでください。",
     "返答は指定されたJSON一個だけです。",
     JSON.stringify({
