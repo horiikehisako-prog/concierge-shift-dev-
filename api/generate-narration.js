@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.47";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.48";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -517,6 +517,10 @@ const normalizeQuotationContext = draft => {
         "ゴルフへ出かける朝、支度を整えられる$1のお姿。"
       )
       .replace(
+        /ゴルフへ出かける朝には支度を整え、帰宅後にはゆっくりと過ごされる。そのお姿が、ご家族の記憶に残っています。/gu,
+        "ゴルフへ出かける朝、支度を整えられるお姿。帰宅後、ゆっくりと過ごされるお姿も、ご家族の記憶に残っています。"
+      )
+      .replace(
         /帰宅されたあとは、ゆっくりと過ごされる時間がありました。その前後の静かな流れが、ご家族の記憶に残っております。/gu,
         "帰宅された後、ゆっくりと過ごされるお姿も、ご家族の記憶に残っています。"
       )
@@ -602,6 +606,10 @@ const normalizeQuotationContext = draft => {
         "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
       )
       .replace(
+        /穏やかな笑顔を思い出すご家族のお気持ちとともに、その時間が思い起こされます。/gu,
+        "その時間を思うとき、ご家族の胸に浮かぶのは、穏やかな笑顔ではないでしょうか。"
+      )
+      .replace(
         /[^。\n]+?へ向かわれた時間も、その表情とともに思い起こされます。/gu,
         ""
       )
@@ -628,6 +636,7 @@ const normalizeQuotationContext = draft => {
       .replace(/ご家族にはよく微笑んでおられ、その表情が心に残ります。?/gu, "")
       .replace(/言葉は少なくとも、ご家族にはよく微笑んでおられました。?/gu, "")
       .replace(/言葉を多く重ねることはなく、ご家族にはよく微笑んでおられました。?/gu, "")
+      .replace(/ご家族にはよく微笑まれ、その表情をご家族は思い出されています。?/gu, "")
       .replace(
         /穏やかで多くを語らず、ご家族にはよく微笑んでおられました。?/gu,
         "穏やかで、多くを語らない方でした。"
