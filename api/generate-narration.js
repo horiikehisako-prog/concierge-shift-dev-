@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.20";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.21";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -638,6 +638,14 @@ const hasUnsafeInterpretiveLanguage = (text, prompt) => {
   if (/(?:時間|日々)[、，]\s*そして[^。]{0,40}(?:時間|日々)/u.test(value)) return true;
   if (/いつも可愛い方だった/u.test(value)) return true;
   if (/手芸の品/u.test(value) && !/手芸の品/u.test(String(prompt || ""))) return true;
+  if (/(?:笑い声|笑み)の向こうに/u.test(value)) return true;
+  if (/その時その時を大切に/u.test(value)) return true;
+  if (/ご自分で動き出される(?:力|強さ)/u.test(value)) return true;
+  if (/特別に(?:言葉を尽くさ|飾ら)/u.test(value)) return true;
+  if (/同じ時間を過ごすことそのものが/u.test(value)) return true;
+  if (/土に(?:ふれ|触れ)/u.test(value) && !/土/u.test(String(prompt || ""))) return true;
+  if (/落ち着いた日々/u.test(value) && !/落ち着/u.test(String(prompt || ""))) return true;
+  if (/(?:お過ごしください|思い浮かべていただけ|お心をお寄せ|お気持ちをお花に託|お別れとなりますように)/u.test(value)) return true;
   return false;
 };
 
@@ -1294,6 +1302,49 @@ module.exports = async (req, res) => {
         maxTokens,
         prompt,
         extraInstruction: retryInstruction,
+      });
+      try {
+        lastCheck = qualityCheckNarration(parsed, rawPrompt);
+      } catch (qualityError) {
+        lastCheck = { ok: false, failures: ["quality check error"] };
+      }
+      if (parsed?.generationDiagnostics?.possibleTruncation) {
+        lastCheck = {
+          ok: false,
+          failures: Array.from(new Set([...(lastCheck?.failures || []), "response incomplete"])),
+        };
+      }
+    }
+
+    const hardRetryFailures = new Set([
+      "missing narration",
+      "control label leaked",
+      "opening order",
+      "seasonal grammar",
+      "stacked noun fragments",
+      "broken Japanese grammar",
+      "invented family feeling",
+      "outsider perspective",
+      "unsafe interpretation",
+      "opening closing overlap",
+      "closing timeline",
+      "too many direct quotes",
+      "closing too short",
+      "response incomplete",
+    ]);
+    const remainingFailures = lastCheck?.failures || [];
+    if (!lastCheck?.ok && remainingFailures.some(failure => hardRetryFailures.has(failure))) {
+      console.warn("[generate-narration] retrying minimal grounded version", {
+        buildId: API_BUILD_ID,
+        failures: remainingFailures,
+      });
+      parsed = await requestNarration({
+        apiKey,
+        model,
+        temperature: 0.1,
+        maxTokens,
+        prompt,
+        extraInstruction: `SAFE MINIMAL VERSION. The previous draft still failed: ${remainingFailures.join(", ")}. Write a shorter complete manuscript using direct factual restatement only. Opening: seasonal sentence, required full-name life sentence, then no more than four short factual sentences drawn from at most two Hearing Sheet fields, then the exact opening final sentence. Closing: two to four short factual sentences drawn from one unused Hearing Sheet field. Do not add a transition that interprets personality, family emotion, atmosphere, meaning, legacy, lesson, voice, gaze, hands, scenery, or inner life. Do not direct the family to do, feel, remember, proceed, pray, offer, or imagine anything. Do not add fixed closing guidance because the server appends it. Prefer plain sentences such as 手芸を楽しまれました over vivid or poetic prose.`,
       });
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
