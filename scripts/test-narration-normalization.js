@@ -60,4 +60,24 @@ assert.deepEqual(
 );
 assert.equal(plan.opening.supports[0].text.includes("カラオケ"), true);
 
+const smilingPlan = context.testHelpers.pickMemoryCards({
+  familyMemories: "いつも笑顔が身近にあった。歌ったり踊ったりする姿を家族は愛らしく感じていた。",
+  memorableEvents: "親子三代で旅行した。",
+  favoritePhrases: "「人を悪く言わないでいよう」とよく言っていた。",
+  hobbies: "編み物を楽しみ、庭の草花を育てていた。",
+  personality: "朗らかで、人と接することが好きだった。思い立つとすぐに行動へ移した。",
+  familyFeelings: "その朗らかさを忘れずにいたい。",
+});
+assert.equal(
+  smilingPlan.opening.supports.some(card => card.field === "personality"),
+  true,
+);
+assert.deepEqual(
+  Array.from(
+    smilingPlan.opening.supports.find(card => card.field === "personality")
+      .doNotRepeatTopics,
+  ),
+  ["smile"],
+);
+
 console.log("narration normalization tests passed");

@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.84";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.85";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -763,6 +763,14 @@ const normalizeQuotationContext = draft => {
         "犬や猫を見かけると、自然に足を止められました。"
       )
       .replace(
+        /歌ったり、踊ったりされるお姿は、ご家族に(?:いつも)?愛らしく映っておりました。/gu,
+        "歌ったり、踊ったりされる、いつもの愛らしいお姿。"
+      )
+      .replace(
+        /日々の中では、よく、(「[^」]+」)と話しておられました。/gu,
+        "折に触れて、$1と話しておられました。"
+      )
+      .replace(
         /好きなことに向かうひとときも、ふと立ち止まる仕草も、暮らしの中に穏やかに刻まれております。/gu,
         ""
       )
@@ -777,6 +785,14 @@ const normalizeQuotationContext = draft => {
       .replace(
         /そのお気持ちとともに、[^。\n]+?様をお見送りいたします。/gu,
         ""
+      )
+      .replace(
+        /その行き先の一つひとつが、今も大切に思い返されます。/gu,
+        "その土地の名に触れるたび、ご家族で過ごした日も思い出されることでしょう。"
+      )
+      .replace(
+        /その([^。\n]+?)を忘れずにいたいという思いが、静かに残ります。/gu,
+        "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
       )
       .replace(/ご家族の内に残されています。/gu, "ご家族の胸にあります。")
       .replace(
@@ -1994,6 +2010,8 @@ const MEMORY_CONCEPTS = [
   ["music", /歌|カラオケ|踊/u],
   ["work", /仕事|商店|会社|働|勤め/u],
   ["kindness", /優し|思いや|気遣|悪口/u],
+  ["social", /人と接|人との|ご縁|会話|語ら|地域/u],
+  ["active", /行動|活動的|思い立|すぐに動/u],
 ];
 
 const meaningfulFragmentOverlap = (left, right, size = 4) => {
@@ -2079,7 +2097,8 @@ const pickMemoryCards = compactSheet => {
     if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
     if (selectedClosing.some(selected => memoryCardsOverlap(selected, card))) return;
     const alreadyUsedConcepts = new Set(
-      selectedOpening.flatMap(selected => [...memoryConceptsFor(selected.text)])
+      [...selectedOpening, ...selectedClosing]
+        .flatMap(selected => [...memoryConceptsFor(selected.text)])
     );
     const doNotRepeatTopics = [...memoryConceptsFor(card.text)]
       .filter(concept => alreadyUsedConcepts.has(concept));
