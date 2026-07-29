@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.42";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.43";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -517,6 +517,10 @@ const normalizeQuotationContext = draft => {
         "休日には、広い空の下で仲間と楽しむゴルフの時間を、心待ちにされていました。"
       )
       .replace(
+        /休日にはゴルフを楽しんでおられました。広い空の下で仲間とゴルフをする時間を、心待ちにされていました。/gu,
+        "休日には、広い空の下で仲間と楽しむゴルフの時間を、心待ちにされていました。"
+      )
+      .replace(
         /ご家族の記憶にまず浮かぶのは、(?:いつも)?笑っておられたお顔で、よく笑う方として思い出されます。/gu,
         "ご家族の記憶にまず浮かぶのは、よく笑っておられたお顔です。"
       )
@@ -556,14 +560,29 @@ const normalizeQuotationContext = draft => {
         /ご家族の胸には今、([^。\n]+?)が浮かんでいます。/gu,
         "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
       )
+      .replace(
+        /今、ご家族の胸に浮かぶのは、([^。\n]+?)です。/gu,
+        "ご家族の胸に浮かぶのは、$1ではないでしょうか。"
+      )
+      .replace(
+        /[^。\n]+?へ向かわれた時間も、その表情とともに思い起こされます。/gu,
+        ""
+      )
       .replace(/[ \t]+\n/gu, "\n")
       .replace(/\n{3,}/gu, "\n\n")
       .trim();
   };
+  let openingNarration = clean(draft?.openingNarration);
+  const closingNarration = clean(draft?.closingNarration);
+  if (/笑顔/u.test(closingNarration)) {
+    openingNarration = openingNarration
+      .replace(/ご家族にはよく微笑んでおられ、その表情が心に残ります。?/gu, "")
+      .replace(/言葉は少なくとも、ご家族にはよく微笑んでおられました。?/gu, "");
+  }
   return {
     ...draft,
-    openingNarration: clean(draft?.openingNarration),
-    closingNarration: clean(draft?.closingNarration),
+    openingNarration: openingNarration.replace(/\n{3,}/gu, "\n\n").trim(),
+    closingNarration: closingNarration.replace(/\n{3,}/gu, "\n\n").trim(),
   };
 };
 
@@ -1732,12 +1751,25 @@ const compactNarrationPrompt = prompt => {
     compassExpression: compactText(entry.compassExpression, 120),
     reason: compactText(entry.reason || entry.explanation, 160),
   }));
+  const sharesMeaningfulFragment = (left, right, size = 4) => {
+    const a = normalizeText(left);
+    const b = normalizeText(right);
+    if (!a || !b) return false;
+    for (let index = 0; index <= a.length - size; index += 1) {
+      if (b.includes(a.slice(index, index + size))) return true;
+    }
+    return false;
+  };
+  const hobbiesRepeatMemorableEvent = sharesMeaningfulFragment(
+    compactSheet.hobbies,
+    compactSheet.memorableEvents
+  );
   const sectionPlan = {
     opening: [
       "familyMemories",
       "personality",
       "favoritePhrases",
-      "hobbies",
+      ...(hobbiesRepeatMemorableEvent ? [] : ["hobbies"]),
       "memorableEvents",
     ].filter(key => compactSheet[key]),
     closing: [
@@ -1750,6 +1782,7 @@ const compactNarrationPrompt = prompt => {
   return [
     "Use only hearingSheet facts. Return one raw JSON object with openingNarration, closingNarration, detectedTheme, and an empty improvementNotes. No labels, markdown, notes, or text outside JSON.",
     "Follow sectionPlan exactly. Facts assigned to opening must not move to closing, and facts assigned to closing must not move to opening. Never repeat a fact, trait, hobby, quotation, place, or family feeling between sections.",
+    "When two Hearing Sheet fields describe the same memory, write that memory once. When familyFeelings repeats a smile or trait already present in personality, reserve that shared image for closing and omit the overlapping clause from opening.",
     "Within opening, follow sectionPlan order. After the fixed life sentence, begin with familyMemories when present, so the family first encounters a recognizable face or scene. Do not begin the body with a profile sentence such as 明るく前向きな方でした.",
     "Do not list personality adjectives. Replace 明るく前向きで、行動力がある方でした with the supplied actions: 人との時間を喜び、思い立ったことにはすぐ動かれる. Do not add an evaluation after those actions.",
     "Opening must contain 450-650 Japanese characters when five or more hearing fields are present: one seasonal sentence, the fixed full-name life sentence, three natural body paragraphs, and the exact fixed opening final sentence. Do not compress it into a profile.",
