@@ -1,7 +1,12 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.22";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.23";
+// Vercel functions have a firm execution limit. A second or third model call
+// regularly exhausts that limit and hides an otherwise usable first draft.
+// Keep generation to one model call; deterministic normalization and the
+// quality report below handle the remaining non-critical issues.
+const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -1269,7 +1274,7 @@ module.exports = async (req, res) => {
       "response incomplete",
     ]);
     const firstFailures = lastCheck?.failures || [];
-    if (!lastCheck?.ok && firstFailures.some(failure => retryableFailures.has(failure))) {
+    if (ALLOW_EXTERNAL_QUALITY_RETRY && !lastCheck?.ok && firstFailures.some(failure => retryableFailures.has(failure))) {
       console.warn("[generate-narration] retrying one quality revision", {
         buildId: API_BUILD_ID,
         failures: firstFailures,
@@ -1333,7 +1338,7 @@ module.exports = async (req, res) => {
       "response incomplete",
     ]);
     const remainingFailures = lastCheck?.failures || [];
-    if (!lastCheck?.ok && remainingFailures.some(failure => hardRetryFailures.has(failure))) {
+    if (ALLOW_EXTERNAL_QUALITY_RETRY && !lastCheck?.ok && remainingFailures.some(failure => hardRetryFailures.has(failure))) {
       console.warn("[generate-narration] retrying minimal grounded version", {
         buildId: API_BUILD_ID,
         failures: remainingFailures,
@@ -1377,7 +1382,6 @@ module.exports = async (req, res) => {
         "opening closing overlap",
         "closing timeline",
         "too many direct quotes",
-        "closing too short",
         "response incomplete",
       ]);
       const hasCriticalFailure = (lastCheck?.failures || []).some(failure => criticalFailures.has(failure));
