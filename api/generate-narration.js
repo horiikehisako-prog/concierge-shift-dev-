@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-lived-memory-20260729.63";
+const API_BUILD_ID = "sprint27-lived-memory-20260729.64";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1151,14 +1151,14 @@ const buildSystemPrompt = extraInstruction => [
   "Stay beside the family's memory. Do not expose the interview with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです. Do not speak for a family feeling unless it is a selected source fact.",
   "Never replace the family with outsiders such as 見送る方々, 周りの方々, or 参列された皆様. When the selected card says ご家族, keep the viewpoint with ご家族.",
   "When a selected fact says the family found an action cute, keep the sourced adjective inside remembered-present action. Write 歌ったり、踊ったりされるときには、いつもの愛らしさがのぞきます. Do not write 可愛らしさがありました, ご家族には可愛らしく映っておりました, ご家族は可愛らしく感じておられました, or ことと存じます.",
-  "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; two or three short body paragraphs using no more than the selected opening cards; the exact opening final sentence.",
+  "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; three or four short body paragraphs using no more than the selected opening cards; one memory bridge; the exact opening final sentence.",
   "The opening seasonal sentence must describe only the season. Never put 別れ, 人生, ご生涯, 旅立ち, お見送り, or 葬送 in that sentence.",
   "Do not use 続く, 続いております, 重なる, or 深まる merely to fill the seasonal sentence. Prefer one plain observation of the season.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
-  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. It may gather only memories already stated, without interpretation: その笑顔も、愛らしい仕草も、折に触れて聞いた言葉も、今もご家族の思い出の中にございます. Vary the wording naturally. This bridge must make the gratitude sentence feel earned, not sudden.",
+  "When two or more opening memories are used, place one short memory bridge immediately before the exact opening final sentence. If three or four memories were used, do not list them all again; write a natural collective bridge such as そうした何気ない日々の一つひとつが、今もご家族の思い出の中にございます. This bridge must make the gratitude sentence feel earned, not sudden.",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
-  "Closing structure: stay with closing.anchor but give it enough room. Write two or three complete sentences, about 110-190 Japanese characters, in one or two paragraphs: first state the concrete memory, then remain with the shared time, then add one restrained future reminder. Do not add a new fact, moral, or personality summary. The fixed ceremony guidance follows.",
-  "For a travel anchor with several destinations and a birthday month, develop only that supplied memory: 親子三代で訪れた六甲、小倉、下関、博多は、いずれもお誕生日月の十月の旅でございました。訪れた土地の数だけ、ご家族で過ごされた時間がございます。これから先、その地名に触れるたび、旅の日のお姿が思い出の中によみがえります. Vary the wording. Do not write 向かわれた旅行, 十月に重ねられた, or invent meals, conversations, scenery, vehicles, photographs, or feelings.",
+  "Closing structure: stay with closing.anchor but give it enough room. Write exactly two complete sentences, about 110-190 Japanese characters, in one paragraph: the first sentence joins the concrete memory with the shared time; the second adds one restrained future reminder. Do not add a new fact, moral, or personality summary. The fixed ceremony guidance follows.",
+  "For a travel anchor with several destinations and a birthday month, develop only that supplied memory in two sentences: 親子三代で訪れた六甲、小倉、下関、博多は、いずれもお誕生日月の十月の旅であり、訪れた土地の数だけ、ご家族で過ごされた時間がございます。これから先、その地名に触れるたび、旅の日のお姿が思い出の中によみがえることでしょう. Vary the wording. Do not write 向かわれた旅行, 十月に重ねられた, or invent meals, conversations, scenery, vehicles, photographs, or feelings.",
   "Return only the closing narrative body. Do not write age-respect wording, attendee thanks, flower-farewell guidance, venue preparation, baggage instructions, or どうぞよろしくお願いいたします. The server appends those lines once.",
   "Never write another age phrase beyond the required opening life sentence. The server adds the age once in the fixed closing.",
   "Opening and closing cards are disjoint. Never repeat, paraphrase, summarize, or echo an opening trait, hobby, quotation, place, feeling, or episode in closing.",
@@ -1171,7 +1171,7 @@ const buildSystemPrompt = extraInstruction => [
   "Delete any sentence whose only job is to explain, evaluate, connect, or add length. Avoid 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, 確かな記録, 日々の重なり, 暮らしの形, and similar AI summaries.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
   "Use the single selected textbook only for calmness, paragraph movement, pauses, and warmth. Never reuse its wording, facts, scenes, nouns, or interpretations.",
-  "Aim for about 280-460 Japanese characters in openingNarration and 110-190 in the closing body when enough selected facts exist. A shorter truthful manuscript is better than invented prose, but do not reduce closing to one or two lines when a concrete memory is available.",
+  "Aim for about 320-500 Japanese characters in openingNarration and 110-190 in the closing body when enough selected facts exist. A shorter truthful manuscript is better than invented prose, but when four distinct supplied memories exist, use them to give opening sufficient substance.",
   "Before returning, silently perform three checks: every fact exists in sourceFacts; each paragraph sounds like memory rather than a profile; every sentence is complete and natural when read aloud. Delete weak explanatory sentences instead of repairing them with more words.",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
@@ -1941,7 +1941,7 @@ const pickMemoryCards = compactSheet => {
     "hobbies",
     "personality",
   ].map(byField).filter(Boolean).forEach(card => {
-    if (selectedOpening.length >= 3) return;
+    if (selectedOpening.length >= 4) return;
     if (selectedOpening.some(selected => selected.field === card.field)) return;
     if (selectedClosing.some(selected => selected.field === card.field)) return;
     if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
@@ -1953,7 +1953,7 @@ const pickMemoryCards = compactSheet => {
     opening: {
       anchor: selectedOpening[0] || null,
       supports: selectedOpening.slice(1),
-      maximumFacts: 3,
+      maximumFacts: 4,
       purpose: "ご家族が最初に思い浮かべる、その人らしい一場面から始める",
     },
     closing: {
