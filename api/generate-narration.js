@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.73";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.74";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -144,6 +144,38 @@ const parseNarrationTextFallback = content => {
   return null;
 };
 
+const parseJsonLikeNarration = content => {
+  const text = String(content || "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  if (!text || !/openingNarration/i.test(text) || !/closingNarration/i.test(text)) return null;
+
+  const openingMatch = text.match(
+    /["']?openingNarration["']?\s*:\s*["']([\s\S]*?)["']\s*,\s*["']?closingNarration["']?\s*:/i
+  );
+  const closingMatch = text.match(
+    /["']?closingNarration["']?\s*:\s*["']([\s\S]*?)["']\s*(?:,\s*["']?(?:detectedTheme|improvementNotes)["']?\s*:|\}\s*$)/i
+  );
+  if (!openingMatch?.[1] || !closingMatch?.[1]) return null;
+
+  const decodeLooseString = value => String(value || "")
+    .replace(/\\r\\n|\\n|\\r/g, "\n")
+    .replace(/\\"/g, "\"")
+    .replace(/\\'/g, "'")
+    .replace(/\\\\/g, "\\")
+    .trim();
+  const openingNarration = decodeLooseString(openingMatch[1]);
+  const closingNarration = decodeLooseString(closingMatch[1]);
+  if (!openingNarration || !closingNarration) return null;
+  return {
+    openingNarration,
+    closingNarration,
+    detectedTheme: "Compass AI",
+    improvementNotes: "",
+  };
+};
+
 const stripNonNarrationSections = value => {
   let text = String(value || "").trim();
   if (!text) return "";
@@ -227,6 +259,8 @@ const parseNarrationResponse = content => {
   try {
     return parseModelJson(content);
   } catch (jsonError) {
+    const jsonLikeFallback = parseJsonLikeNarration(content);
+    if (jsonLikeFallback) return jsonLikeFallback;
     const textFallback = parseNarrationTextFallback(content);
     if (textFallback) return textFallback;
     throw jsonError;
