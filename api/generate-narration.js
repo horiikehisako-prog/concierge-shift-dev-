@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.13";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.14";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -585,12 +585,8 @@ const hasBrokenJapaneseGrammar = text => {
 };
 
 const hasExcessiveSmileRepetition = opening => {
-  const smileSentences = String(opening || "")
-    .split(/[。！？\n]/u)
-    .map(part => part.trim())
-    .filter(Boolean)
-    .filter(sentence => /笑(?:顔|う|い|って|われ|み|声)/u.test(sentence));
-  return smileSentences.length >= 3;
+  const matches = String(opening || "").match(/笑(?:顔|う|い|って|われ|み|声)/gu) || [];
+  return matches.length >= 3;
 };
 
 const hasAgeRepetition = (text, prompt) => {
@@ -616,6 +612,16 @@ const hasUnsafeInterpretiveLanguage = (text, prompt) => {
   if (/(?:時間|日々)[、，]\s*そして[^。]{0,40}(?:時間|日々)/u.test(value)) return true;
   if (/いつも可愛い方だった/u.test(value)) return true;
   if (/手芸の品/u.test(value) && !/手芸の品/u.test(String(prompt || ""))) return true;
+  return false;
+};
+
+const hasAwkwardNarrationStyle = text => {
+  const value = String(text || "");
+  if (/明るさを重ね/u.test(value)) return true;
+  if (/(?:^|[。\n])\s*(?:そして、?)?[^。！？]{0,45}(?:しておられた|されていた)こと。/u.test(value)) return true;
+  if (/そのお姿は[^。]{0,50}(?:チエノ様|ご本人)[^。]{0,16}お姿でした/u.test(value)) return true;
+  if (/(?:歌ったり|踊ったり)[^。]{0,35}することもありました/u.test(value)) return true;
+  if (/いつも可愛(?:い|らしい)[^。]{0,25}とのこと/u.test(value)) return true;
   return false;
 };
 
@@ -658,6 +664,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasInventedMotivationalRewrite(full)) failures.push("invented family feeling");
   if (hasOutsiderAtmosphereClaim(full)) failures.push("outsider perspective");
   if (hasUnsafeInterpretiveLanguage(full, prompt)) failures.push("unsafe interpretation");
+  if (hasAwkwardNarrationStyle(bodyWithoutRequiredClosings)) failures.push("awkward narration style");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
@@ -669,6 +676,7 @@ const buildSystemPrompt = extraInstruction => [
   "ABSOLUTE FACT BOUNDARY: every concrete noun, action, place, conversation, reaction, facial expression, routine, motive, feeling, and scene must be explicitly present in the Hearing Sheet. Never add meals, rooms, windows, roads, scenery, photographs, homecoming, things shown to family, checking how plants grew, travel conversations, family reactions, or the deceased's inner feelings unless the Hearing Sheet states them. Making a scene vivid does not permit invention.",
   "FAMILY-INSIDE PERSPECTIVE: stay close to what the family actually remembers. Do not write an outsider's character evaluation and do not claim what the family felt unless that feeling is explicitly provided. Prefer the family's concrete fact over a polished interpretation.",
   "SENTENCE-END AUDIT: do not mechanically alternate endings. Two natural polite sentences may stand together, but never allow three in a row with the same です/ます rhythm outside fixed guidance. Do not escape into stacked noun fragments such as 手芸に向かわれる時間。野菜を育てる時間。 Use at most one deliberate noun-ending sentence in a paragraph, and only when it sounds complete aloud. Prefer connecting closely related facts into one grammatical sentence.",
+  "NATURAL-JAPANESE POLISH: state one idea once. Never repeat お姿 twice in one sentence, never write 明るさを重ねる, and never leave a sentence as 家族を大切にしておられたこと。 Avoid flat reporting such as 歌ったり踊ったりすることもありました or いつも可愛いとのこと. Describe the supplied scene directly and finish every sentence with a natural predicate.",
   "DIRECT-QUOTE LIMIT: use at most one 「...」 quotation across openingNarration and closingNarration together, and only when the exact spoken words are present in the Hearing Sheet.",
   "CEREMONY TIMELINE: closingNarration is read after the officiant has left and before flowers are offered. Never write お別れのあと, お別れを済ませた今, お別れのひとときを過ごした今, or お別れのひとときを終えた今.",
   "REPETITION AUDIT: do not restate the same family phrase in adjacent sentences. If the Hearing Sheet says 笑っている顔しか思い出せない, use that idea only once and do not immediately explain again that the person often laughed. A main trait such as 笑顔 or 明るさ should normally appear no more than twice in openingNarration and must not be repeated as a summary in closingNarration.",
@@ -1159,6 +1167,7 @@ module.exports = async (req, res) => {
       "invented family feeling",
       "outsider perspective",
       "unsafe interpretation",
+      "awkward narration style",
       "closing timeline",
       "closing too short",
       "response incomplete",
@@ -1175,7 +1184,7 @@ module.exports = async (req, res) => {
         temperature,
         maxTokens,
         prompt,
-        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Do not invent artifacts such as 手芸の品, interpret a supplied action as 前を向いて動く, call a voice 忘れがたい, or instruct the family to お進みください. If the family says that singing and dancing looked cute, describe that specific姿 only; never rewrite it as いつも可愛い方だった. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
+        extraInstruction: `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Never repeat お姿 twice in one sentence. Do not write flat reporting such as 歌ったり踊ったりすることもありました or いつも可愛いとのこと. Never write 明るさを重ねる or leave a sentence as 家族を大切にしておられたこと。 Complete it with a natural predicate. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Do not invent artifacts such as 手芸の品, interpret a supplied action as 前を向いて動く, call a voice 忘れがたい, or instruct the family to お進みください. If the family says that singing and dancing looked cute, describe that specific姿 only; never rewrite it as いつも可愛い方だった. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`,
       });
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
@@ -1202,7 +1211,6 @@ module.exports = async (req, res) => {
         "seasonal grammar",
         "stacked noun fragments",
         "broken Japanese grammar",
-        "excessive trait repetition",
         "invented family feeling",
         "outsider perspective",
         "unsafe interpretation",
