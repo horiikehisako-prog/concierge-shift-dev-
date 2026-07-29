@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.85";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.86";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -767,9 +767,14 @@ const normalizeQuotationContext = draft => {
         "歌ったり、踊ったりされる、いつもの愛らしいお姿。"
       )
       .replace(
+        /いつも笑顔が身近にありました。歌ったり、踊ったりされる([^。\n]+?様)のお姿を、ご家族は愛らしく感じておられました。/gu,
+        "いつも笑顔で、歌ったり、踊ったりされることもあった$1。ご家族にとって、その愛らしいお姿も、いつもの$1でした。"
+      )
+      .replace(
         /日々の中では、よく、(「[^」]+」)と話しておられました。/gu,
         "折に触れて、$1と話しておられました。"
       )
+      .replace(/また、折にふれて/gu, "折に触れて")
       .replace(
         /好きなことに向かうひとときも、ふと立ち止まる仕草も、暮らしの中に穏やかに刻まれております。/gu,
         ""
@@ -791,8 +796,20 @@ const normalizeQuotationContext = draft => {
         "その土地の名に触れるたび、ご家族で過ごした日も思い出されることでしょう。"
       )
       .replace(
+        /その行き先の名とともに、([^。\n]+?様)を囲んだひとときが思い起こされます。/gu,
+        "その土地の名に触れるたび、親子三代で過ごした日のことも思い出されることでしょう。"
+      )
+      .replace(
         /その([^。\n]+?)を忘れずにいたいという思いが、静かに残ります。/gu,
         "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
+      )
+      .replace(
+        /その([^。\n]+?)を忘れずにいたい。ご家族のお気持ちは、今、その言葉に静かに重なっております。/gu,
+        "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
+      )
+      .replace(
+        /[^。\n]+?と過ごされた一つひとつに、今、ありがとうの思いが寄せられております。/gu,
+        ""
       )
       .replace(/ご家族の内に残されています。/gu, "ご家族の胸にあります。")
       .replace(
@@ -986,6 +1003,9 @@ const hasExcessiveConsecutivePoliteEndings = text => {
 
 const hasConsecutivePastPoliteEndings = text => {
   const withoutFixed = String(text || "")
+    .replace(/^[^。\n]*(?:季節|頃)[^。\n]*。?/u, "")
+    .replace(/故[^。\n]+様は、[^。\n]+尊いご生涯を閉じ、静かに人生の幕を下ろされました。?/u, "")
+    .replace(/尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?/u, "")
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "");
   const sentences = withoutFixed
     .split(/[。！？]/u)

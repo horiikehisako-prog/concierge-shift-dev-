@@ -48,6 +48,29 @@ for (const banned of [
   );
 }
 
+const familyNear = context.testHelpers.normalizeQuotationContext({
+  openingNarration: [
+    "いつも笑顔が身近にありました。歌ったり、踊ったりされる澄子様のお姿を、ご家族は愛らしく感じておられました。",
+    "澄子様と過ごされた一つひとつに、今、ありがとうの思いが寄せられております。",
+  ].join("\n"),
+  closingNarration: [
+    "その行き先の名とともに、澄子様を囲んだひとときが思い起こされます。",
+    "その朗らかさを忘れずにいたい。ご家族のお気持ちは、今、その言葉に静かに重なっております。",
+  ].join("\n"),
+});
+for (const banned of [
+  "ご家族は愛らしく感じて",
+  "ありがとうの思いが寄せられて",
+  "澄子様を囲んだひととき",
+  "その言葉に静かに重なって",
+]) {
+  assert.equal(
+    `${familyNear.openingNarration}\n${familyNear.closingNarration}`.includes(banned),
+    false,
+    `family-distance phrase remained: ${banned}`,
+  );
+}
+
 const plan = context.testHelpers.pickMemoryCards({
   familyMemories: "旅から帰ると家族に出来事を話した。",
   memorableEvents: "商店と地域のボランティアに出かけた。",
