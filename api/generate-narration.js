@@ -1,13 +1,15 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.72";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.73";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
 // quality report below handle the remaining non-critical issues.
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ENABLE_GUARDED_COPY_EDIT = true;
+const redactSecrets = value => String(value || "")
+  .replace(/sk-(?:proj-)?[A-Za-z0-9_-]+/g, "[REDACTED_API_KEY]");
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -1499,7 +1501,7 @@ module.exports = async (req, res) => {
       } catch (error) {
         console.error("[generate-narration] openai probe failed", {
           buildId: API_BUILD_ID,
-          message: error.message,
+          message: redactSecrets(error.message),
           status: error.status || null,
           openAiError: error.openAiError || null,
         });
@@ -1507,7 +1509,7 @@ module.exports = async (req, res) => {
         res.end(JSON.stringify({
           ...diagnostics,
           code: "OPENAI_PROBE_FAILED",
-          error: error.message || "OpenAI probe failed",
+          error: redactSecrets(error.message) || "OpenAI probe failed",
         }));
       }
       return;
@@ -1785,7 +1787,7 @@ module.exports = async (req, res) => {
   } catch (error) {
     console.error("[generate-narration] failed", {
       buildId: API_BUILD_ID,
-      message: error.message,
+      message: redactSecrets(error.message),
       status: error.status || null,
       openAiError: error.openAiError || null,
     });
