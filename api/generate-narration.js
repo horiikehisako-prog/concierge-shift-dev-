@@ -1,12 +1,13 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.54";
+const API_BUILD_ID = "sprint27-memory-first-20260729.55";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
 // quality report below handle the remaining non-critical issues.
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
+const ENABLE_GUARDED_COPY_EDIT = false;
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -1109,32 +1110,30 @@ const buildLegacySystemPrompt = extraInstruction => [
 const buildSystemPrompt = extraInstruction => [
   "You are a veteran Japanese funeral MC. Write plain, dignified narration that sounds natural when read aloud.",
   "Return exactly one JSON object with openingNarration, closingNarration, detectedTheme, and improvementNotes. improvementNotes must be an empty string. Do not output labels, markdown, explanations, or drafts.",
-  "FACTS ARE CLOSED: use only facts explicitly written in hearingSheet. Do not add a new conversation, reaction, motive, emotion, object, routine, place, scenery, or meaning.",
-  "SAFE CONCRETIZATION IS ALLOWED: express a supplied activity through only the generic actions necessarily contained in it. 人と接することが好き may become 人と言葉を交わすひとときを喜ばれる. 手芸 may become 手を動かし、少しずつ形にしていく. 野菜や花を育てる may become 日々手をかけ、育つ様子を見守る. These describe the supplied fact; they are not new episodes.",
-  "Do not make a generic fact specifically different. 手芸 does not establish sewing, knitting, fabric, thread, or a finished gift. Growing flowers does not establish soil, watering, buds, a garden, or a season. Travel does not establish road conversations, meals, photographs, vehicles, or scenery unless supplied.",
-  "Do not infer personality from an activity. Never add phrases such as 笑みの奥に力があった, まめやかさ, 暮らしの形, 日々の重なり, or そこにいるだけで明るくなった.",
-  "Stay close to the family's memory. Never expose the interview process with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです.",
-  "Do not explain or interpret a supplied quotation. Place it once, then move on without calling it a philosophy, teaching, way of life, gaze, or attitude toward people.",
-  "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; three short body paragraphs built from three or four selected hearingSheet fields; the exact opening final sentence.",
+  "SOURCE FACTS ARE CLOSED: use only sourceFacts. Unselected hearing information is deliberately hidden; do not reconstruct, guess, or compensate for it.",
+  "This is a memory-first narration, not a profile. Begin the body with opening.anchor and let the listener picture that remembered person before mentioning any supporting fact.",
+  "Use opening.supports only when they deepen the same human picture. You may omit a support. Coverage is never a goal. Never turn the cards into a checklist of personality, hobbies, quotations, and family values.",
+  "One paragraph must carry one movement of memory. Join facts only when they belong naturally in the same remembered scene; otherwise leave one out.",
+  "Describe supplied actions plainly. Safe generic motion is allowed: 手芸 may become 手を動かし少しずつ形にする; 野菜や花を育てる may become 日々手をかけ育つ様子を見守る. Do not add materials, finished objects, rooms, gardens, soil, weather, conversations, reactions, motives, or emotions.",
+  "Do not interpret an activity or quotation. Never add a life lesson, philosophy, evaluation, or abstract conclusion. After a supplied quotation, move on or end the paragraph.",
+  "Stay beside the family's memory. Do not expose the interview with とうかがっております, とのことです, ご家族が語ってくださった, or 皆様がよくご存じです. Do not speak for a family feeling unless it is a selected source fact.",
+  "Opening structure: one short seasonal sentence; immediately the required full-name life sentence; two or three short body paragraphs using no more than the selected opening cards; the exact opening final sentence.",
   "The opening seasonal sentence must describe only the season. Never put 別れ, 人生, ご生涯, 旅立ち, お見送り, or 葬送 in that sentence.",
   "The required life sentence is: 故{fullName}様は、{age}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
   "The exact opening final sentence is: 尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
-  "Closing structure: use only one or two facts not used in opening; if a family feeling is explicitly supplied, state it without expanding it; leave a short factual aftertaste. Write two body paragraphs before the server's fixed guidance.",
+  "Closing structure: begin with closing.anchor, use at most one selected support, and leave a restrained factual aftertaste. Do not summarize the opening or the person's character again. Write one or two body paragraphs before the server's fixed guidance.",
   "Return only the closing narrative body. Do not write age-respect wording, attendee thanks, flower-farewell guidance, venue preparation, baggage instructions, or どうぞよろしくお願いいたします. The server appends those lines once.",
   "Never write another age phrase beyond the required opening life sentence. The server adds the age once in the fixed closing.",
-  "Opening and closing must use disjoint facts. Do not repeat a trait, hobby, quote, place, family feeling, or episode across sections.",
-  "Use at most one direct quotation in the entire manuscript and only when hearingSheet contains the exact words.",
-  "State the central trait once. If you write that the person often smiled, do not immediately repeat smile, laughter, brightness, or the same face in another sentence.",
+  "Opening and closing cards are disjoint. Never repeat, paraphrase, summarize, or echo an opening trait, hobby, quotation, place, feeling, or episode in closing.",
+  "Use at most one direct quotation in the entire manuscript and only when sourceFacts contains the exact words.",
+  "State the central memory once. If the anchor is a smiling face, do not add another sentence saying the person often laughed, was bright, or lightened the room.",
   "Every sentence must be grammatically complete. Avoid fragments such as 家族を大切にされていたこと。 or 歌ったり、踊ったりして、いつも可愛い。",
-  "Use natural spoken Japanese. Across the generated narrative body, sentence-final ました・でした・ございました・おりました may appear no more than five times in total, and ます・です・ございます no more than four times. Never use either family three sentences in a row.",
-  "Create rhythm through meaning, not mechanical substitution: use one restrained 〜ではないでしょうか question in opening, one complete present-historical sentence such as 〜に向かう・〜を楽しむ・〜を育てる where natural, and at most one dignified noun-ending sentence per paragraph such as 〜ひととき。 or 〜そのお姿。 Do not stack noun fragments.",
-  "Delete generic padding that merely explains the writing, including その言葉をここに置かせていただきます, そのままの響きで, 花子様らしさの一つ, 記憶として残されています, 歩みの中にある, 静かにここにあります, or the same idea with another name.",
+  "Use natural spoken Japanese. Vary rhythm through sentence length and syntax, not by forcing noun endings. Never use the same です・ます ending three sentences in a row, and never stack sentence fragments.",
+  "Delete any sentence whose only job is to explain, evaluate, connect, or add length. Avoid 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, 確かな記録, 日々の重なり, 暮らしの形, and similar AI summaries.",
   "Do not write outsider evaluation, emotional direction, or instructions to the family. Never write お進みください, お心をお寄せください, 敬意をもって向き合います, or 〜となりますように.",
-  "Do not write poetic or vague substitutions such as 耳に戻ってくる, 注がれたものへ, 日々の重なり, 暮らしに寄り添う, 確かな記録, or かけがえのないものとして重ねる.",
-  "Do not invent what remains in the family's hearts. Use familyFeelings only when present and keep its meaning unchanged.",
-  "Use a selected Compass Official textbook only for paragraph order, calm tone, sentence length, pauses, and warmth. Never reuse its facts, scenes, nouns, or interpretations.",
-  "When hearingSheet has at least five non-empty memory fields, aim for 320-520 Japanese characters in openingNarration and 100-220 in the closing body. Never add padding or interpretation to reach a length target; a shorter truthful narration is better.",
-  "Before returning, silently read every sentence aloud once. Delete any sentence that contains a fact or interpretation not found in hearingSheet. Prefer a shorter truthful manuscript over padded prose.",
+  "Use the single selected textbook only for calmness, paragraph movement, pauses, and warmth. Never reuse its wording, facts, scenes, nouns, or interpretations.",
+  "Aim for about 260-430 Japanese characters in openingNarration and 80-180 in the closing body when enough selected facts exist. A shorter truthful manuscript is better than padded prose.",
+  "Before returning, silently perform three checks: every fact exists in sourceFacts; each paragraph sounds like memory rather than a profile; every sentence is complete and natural when read aloud. Delete weak explanatory sentences instead of repairing them with more words.",
   extraInstruction || "",
 ].filter(Boolean).join(" ");
 
@@ -1531,7 +1530,7 @@ module.exports = async (req, res) => {
       extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
     const generatedDraft = parsed;
-    try {
+    if (ENABLE_GUARDED_COPY_EDIT) try {
       const closingBodyForEdit = String(parsed?.closingNarration || "")
         .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し[\s\S]*$/u, "")
         .trim();
@@ -1809,6 +1808,125 @@ const compactText = (value, max = 700) => {
 
 const asArray = value => Array.isArray(value) ? value : [];
 
+const MEMORY_FIELD_ORDER = [
+  "familyMemories",
+  "memorableEvents",
+  "favoritePhrases",
+  "hobbies",
+  "personality",
+  "travelAnniversaryEffort",
+  "valuedThings",
+  "familyFeelings",
+  "notes",
+];
+
+const MEMORY_CONCEPTS = [
+  ["smile", /笑|微笑|朗らか|明る|にこやか/u],
+  ["calm", /穏やか|静かな人|物静か/u],
+  ["travel", /旅|旅行|出かけ|六甲|小倉|下関|博多/u],
+  ["golf", /ゴルフ|クラブ|コース|ラウンド/u],
+  ["growing", /花|野菜|畑|育て|園芸/u],
+  ["craft", /手芸|編み|縫|針|工作/u],
+  ["music", /歌|カラオケ|踊/u],
+  ["work", /仕事|商店|会社|働|勤め/u],
+  ["kindness", /優し|思いや|気遣|悪口/u],
+];
+
+const meaningfulFragmentOverlap = (left, right, size = 4) => {
+  const a = normalizeText(left);
+  const b = normalizeText(right);
+  if (!a || !b) return false;
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  if (shorter.length >= 6 && longer.includes(shorter)) return true;
+  for (let index = 0; index <= shorter.length - size; index += 1) {
+    const fragment = shorter.slice(index, index + size);
+    if (longer.includes(fragment)) return true;
+  }
+  return false;
+};
+
+const memoryConceptsFor = text => new Set(
+  MEMORY_CONCEPTS
+    .filter(([, pattern]) => pattern.test(String(text || "")))
+    .map(([concept]) => concept)
+);
+
+const memoryCardsOverlap = (left, right) => {
+  if (!left || !right) return false;
+  if (meaningfulFragmentOverlap(left.text, right.text)) return true;
+  const leftConcepts = memoryConceptsFor(left.text);
+  const rightConcepts = memoryConceptsFor(right.text);
+  return [...leftConcepts].some(concept => rightConcepts.has(concept));
+};
+
+const pickMemoryCards = compactSheet => {
+  const cards = MEMORY_FIELD_ORDER
+    .filter(field => compactSheet[field])
+    .map(field => ({ field, text: compactSheet[field] }));
+  const byField = field => cards.find(card => card.field === field);
+  const selectedOpening = [];
+  const selectedClosing = [];
+
+  const openingAnchor = [
+    "familyMemories",
+    "memorableEvents",
+    "hobbies",
+    "personality",
+    "favoritePhrases",
+    "valuedThings",
+    "travelAnniversaryEffort",
+    "notes",
+  ].map(byField).find(Boolean) || null;
+  if (openingAnchor) selectedOpening.push(openingAnchor);
+
+  [
+    "memorableEvents",
+    "favoritePhrases",
+    "hobbies",
+    "personality",
+  ].map(byField).filter(Boolean).forEach(card => {
+    if (selectedOpening.length >= 3) return;
+    if (selectedOpening.some(selected => selected.field === card.field)) return;
+    if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
+    selectedOpening.push(card);
+  });
+
+  const openingFields = new Set(selectedOpening.map(card => card.field));
+  const closingCandidates = [
+    "travelAnniversaryEffort",
+    "familyFeelings",
+    "valuedThings",
+    "memorableEvents",
+    "hobbies",
+    "favoritePhrases",
+    "personality",
+    "notes",
+  ].map(byField).filter(card => card && !openingFields.has(card.field));
+
+  for (const card of closingCandidates) {
+    if (selectedClosing.length >= 2) break;
+    if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) continue;
+    if (selectedClosing.some(selected => memoryCardsOverlap(selected, card))) continue;
+    selectedClosing.push(card);
+  }
+
+  return {
+    opening: {
+      anchor: selectedOpening[0] || null,
+      supports: selectedOpening.slice(1),
+      maximumFacts: 3,
+      purpose: "ご家族が最初に思い浮かべる、その人らしい一場面から始める",
+    },
+    closing: {
+      anchor: selectedClosing[0] || null,
+      supports: selectedClosing.slice(1),
+      maximumFacts: 2,
+      purpose: "開式前とは別の思い出を一つたどり、説明を加えず余韻へつなぐ",
+    },
+  };
+};
+
 const compactNarrationPrompt = prompt => {
   const payload = extractPromptPayload(prompt);
   if (!payload) return compactText(prompt, 6000);
@@ -1823,106 +1941,62 @@ const compactNarrationPrompt = prompt => {
     "familyRelation",
     "deceasedDate",
     "ceremonyType",
-    "personality",
-    "hobbies",
-    "memorableEvents",
-    "familyMemories",
-    "familyFeelings",
-    "travelAnniversaryEffort",
-    "favoritePhrases",
-    "valuedThings",
-    "notes",
+    ...MEMORY_FIELD_ORDER,
   ].forEach(key => {
     if (sheet[key] !== undefined && sheet[key] !== null && String(sheet[key]).trim()) {
-      let fieldText = compactText(sheet[key], 900);
-      if (key === "familyMemories") {
-        fieldText = fieldText.replace(
-          /いつも笑っている顔しか思い出せないほど、?よく笑う人[。.]?/gu,
-          "ご家族の記憶にまず浮かぶのは、よく笑っておられたお顔。"
-        );
-      }
-      compactSheet[key] = fieldText;
+      compactSheet[key] = compactText(sheet[key], 900);
     }
   });
 
-  const references = asArray(payload.selectedLibraryStyleReferences).slice(0, 3).map(ref => ({
+  const selectedStyleReference = asArray(payload.selectedLibraryStyleReferences).slice(0, 1).map(ref => ({
     title: compactText(ref.title, 100),
     theme: compactText(ref.theme, 100),
     tags: asArray(ref.tags).slice(0, 10),
-    openingNarration: compactText(ref.openingNarration, 850),
-    closingNarration: compactText(ref.closingNarration, 700),
+    openingNarration: compactText(ref.openingNarration, 650),
+    closingNarration: compactText(ref.closingNarration, 500),
     writingNotes: compactText(ref.writingNotes || ref.approvalReason, 420),
-  }));
+  }))[0] || null;
 
-  const guides = asArray(payload.hisakoSampleGuides).slice(0, 2).map(sample => ({
-    title: compactText(sample.title, 80),
-    tags: asArray(sample.tags).slice(0, 8),
-    text: compactText(sample.text, 900),
-  }));
-
-  const dictionaryEntries = asArray(payload.hisakoReplacementDictionary?.entries).slice(0, 30).map(entry => ({
-    dictionary: entry.dictionary,
-    originalWord: compactText(entry.originalWord, 80),
-    compassExpression: compactText(entry.compassExpression, 120),
-    reason: compactText(entry.reason || entry.explanation, 160),
-  }));
-  const sharesMeaningfulFragment = (left, right, size = 4) => {
-    const a = normalizeText(left);
-    const b = normalizeText(right);
-    if (!a || !b) return false;
-    for (let index = 0; index <= a.length - size; index += 1) {
-      if (b.includes(a.slice(index, index + size))) return true;
-    }
-    return false;
-  };
-  const hobbiesRepeatMemorableEvent = sharesMeaningfulFragment(
-    compactSheet.hobbies,
-    compactSheet.memorableEvents
-  );
-  if (hobbiesRepeatMemorableEvent) delete compactSheet.hobbies;
-  const sectionPlan = {
+  const memoryPlan = pickMemoryCards(compactSheet);
+  const identity = {};
+  [
+    "deceasedName",
+    "narrationName",
+    "age",
+    "gender",
+    "familyRelation",
+    "deceasedDate",
+    "ceremonyType",
+  ].forEach(key => {
+    if (compactSheet[key]) identity[key] = compactSheet[key];
+  });
+  const sourceFacts = {
+    identity,
     opening: [
-      "familyMemories",
-      "personality",
-      "favoritePhrases",
-      ...(hobbiesRepeatMemorableEvent ? [] : ["hobbies"]),
-      "memorableEvents",
-    ].filter(key => compactSheet[key]),
+      memoryPlan.opening.anchor,
+      ...memoryPlan.opening.supports,
+    ].filter(Boolean),
     closing: [
-      "travelAnniversaryEffort",
-      "valuedThings",
-      "familyFeelings",
-    ].filter(key => compactSheet[key]),
+      memoryPlan.closing.anchor,
+      ...memoryPlan.closing.supports,
+    ].filter(Boolean),
   };
 
   return [
-    "Use only hearingSheet facts. Return one raw JSON object with openingNarration, closingNarration, detectedTheme, and an empty improvementNotes. No labels, markdown, notes, or text outside JSON.",
-    "Follow sectionPlan exactly. Facts assigned to opening must not move to closing, and facts assigned to closing must not move to opening. Never repeat a fact, trait, hobby, quotation, place, or family feeling between sections.",
-    "When two Hearing Sheet fields describe the same memory, write that memory once. When familyFeelings repeats a smile or trait already present in personality, reserve that shared image for closing and omit the overlapping clause from opening.",
-    "Within opening, follow sectionPlan order. After the fixed life sentence, begin with familyMemories when present, so the family first encounters a recognizable face or scene. Do not begin the body with a profile sentence such as 明るく前向きな方でした.",
-    "Do not list personality adjectives. Replace 明るく前向きで、行動力がある方でした with the supplied actions: 人との時間を喜び、思い立ったことにはすぐ動かれる. Do not add an evaluation after those actions.",
-    "When five or more hearing fields are present, aim for 320-520 Japanese characters in opening: one seasonal sentence, the fixed full-name life sentence, natural body paragraphs, and the exact fixed opening final sentence. Never invent or pad merely to reach the target.",
-    "Aim for a 100-220 Japanese-character closing narrative body. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
-    "In closing, connect travelAnniversaryEffort, valuedThings, and familyFeelings as one memory flow rather than three profile statements. It is acceptable to say that a supplied place name or birthday month may bring the shared time back to mind; do not invent what happened during the trip.",
-    "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a new episode, or add emotional meaning.",
-    "Use safe concrete paraphrase so the family can picture the supplied fact: 人と接する→人と言葉を交わす時間, 手芸→手を動かし少しずつ形にする, 野菜や花を育てる→日々手をかけ育つ様子を見守る. Do not add specific materials, finished objects, locations, weather, conversations, or reactions.",
-    "For a hobbies paragraph, prefer natural historical present: 手芸に向かい、手を動かしながら少しずつ形にしていく。野菜や花にも日々手をかけ、育つ様子を見守る. Never write 手芸では、時間を持たれました or 野菜や花を育てることでは. Do not end every hobby sentence with ました.",
-    "Use no more than five sentence-final ました・でした・ございました・おりました and no more than four sentence-final ます・です・ございます in the narrative body. Never place either family three sentences in a row. Use one natural 〜ではないでしょうか question, a few complete present-historical sentences, and at most one dignified noun-ending sentence per paragraph.",
-    "Do not pad with explanations such as その言葉をここに置かせていただきます, そのままの響きで, 〇〇様らしさの一つ, 記憶として残されています, 歩みの中にある, or 静かにここにあります. Stay with the supplied action, expression, place, or exact words.",
-    "Closing must not begin with a season word even when a dated memory is used. Begin with the people or action, and place the season later in the sentence.",
-    "When familyMemories already says both 笑っている顔 and よく笑う人, express that family memory only once. Do not follow it with another sentence saying the person often laughed.",
-    "Write travel information as a complete sentence. Do not write ご旅行。 followed by another sentence ending 旅でした, and do not repeat 旅行・旅・出かける as labels for the same event.",
-    "Use the selected textbook only for paragraph order, pauses, restraint, and warmth. Never copy its facts or wording.",
+    "Write a memory-first funeral narration from the JSON below.",
+    "Use only sourceFacts. Unselected facts are intentionally absent and must not be guessed.",
+    "Begin the opening body with memoryPlan.opening.anchor. Supports are optional; omit any support that makes the paragraph sound like a profile or list.",
+    "Begin closing with memoryPlan.closing.anchor when present. Do not summarize the opening. If closing has no selected fact, write only a very short neutral aftertaste without inventing content.",
+    "Do not explain why a fact shows personality. Let the supplied memory stand on its own.",
+    "Return one raw JSON object with openingNarration, closingNarration, detectedTheme, and an empty improvementNotes. No labels, markdown, notes, or text outside JSON.",
     JSON.stringify({
       season: writingRules.season || "",
       theme: writingRules.theme || payload.writingRules?.theme || "",
       nameUsageRule: writingRules.nameUsageRule || "",
       forbiddenWords: asArray(writingRules.forbiddenWords).slice(0, 20),
-      hearingSheet: compactSheet,
-      sectionPlan,
-      selectedStyleReferences: references,
-      hisakoSampleGuides: guides,
-      replacementDictionary: dictionaryEntries,
+      sourceFacts,
+      memoryPlan,
+      selectedStyleReference,
     }, null, 2),
   ].join("\n");
 };
