@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.82";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.83";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -725,6 +725,48 @@ const normalizeQuotationContext = draft => {
         /[^。\n]+?へ向かわれた時間も、その表情とともに思い起こされます。/gu,
         ""
       )
+      .replace(/支度を一つひとつ整えて/gu, "支度を整えて")
+      .replace(
+        /お帰りになったあとは、居間で静かに過ごされることもあり、その穏やかな佇まいが思い起こされます。/gu,
+        "お帰りになった後、居間で静かに過ごされるお姿も、ご家族の記憶に残っています。"
+      )
+      .replace(
+        /同じ食卓を囲むひとときを大切にされ、いつもの席におられる[^。\n]+?を囲んで、食事の時間が流れてまいりました。/gu,
+        "同じ食卓を囲むひとときを、大切にされていました。"
+      )
+      .replace(
+        /お帰りの時には外まで見送り、その姿を最後まで見届けておられたこともありました。/gu,
+        "お帰りの時には、外まで見送られました。"
+      )
+      .replace(
+        /どこへ行かれたのか、そこで何があったのか、帰ってからの語らいの中に、旅の余韻がそのまま残っていたことでしょう。/gu,
+        ""
+      )
+      .replace(
+        /お帰りになった後も、旅先での出来事は、[^。\n]*ご家族の前に広がっていきました。/gu,
+        ""
+      )
+      .replace(
+        /出かけた先での出来事を、帰ってからご家族へ伝えられるそのひとときにも、[^。\n]*調子がありました。/gu,
+        ""
+      )
+      .replace(
+        /好きなことに向かうひとときも、ふと立ち止まる仕草も、暮らしの中に穏やかに刻まれております。/gu,
+        ""
+      )
+      .replace(
+        /人と会い、声を交わし、出向いていく[^。\n]*歩みが、暮らしの中にありました。/gu,
+        ""
+      )
+      .replace(
+        /(?:ここに集う思いは|これまで共に過ごされた数々の場面を思い返しながら)[^。\n]*。/gu,
+        ""
+      )
+      .replace(
+        /そのお気持ちとともに、[^。\n]+?様をお見送りいたします。/gu,
+        ""
+      )
+      .replace(/ご家族の内に残されています。/gu, "ご家族の胸にあります。")
       .replace(
         /近くの山へ向かった時間も、その日常の中にあった一場面でございました。/gu,
         ""
@@ -2024,7 +2066,14 @@ const pickMemoryCards = compactSheet => {
     if (selectedClosing.some(selected => selected.field === card.field)) return;
     if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
     if (selectedClosing.some(selected => memoryCardsOverlap(selected, card))) return;
-    selectedOpening.push(card);
+    const alreadyUsedConcepts = new Set(
+      selectedOpening.flatMap(selected => [...memoryConceptsFor(selected.text)])
+    );
+    const doNotRepeatTopics = [...memoryConceptsFor(card.text)]
+      .filter(concept => alreadyUsedConcepts.has(concept));
+    selectedOpening.push(doNotRepeatTopics.length
+      ? { ...card, doNotRepeatTopics }
+      : card);
   });
 
   const closingFeeling = byField("familyFeelings");
@@ -2112,6 +2161,8 @@ const compactNarrationPrompt = prompt => {
   return [
     "以下のJSONを材料に、葬儀ナレーションの完成稿を書いてください。",
     "sourceFacts以外の事実は使わないでください。openingとclosingの材料は意図的に分けられています。",
+    "sourceFactsの名詞と動作を、自然な尊敬語と助詞へ整える範囲で書いてください。入力にない形容詞、副詞、仕草、場所の細部、家族の反応、本人の内心を足してはいけません。",
+    "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
     "openingは定型文を含めて320〜500字を目安にしてください。二つか三つの事実を一度ずつ使い、同じ事実の言い換えで字数を増やさないでください。",
@@ -2119,8 +2170,9 @@ const compactNarrationPrompt = prompt => {
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
     "anchorと各supportに使えるのは、それぞれ最大二文です。一つの事実を説明し直す三文目は書かないでください。",
     "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
+    "各カードにdoNotRepeatTopicsがある場合、その話題は同じカードの文章に含まれていても使用禁止です。別の固有の内容だけを使ってください。",
     "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を従属節でつなぐ、歴史的現在を一度だけ使う、体言止めを一段落に一度だけ使う、という方法で自然な呼吸を作ってください。",
-    "「時間を重ねる」「日々を重ねる」「時間が記憶につながる」「身近な記憶」「日常の一こま」「お姿がそこにある」「その声にのせて」「ひと続きの記憶」「胸に静かに留められる」は使わないでください。事実を抽象語へ置き換えず、その場面を平明に書いてください。",
+    "「時間を重ねる」「日々を重ねる」「時間が記憶につながる」「身近な記憶」「日常の一こま」「お姿がそこにある」「その声にのせて」「ひと続きの記憶」「胸に静かに留められる」「旅の余韻」「暮らしに刻まれる」「時間が流れる」「いつもの席」「ここに集う思い」「お見送りいたします」は使わないでください。事実を抽象語へ置き換えず、その場面を平明に書いてください。",
     "各段落の最後に抽象的なまとめを足さないでください。場面そのものが人柄を伝えるところで止めてください。",
     "styleReferenceは最も近い教科書です。本文を読み、構成・呼吸・段落の運び・描写の距離だけを参考にしてください。教科書の事実、固有名詞、特徴的な語句、文章はコピーしないでください。",
     "返答は指定されたJSON一個だけです。",
