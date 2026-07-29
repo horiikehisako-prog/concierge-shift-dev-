@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.28";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.29";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -977,7 +977,7 @@ const buildFastSystemPrompt = extraInstruction => [
   extraInstruction || "",
 ].filter(Boolean).join(" ");
 
-const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
+const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction, timeoutMs = 0 }) => {
   if (shouldUseResponsesApi(model)) {
     // A complete Japanese narration fits comfortably in this range. The old
     // 4,200-token floor increased GPT-5.5 latency without improving the draft.
@@ -1000,14 +1000,24 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         format: { type: "json_object" },
       };
 
-      const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
+      const controller = timeoutMs > 0 ? new AbortController() : null;
+      const timeoutId = controller
+        ? setTimeout(() => controller.abort(new Error("OPENAI_COPY_EDIT_TIMEOUT")), timeoutMs)
+        : null;
+      let openAiResponse;
+      try {
+        openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: controller?.signal,
+        });
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
 
       const openAiJson = await openAiResponse.json().catch(() => null);
       if (!openAiResponse.ok) {
@@ -1263,6 +1273,31 @@ module.exports = async (req, res) => {
       prompt,
       extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
+    const generatedDraft = parsed;
+    try {
+      const closingBodyForEdit = String(parsed?.closingNarration || "")
+        .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し[\s\S]*$/u, "")
+        .trim();
+      const draftForEdit = JSON.stringify({
+        openingNarration: parsed?.openingNarration || "",
+        closingNarration: closingBodyForEdit,
+      });
+      parsed = await requestNarration({
+        apiKey,
+        model,
+        temperature: 0.1,
+        maxTokens: Math.min(maxTokens, 2400),
+        prompt,
+        timeoutMs: 18000,
+        extraInstruction: `FINAL COPY-EDIT PASS. Edit the supplied DRAFT; do not compose a new life story. Preserve every supported fact and the division of facts between opening and closing. Add no scene, action, emotion, judgment, relationship, or meaning. Correct unnatural Japanese, particles, and sentence endings. Remove explanatory AI phrases such as その言葉を口にしてこられたのではないでしょうか, 行動へ向かうその歩みの中に, 地名と月が時間を伝える, その言葉をここに置く, or 〇〇様らしさの一つ. Do not express uncertainty about an exact supplied quotation. Never copy a family first-person sentence into the MC voice. Rewrite 私も彼女を見習い、明るく前向きに歩んでいきたい only as restrained indirect narration such as その明るさを見習いたいという思いも、ご家族の胸にあります, without adding advice. Do not write 彼 or 彼女. If the hearing says the family found singing and dancing cute, keep the viewpoint with the family; do not say the person was generally 親しまれた. State the central smile memory once only. Keep the required opening introduction and exact final opening sentence. Return only the closing narrative body; do not include fixed ceremony guidance. Avoid stacked noun fragments and avoid three consecutive です・ます endings. DRAFT: ${draftForEdit}`,
+      });
+    } catch (copyEditError) {
+      console.warn("[generate-narration] copy edit skipped", {
+        buildId: API_BUILD_ID,
+        message: copyEditError?.message || String(copyEditError),
+      });
+      parsed = generatedDraft;
+    }
     parsed = limitDirectQuotes(parsed);
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
