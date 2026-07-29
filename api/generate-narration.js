@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.3";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.4";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -729,6 +729,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         : buildFastSystemPrompt(extraInstruction)) + " Absolute rules: use only facts explicitly present in the Hearing Sheet; never invent conversations, meals, rooms, scenery, travel details, family reactions, motives, emotions, routines, or gestures. Closing is read before flowers are offered, so never say お別れのあと, お別れを済ませた今, お別れのひとときを過ごした今, or お別れのひとときを終えた今. Across both sections use at most one direct quotation, only if supplied. Two natural polite sentences may stand together, but never use three consecutive sentences with the same です/ます rhythm outside fixed guidance. Do not create stacked noun fragments to vary endings; use at most one deliberate noun ending in a paragraph. Never repeat the same family phrase in adjacent sentences, never summarize opening traits in closing, never write 今日ここに集う皆様, and never transform 明るさを見習いたい into 前向きに歩んでいきたい. Most important quality standard: quiet afterglow, visible facts, the deceased's character naturally felt, writing that does not explain too much, and a tone that never over-directs emotion. This is spoken MC text, not silent reading text, novel, essay, or profile introduction. Always keep the air of 'the MC is speaking quietly in this ceremony hall right now.' Before writing, internally choose exactly one theme that represents this deceased, such as family love, hard work, smile, challenge, compassion, sincerity, love of nature, teaching others, or community. Use that theme as the axis of both narrations, give more space to facts connected to it, and keep unrelated information short or omit it. Never display the theme label or selection process to the user. Use short sentences, natural punctuation, breath-friendly rhythm, and one carefully drawn fact rather than many packed facts. Do not force every input detail into the narration. Select the episode that best reveals the deceased's character, omit less important details when needed, and prioritize character clarity over information volume. Do not repeat words such as 大切, 笑顔, 優しい, 温かい, 思い出, 感謝, 静かに, 穏やかに, やわらかく, 胸に, ぬくもり, 面影, 支え, or 心に残る many times. Choose vocabulary that fits this specific person instead of a fixed Compass AI pattern. Do not write to make people cry. The manuscript must be easy for the MC to read and comfortable for attendees to hear. Do not output improvement notes, deleted themes, analysis, explanations, markdown, or any text outside the requested narration fields. If improvementNotes exists, keep it empty.";
       const body = {
         model,
+        reasoning: { effort: "none" },
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
@@ -1141,7 +1142,7 @@ const compactNarrationPrompt = prompt => {
     writingNotes: compactText(ref.writingNotes || ref.approvalReason, 420),
   }));
 
-  const guides = asArray(payload.hisakoSampleGuides).slice(0, 4).map(sample => ({
+  const guides = asArray(payload.hisakoSampleGuides).slice(0, 2).map(sample => ({
     title: compactText(sample.title, 80),
     tags: asArray(sample.tags).slice(0, 8),
     text: compactText(sample.text, 900),
