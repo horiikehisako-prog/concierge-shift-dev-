@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.79";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.80";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2103,6 +2103,12 @@ const compactNarrationPrompt = prompt => {
     "sourceFacts以外の事実は使わないでください。openingとclosingの材料は意図的に分けられています。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
+    "openingは定型文を含めて380〜600字を目安にしてください。二つか三つの事実を一度ずつ使い、同じ事実の言い換えで字数を増やさないでください。",
+    "closingはサーバーが後で加える式次第案内を除き、140〜240字を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
+    "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
+    "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を従属節でつなぐ、歴史的現在を一度だけ使う、体言止めを一段落に一度だけ使う、という方法で自然な呼吸を作ってください。",
+    "「時間を重ねる」「日々を重ねる」「時間が記憶につながる」「身近な記憶」「日常の一こま」「お姿がそこにある」「その声にのせて」「ひと続きの記憶」「胸に静かに留められる」は使わないでください。事実を抽象語へ置き換えず、その場面を平明に書いてください。",
+    "各段落の最後に抽象的なまとめを足さないでください。場面そのものが人柄を伝えるところで止めてください。",
     "styleReferenceは最も近い教科書です。本文を読み、構成・呼吸・段落の運び・描写の距離だけを参考にしてください。教科書の事実、固有名詞、特徴的な語句、文章はコピーしないでください。",
     "返答は指定されたJSON一個だけです。",
     JSON.stringify({
@@ -2130,6 +2136,12 @@ const compactNarrationPrompt = prompt => {
           "説明より場面",
           "読み上げて自然",
           "控えめで温かい",
+        ],
+        rhythm: [
+          "敬体の同じ文末を三文続けない",
+          "体言止めは一段落に一度まで",
+          "短文を並べるだけでなく、関係の近い事実は一文の中で自然につなぐ",
+          "段落末に抽象的な解説を足さない",
         ],
       },
     }, null, 2),
