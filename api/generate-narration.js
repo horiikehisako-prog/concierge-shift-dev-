@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.43";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.44";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -512,6 +512,7 @@ const normalizeQuotationContext = draft => {
     return text
       .replace(/そのようなお時間もお持ちでした。?/gu, "")
       .replace(/帰宅後には、ご自宅で/gu, "帰宅後には、")
+      .replace(/家を出ていかれる/gu, "出かけられる")
       .replace(
         /休日にはゴルフを楽しみ、広い空の下で、仲間とゴルフをする時間を楽しみにされていました。/gu,
         "休日には、広い空の下で仲間と楽しむゴルフの時間を、心待ちにされていました。"
@@ -543,6 +544,14 @@ const normalizeQuotationContext = draft => {
       .replace(
         /十月という月や訪れた地名に、/gu,
         "十月や訪れた地名に触れるたび、"
+      )
+      .replace(
+        /親子三代で出かけられた、([^。\n]+への旅)/gu,
+        "親子三代で出かけられた$1"
+      )
+      .replace(
+        /それぞれの地名や十月という響きとともに、/gu,
+        "それぞれの地名や十月に触れるたび、"
       )
       .replace(
         /その明るさを見習い、前向きに歩んでいきたいという思いを胸に、ご家族は今日の日を迎えておられます。/gu,
@@ -577,7 +586,11 @@ const normalizeQuotationContext = draft => {
   if (/笑顔/u.test(closingNarration)) {
     openingNarration = openingNarration
       .replace(/ご家族にはよく微笑んでおられ、その表情が心に残ります。?/gu, "")
-      .replace(/言葉は少なくとも、ご家族にはよく微笑んでおられました。?/gu, "");
+      .replace(/言葉は少なくとも、ご家族にはよく微笑んでおられました。?/gu, "")
+      .replace(
+        /穏やかで多くを語らず、ご家族にはよく微笑んでおられました。?/gu,
+        "穏やかで、多くを語らない方でした。"
+      );
   }
   return {
     ...draft,
@@ -1764,6 +1777,7 @@ const compactNarrationPrompt = prompt => {
     compactSheet.hobbies,
     compactSheet.memorableEvents
   );
+  if (hobbiesRepeatMemorableEvent) delete compactSheet.hobbies;
   const sectionPlan = {
     opening: [
       "familyMemories",
