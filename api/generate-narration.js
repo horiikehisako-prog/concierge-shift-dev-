@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.12";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.13";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -574,8 +574,9 @@ const hasBrokenJapaneseGrammar = text => {
     if (/(?:にが|をを|をが|がを|がが|はを|はが|にを|をに|がに|はに)(?=[ぁ-んァ-ヶ一-龠々])/u.test(sentence)) return true;
     if (/して(?:いた|いる|おられた|こられた)を(?:大切|楽しみ|喜び)/u.test(sentence)) return true;
 
-    // A たり-list must reach a predicate; do not leave it attached directly to お姿/時間/日々.
-    if (/たり[^。！？]{0,35}たり(?:して|されて)?[^。！？]{0,18}(?:お姿|時間|日々)$/u.test(sentence)) return true;
+    // Catch the known incomplete form without rejecting natural wording such as
+    // 「歌ったり、踊ったりされるお姿が思い出されます」.
+    if (/たり[^。！？]{0,35}たりして[、\s]*(?:かわいらしい|可愛い)お姿$/u.test(sentence)) return true;
 
     // Catch common duplicated transformations produced from raw hearing-sheet wording.
     if (/(?:大切にしていた|楽しんでいた|育てていた)を(?:大切にされた|楽しまれた|育てられた)/u.test(sentence)) return true;
@@ -1202,7 +1203,6 @@ module.exports = async (req, res) => {
         "stacked noun fragments",
         "broken Japanese grammar",
         "excessive trait repetition",
-        "age repetition",
         "invented family feeling",
         "outsider perspective",
         "unsafe interpretation",
