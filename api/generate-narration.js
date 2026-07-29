@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.76";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.77";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -547,6 +547,30 @@ const normalizeQuotationContext = draft => {
         );
     }
     return text
+      .replace(
+        /([一-龥々ぁ-んァ-ヶー]+様)のことをたどると、/gu,
+        "$1を思うとき、"
+      )
+      .replace(
+        /(「[^」]+」(?:という言葉)?。)\s*その(?:お)?(?:言葉|一言)[^。]*。/gu,
+        "$1"
+      )
+      .replace(
+        /折に触れて口にされた、「([^」]+)」という言葉。/gu,
+        "折に触れて、「$1」と話しておられました。"
+      )
+      .replace(
+        /[^。\n]*記憶につながってまいります。/gu,
+        ""
+      )
+      .replace(
+        /[^。\n]*感謝[^。\n]*(?:ここに|そっと)[^。\n]*重ねてまいります。/gu,
+        ""
+      )
+      .replace(
+        /親子三代で出かけた、([^。\n]+?)へのご旅行。いずれも、?\s*([^。\n]+?)でした。/gu,
+        "親子三代で$1へ出かけられたのは、$2でした。"
+      )
       .replace(
         /夏の陽ざしが、深まる季節でございます。/gu,
         "夏の陽ざしがまぶしさを増す頃でございます。"
