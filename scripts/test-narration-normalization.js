@@ -56,6 +56,7 @@ const familyNear = context.testHelpers.normalizeQuotationContext({
   closingNarration: [
     "その行き先の名とともに、澄子様を囲んだひとときが思い起こされます。",
     "その朗らかさを忘れずにいたい。ご家族のお気持ちは、今、その言葉に静かに重なっております。",
+    "その折々を思い返しながら、澄子様の朗らかさを忘れずにいたいというお気持ちが、今、静かに残されております。",
   ].join("\n"),
 });
 for (const banned of [
@@ -63,6 +64,7 @@ for (const banned of [
   "ありがとうの思いが寄せられて",
   "澄子様を囲んだひととき",
   "その言葉に静かに重なって",
+  "お気持ちが、今、静かに残されて",
 ]) {
   assert.equal(
     `${familyNear.openingNarration}\n${familyNear.closingNarration}`.includes(banned),
