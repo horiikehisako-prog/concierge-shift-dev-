@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.34";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.35";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -477,6 +477,27 @@ const limitDirectQuotes = draft => {
     quoteCount += 1;
     return quoteCount === 1 ? `「${inner}」` : inner;
   });
+  return {
+    ...draft,
+    openingNarration: clean(draft?.openingNarration),
+    closingNarration: clean(draft?.closingNarration),
+  };
+};
+
+const normalizeQuotationContext = draft => {
+  const clean = value => {
+    let text = String(value || "").replace(/「([^」]+)。」/gu, "「$1」");
+    if (text.includes("「人の悪口を言ってはいけない」")) {
+      text = text
+        .replace(/人の悪口を言わず[、，]\s*/gu, "")
+        .replace(/[^。\n]*人の悪口を言わないことを大切にされていました。[ \t]*/gu, "")
+        .replace(
+          /「人の悪口を言ってはいけない」[。]?\s*その(?:お)?言葉[^。]*。/gu,
+          "「人の悪口を言ってはいけない」。"
+        );
+    }
+    return text.replace(/[ \t]+\n/gu, "\n").replace(/\n{3,}/gu, "\n\n").trim();
+  };
   return {
     ...draft,
     openingNarration: clean(draft?.openingNarration),
@@ -1333,6 +1354,7 @@ module.exports = async (req, res) => {
         "ただし事実を目に浮かぶ日本語にするため、必ず含まれる一般的な動作への言い換えはよい。人と接することが好き→人と言葉を交わすひとときを喜ぶ。手芸→手を動かし少しずつ形にする。野菜や花を育てる→日々手をかけ、育つ様子を見守る。材料、完成品、庭、土、水やり、会話内容、周囲の反応は足さない。",
         "同じ事実は全原稿で一度だけ。笑う顔とよく笑う人を隣接させない。明るい・笑顔・朗らかを同じ説明として重ねない。",
         "sectionPlanの配置を厳守し、家族のお気持ちを開式前へ移さない。",
+        "開式前の氏名定型文に続く最初の本文段落は、familyMemoriesがあればその記憶から始める。明るく前向きな方でした、という人物紹介から始めない。",
         "家族の一人称を司会者の一人称にしない。私も彼女を見習い、明るく前向きに歩んでいきたい、は、その明るさを見習いたいという思いも、ご家族の胸にあります、程度の間接話法に直す。彼・彼女は使わない。",
         "聞き取りの正確な言葉に対して、口にしてこられたのではないでしょうか、とは書かない。引用の後に哲学や人柄の解説を加えない。",
         "人の悪口を言わない、の直後に「人の悪口を言ってはいけない」と引用するなど、説明と引用が同じ意味なら引用だけを残す。",
@@ -1360,7 +1382,7 @@ module.exports = async (req, res) => {
       });
       parsed = generatedDraft;
     }
-    parsed = limitDirectQuotes(parsed);
+    parsed = normalizeQuotationContext(limitDirectQuotes(parsed));
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
     } catch (qualityError) {
@@ -1639,11 +1661,11 @@ const compactNarrationPrompt = prompt => {
   }));
   const sectionPlan = {
     opening: [
+      "familyMemories",
       "personality",
+      "favoritePhrases",
       "hobbies",
       "memorableEvents",
-      "familyMemories",
-      "favoritePhrases",
     ].filter(key => compactSheet[key]),
     closing: [
       "travelAnniversaryEffort",
@@ -1655,6 +1677,7 @@ const compactNarrationPrompt = prompt => {
   return [
     "Use only hearingSheet facts. Return one raw JSON object with openingNarration, closingNarration, detectedTheme, and an empty improvementNotes. No labels, markdown, notes, or text outside JSON.",
     "Follow sectionPlan exactly. Facts assigned to opening must not move to closing, and facts assigned to closing must not move to opening. Never repeat a fact, trait, hobby, quotation, place, or family feeling between sections.",
+    "Within opening, follow sectionPlan order. After the fixed life sentence, begin with familyMemories when present, so the family first encounters a recognizable face or scene. Do not begin the body with a profile sentence such as 明るく前向きな方でした.",
     "Opening must contain 450-650 Japanese characters when five or more hearing fields are present: one seasonal sentence, the fixed full-name life sentence, three natural body paragraphs, and the exact fixed opening final sentence. Do not compress it into a profile.",
     "Closing must contain a 160-260 Japanese-character narrative body in two paragraphs. Do not include age, thanks, flower guidance, venue preparation, baggage guidance, or a closing declaration; the server appends them.",
     "Write from inside the family's recognizable memories. Do not report the interview, evaluate the person from outside, explain a quotation, invent a new episode, or add emotional meaning.",
