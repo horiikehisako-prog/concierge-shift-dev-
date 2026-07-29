@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-narration-grounding-20260729.18";
+const API_BUILD_ID = "sprint27-narration-grounding-20260729.19";
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -423,23 +423,49 @@ const ensureOpeningFinalLine = value => {
   return text.trim();
 };
 
+const normalizeOpeningAgeMentions = (value, prompt) => {
+  const text = String(value || "");
+  const age = String(extractPromptPayload(prompt)?.hearingSheet?.age || "").trim();
+  if (!age) return text;
+  const firstIndex = text.indexOf(`${age}年`);
+  if (firstIndex < 0) return text;
+  const splitIndex = firstIndex + `${age}年`.length;
+  const head = text.slice(0, splitIndex);
+  const tail = text.slice(splitIndex)
+    .replace(new RegExp(`${age.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}年の歩み`, "gu"), "その歩み")
+    .replace(new RegExp(`${age.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}年のご生涯`, "gu"), "そのご生涯")
+    .replace(new RegExp(`${age.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}年という`, "gu"), "長い")
+    .replace(new RegExp(`${age.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}年`, "gu"), "長い年月");
+  return `${head}${tail}`;
+};
+
+const normalizeSpokenNumerals = value => String(value || "")
+  .replace(/10月/gu, "十月");
+
 const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/今日(?:ここ|この場)に集う皆様/gu, "皆様")
   .replace(/(?:ここ|この場)に集う皆様/gu, "皆様");
 
 const applyNameRule = (draft, prompt) => ({
   ...draft,
-  openingNarration: ensureOpeningFinalLine(
-    ensureOpeningFullNameIntro(
-      removeUnsupportedAudiencePhrasing(replaceFullName(draft.openingNarration, prompt)),
+  openingNarration: normalizeSpokenNumerals(
+    normalizeOpeningAgeMentions(
+      ensureOpeningFinalLine(
+        ensureOpeningFullNameIntro(
+          removeUnsupportedAudiencePhrasing(replaceFullName(draft.openingNarration, prompt)),
+          prompt
+        )
+      ),
       prompt
     )
   ),
-  closingNarration: ensureClosingFinalLine(
-    stripFixedClosingOpening(
-      removeUnsupportedAudiencePhrasing(replaceFullName(draft.closingNarration, prompt))
+  closingNarration: normalizeSpokenNumerals(
+    ensureClosingFinalLine(
+      stripFixedClosingOpening(
+        removeUnsupportedAudiencePhrasing(replaceFullName(draft.closingNarration, prompt))
+      ),
+      prompt
     ),
-    prompt
   ),
 });
 
@@ -646,6 +672,10 @@ const hasResidualAiNarration = text => {
   if (/(?:耳|胸|心)に(?:そっと)?戻ってくる/u.test(value)) return true;
   if (/その場にあった[^。]{0,30}(?:しぐさ|表情|時間)/u.test(value)) return true;
   if (/育つものに触れながら/u.test(value)) return true;
+  if (/注がれたものへ/u.test(value)) return true;
+  if (/日々の重なり/u.test(value)) return true;
+  if (/家族の中にある何気ない時間/u.test(value)) return true;
+  if (/かけがえのないものとして重ね/u.test(value)) return true;
   return false;
 };
 
@@ -1227,7 +1257,7 @@ module.exports = async (req, res) => {
         closingNarration: draftClosingBody,
       });
       const retryInstruction = useFocusedEditorialPass
-        ? `Act as a meticulous Japanese funeral-MC copy editor. Edit the DRAFT below instead of inventing a new composition. Preserve its selected facts, section allocation, and meaning. Remove repetition, reporter distance, abstract AI phrases, incomplete noun endings, and mechanical です・ます rhythm. Replace とうかがっております with direct, family-near narration. Delete inferred labels such as ご本人らしいまめやかさ, meta-writing such as 言葉にしすぎなくても, narrator declarations such as 敬意をもって向き合います, and poetic abstractions such as 耳にそっと戻ってくる. Do not add a single new fact, emotion, object, interpretation, or scene. Keep the required opening introduction and opening final sentence. Return only the closing narrative body because the server appends the fixed guidance. DRAFT TO EDIT: ${focusedDraft}`
+        ? `Act as a meticulous Japanese funeral-MC copy editor. Edit the DRAFT below instead of inventing a new composition. Preserve its selected facts, section allocation, and meaning. Remove repetition, reporter distance, abstract AI phrases, incomplete noun endings, and mechanical です・ます rhythm. Replace とうかがっております with direct, family-near narration. Delete inferred labels such as ご本人らしいまめやかさ, meta-writing such as 言葉にしすぎなくても, narrator declarations such as 敬意をもって向き合います, and poetic abstractions such as 耳にそっと戻ってくる, 注がれたものへ, 日々の重なり, or かけがえのないものとして重ねる. Do not add a single new fact, emotion, object, interpretation, or scene. Keep the required opening introduction and opening final sentence. Return only the closing narrative body because the server appends the fixed guidance. DRAFT TO EDIT: ${focusedDraft}`
         : `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Never repeat お姿 twice in one sentence. Do not write flat reporting such as 歌ったり踊ったりすることもありました, いつも笑っていたお顔とのことです, お方でいらっしゃいました, 皆様がよくご存じです, or ご家族が語ってくださった. Stay inside the family's remembered scene instead of reporting the interview. Never write 明るさを重ねる or leave a sentence as 家族を大切にしておられたこと。 Complete it with a natural predicate. After a supplied quotation, do not explain it as 人との向き合い方, 生き方, 考え方, 教え, or philosophy; let the words stand quietly. Avoid AI-like abstractions such as 暮らしに寄り添う楽しみ. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Do not invent artifacts such as 手芸の品, interpret a supplied action as 前を向いて動く, call a voice 忘れがたい, or instruct the family to お進みください. If the family says that singing and dancing looked cute, describe that specific姿 only; never rewrite it as いつも可愛い方だった. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`;
       parsed = await requestNarration({
         apiKey,
