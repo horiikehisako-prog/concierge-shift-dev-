@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.77";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.78";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1321,9 +1321,11 @@ const requestNarration = async ({
   systemPromptOverride = "",
 }) => {
   if (shouldUseResponsesApi(model)) {
-    // A complete Japanese narration fits comfortably in this range. The old
-    // 4,200-token floor increased GPT-5.5 latency without improving the draft.
-    const outputTokenLimit = Math.min(Math.max(maxTokens, 1800), 3200);
+    // GPT-5.5 counts internal reasoning against max_output_tokens. The UI may
+    // still carry the old 1,200-token setting, which can cut the response off
+    // before the closing body. Keep one model call, but reserve enough room for
+    // reasoning plus both narration sections.
+    const outputTokenLimit = Math.min(Math.max(maxTokens, 4200), 5200);
     const callResponses = async forcePlainJson => {
       const systemPrompt = systemPromptOverride || [
         buildSystemPrompt(extraInstruction),
