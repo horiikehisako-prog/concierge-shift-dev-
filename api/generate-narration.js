@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.95";
+const API_BUILD_ID = "sprint27-family-near-20260730.96";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1015,6 +1015,67 @@ const normalizeQuotationContext = draft => {
   };
 };
 
+const normalizeFamilyNearNarration = (draft, prompt) => {
+  const { givenName } = nameRuleFromPrompt(prompt);
+  const displayName = givenName ? `${givenName}様` : "故人様";
+  const cleanOpening = value => String(value || "")
+    .replace(
+      /([一-龥々ぁ-んァ-ヶー]+様)を思うと、いつも笑っておられたお顔が浮かびます。笑っているお顔しか思い出せないほど、よく笑っておられた方でした。そのお顔が、ご家族の記憶に残っています。/gu,
+      "思い出の中の$1は、いつも笑顔です。笑っているお顔しか思い出せない――そのひと言に、共に過ごした日々が重なります。"
+    )
+    .replace(
+      /([一-龥々ぁ-んァ-ヶー]+様)を思うとき、まず浮かぶのは、よく笑っておられたお顔でございます。いつも笑っているお顔しか思い出せないほど、その表情は、そばにある記憶として残されております。/gu,
+      "思い出の中の$1は、いつも笑顔です。笑っているお顔しか思い出せない――そのひと言に、共に過ごした日々が重なります。"
+    )
+    .replace(
+      /歌をうたわれることがありました。踊られることもあり、そのお姿はいつも可愛いと感じられていた記憶として残っています。/gu,
+      "歌をうたい、踊りに身体を動かされる、愛らしいお姿もございました。"
+    )
+    .replace(
+      /歌ったり、踊ったりされることもあり、そのお姿を可愛いと感じられることがありました。/gu,
+      "歌をうたい、踊りに身体を動かされる、愛らしいお姿もございました。"
+    )
+    .replace(
+      /手芸では、手を動かして形にしておられました。野菜を育て、お花にも手をかけておられた([^。\n]+様)。/gu,
+      "手芸に向かえば、手を動かしながら少しずつ形を整えていかれる。野菜やお花にも手をかけ、その育ちを見守っておられました。"
+    )
+    .replace(
+      /ご家族を大切にしてこられたことも、[^。\n]+をたどるうえで欠かせない記憶でございます。/gu,
+      "そうした一つひとつの時間には、ご家族を大切にされた日々が重なります。"
+    )
+    .replace(
+      /笑っておられたお顔、歌や踊り、手芸に向かわれる手元、野菜やお花に手をかける日々が、今もご家族のそばにあります。/gu,
+      "何気ない暮らしの中にあったその笑顔も、その手元も、今ではかけがえのない思い出です。"
+    )
+    .replace(
+      /折に触れて、「([^」]+)」と話しておられました。\s*そうした一つひとつの時間には、/gu,
+      "そうした日々の中で、折に触れて口にされた「$1」という言葉。そこにも、"
+    );
+  const cleanClosing = value => String(value || "")
+    .replace(/ご旅行に行かれました。/gu, "旅へ出かけられました。")
+    .replace(
+      /親子三代で、?([^。\n]+?)へ(?:旅へ出かけられ|ご旅行に行かれ)ました。どのご旅行も、お誕生日月である([^に。\n]+)に行かれたものでした。\s*行き先の名をたどると、[^。\n]+?のご旅行が思い起こされます。/gu,
+      "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ご家族で過ごした時間もよみがえることでしょう。"
+    )
+    .replace(
+      /私も彼女を見習い、明るく前向きに歩んでいきたいというお気持ちが残されています。/gu,
+      `${displayName}のように、明るく前向きでありたいという思いも、ご家族の胸にございます。`
+    )
+    .replace(
+      /私も彼女を見習い、明るく前向きに歩んでいきたいという思いが残ります。/gu,
+      `${displayName}のように、明るく前向きでありたいという思いも、ご家族の胸にございます。`
+    )
+    .replace(
+      /私も彼女を見習い、明るく前向きに歩んでいきたい。/gu,
+      `${displayName}のように、明るく前向きでありたい。`
+    );
+  return {
+    ...draft,
+    openingNarration: cleanOpening(draft?.openingNarration).replace(/\n{3,}/gu, "\n\n").trim(),
+    closingNarration: cleanClosing(draft?.closingNarration).replace(/\n{3,}/gu, "\n\n").trim(),
+  };
+};
+
 const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/今日(?:ここ|この場)に集う皆様/gu, "皆様")
   .replace(/(?:ここ|この場)に集う皆様/gu, "皆様");
@@ -1269,6 +1330,11 @@ const hasAwkwardNarrationStyle = text => {
   if (/そのお姿は[^。]{0,50}(?:チエノ様|ご本人)[^。]{0,16}お姿でした/u.test(value)) return true;
   if (/(?:歌ったり|踊ったり)[^。]{0,35}することもありました/u.test(value)) return true;
   if (/いつも可愛(?:い|らしい)[^。]{0,25}とのこと/u.test(value)) return true;
+  if (/可愛(?:い|らしい)と感じられていた記憶として/u.test(value)) return true;
+  if (/をたどるうえで欠かせない記憶/u.test(value)) return true;
+  if (/ご旅行に行かれ/u.test(value)) return true;
+  if (/行き先の名をたどると[^。]{0,45}(?:旅行|旅)が思い起こされ/u.test(value)) return true;
+  if (/(?:私も|彼女|彼を|彼女を)[^。]{0,80}(?:見習|歩んで)/u.test(value)) return true;
   return false;
 };
 
@@ -1347,10 +1413,11 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasAwkwardNarrationStyle(bodyWithoutRequiredClosings)) failures.push("awkward narration style");
   if (hasReporterDistance(bodyWithoutRequiredClosings)) failures.push("reporter distance");
   if (hasResidualAiNarration(bodyWithoutRequiredClosings)) failures.push("residual AI narration");
+  if (opening.trim().length < 330) failures.push("opening too short");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 90) failures.push("closing too short");
+  if (closingBody.length < 110) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
@@ -1967,7 +2034,10 @@ module.exports = async (req, res) => {
       });
       parsed = generatedDraft;
     }
-    parsed = normalizeQuotationContext(limitDirectQuotes(parsed));
+    parsed = normalizeFamilyNearNarration(
+      normalizeQuotationContext(limitDirectQuotes(parsed)),
+      rawPrompt
+    );
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
     } catch (qualityError) {
@@ -1999,6 +2069,7 @@ module.exports = async (req, res) => {
       "awkward narration style",
       "reporter distance",
       "residual AI narration",
+      "opening too short",
       "closing timeline",
       "closing too short",
       "response incomplete",
@@ -2038,7 +2109,10 @@ module.exports = async (req, res) => {
         prompt,
         extraInstruction: retryInstruction,
       });
-      parsed = normalizeQuotationContext(limitDirectQuotes(parsed));
+      parsed = normalizeFamilyNearNarration(
+        normalizeQuotationContext(limitDirectQuotes(parsed)),
+        rawPrompt
+      );
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
       } catch (qualityError) {
@@ -2067,6 +2141,7 @@ module.exports = async (req, res) => {
       "too many direct quotes",
       "closing too short",
       "response incomplete",
+      "opening too short",
     ]);
     const remainingFailures = lastCheck?.failures || [];
     if (ALLOW_EXTERNAL_QUALITY_RETRY && !lastCheck?.ok && remainingFailures.some(failure => hardRetryFailures.has(failure))) {
@@ -2082,7 +2157,10 @@ module.exports = async (req, res) => {
         prompt,
         extraInstruction: `SAFE MINIMAL VERSION. The previous draft still failed: ${remainingFailures.join(", ")}. Write a shorter complete manuscript using direct factual restatement only. Opening: seasonal sentence, required full-name life sentence, then no more than four short factual sentences drawn from at most two Hearing Sheet fields, then the exact opening final sentence. Closing: two to four short factual sentences drawn from one unused Hearing Sheet field. Do not add a transition that interprets personality, family emotion, atmosphere, meaning, legacy, lesson, voice, gaze, hands, scenery, or inner life. Do not direct the family to do, feel, remember, proceed, pray, offer, or imagine anything. Do not add fixed closing guidance because the server appends it. Prefer plain sentences such as 手芸を楽しまれました over vivid or poetic prose.`,
       });
-      parsed = normalizeQuotationContext(limitDirectQuotes(parsed));
+      parsed = normalizeFamilyNearNarration(
+        normalizeQuotationContext(limitDirectQuotes(parsed)),
+        rawPrompt
+      );
       try {
         lastCheck = qualityCheckNarration(parsed, rawPrompt);
       } catch (qualityError) {
@@ -2115,6 +2193,7 @@ module.exports = async (req, res) => {
         "closing timeline",
         "too many direct quotes",
         "response incomplete",
+        "opening too short",
       ]);
       const hasCriticalFailure = (lastCheck?.failures || []).some(failure => criticalFailures.has(failure));
       if (!hasCriticalFailure && (parsed?.openingNarration || parsed?.closingNarration)) {

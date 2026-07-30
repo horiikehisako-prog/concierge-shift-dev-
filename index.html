@@ -69,11 +69,10 @@ const SUPPORT_MATERIAL_FIELDS = [
   {key:"timing",label:"タイミング"},
   {key:"emotionalGuidance",label:"気持ちの寄り添い方"},
   {key:"readingPractice",label:"読み練習"},
-  {key:"aiNarration",label:"AIナレーション連携"},
   {key:"futureCompatibility",label:"今後増やしたい内容"},
   {key:"memo",label:"メモ"},
 ];
-const SUPPORT_MEDIA_TYPES = ["pdf","images","video","audio","readingPractice","aiNarration"];
+const SUPPORT_MEDIA_TYPES = ["pdf","images","video","audio","readingPractice"];
 let DEFAULT_TRAINING_TEMPLATES = [
   {id:"tpl-asuka-assistant",workplace:"飛鳥",role:"アシスタント",title:"飛鳥会館 × アシスタント",categories:[
     {id:"cat-reception",title:"受付・案内",items:[
@@ -122,9 +121,8 @@ const farewellCourseMaterial=(manual,importantPoints,commonMistakes,tips)=>train
   timing:"話す速度：通常より少しゆっくり。ご親族の動きが止まる場面では言葉を詰め込まない。\n間（Pause）：案内の前後、合掌・礼拝、閉棺前後に短い沈黙を置く。\n声量：式場全体に届くが、強すぎない落ち着いた声にする。\n感情表現：淡々としすぎず、過度に演出せず、敬意と温かさを保つ。",
   emotionalGuidance:"ゆっくり話す。\n涙を誘う場面では言葉を増やさず、声を少し落とす。\n沈黙を大切にする。\n急がない。火葬時刻が迫る時も、ご遺族には急かす言い方をしない。",
   readingPractice:"読み合わせ練習用。通常版、短縮版、沈黙を置く位置、所要時間を記録できる。",
-  aiNarration:"将来のAIナレーション接続用。現時点ではAI生成や外部接続は行わず、読み上げ設定メモとして保存する。",
-  futureCompatibility:"Video：立ち位置・導線確認用の動画教材を追加できる構造。\nAudio：司会文の読み上げ見本を追加できる構造。\nReading practice：読み合わせ練習用の原稿欄として利用可能。\nAI narration connection：将来のAIナレーション連携用。現時点ではAI生成は実装しない。",
-  media:{pdf:[],images:[],video:[],audio:[],readingPractice:[],aiNarration:[]}
+  futureCompatibility:"Video：立ち位置・導線確認用の動画教材を追加できる構造。\nAudio：司会文の読み上げ見本を追加できる構造。\nReading practice：読み合わせ練習用の原稿欄として利用可能。",
+  media:{pdf:[],images:[],video:[],audio:[],readingPractice:[]}
 });
 const ASUKA_FAREWELL_TRAINING_COURSE = [
   {id:"cat-asuka-mc-farewell-prep",title:"お別れ準備",items:[{id:"item-asuka-mc-farewell-prep",label:"お別れ準備",material:farewellCourseMaterial("閉式後、担当者とお別れの開始時刻、棺周りの立ち位置、花・思い出の品・仏飯・お札の準備状況を確認する。ご親族が棺へ進みやすい導線を整え、司会は必要な案内文を短く準備する。","担当者の合図を基準にする。お花、盆、思い出の品、お札、仏飯の位置を事前に確認し、司会台本と実際の流れを合わせる。","準備確認が浅く、案内後に品物が揃っていない。導線を見ずに話し始める。ご親族の心情より段取りを優先して見える。","式場内を実際に歩き、棺、喪主様、親族、担当者、花台の位置を声に出して確認する。通常時と時間短縮時の案内文を用意する。")}]},
@@ -222,7 +220,6 @@ const mergeTrainingTemplateDefaults=templates=>{
       timing:cur.timing||def.timing,
       emotionalGuidance:cur.emotionalGuidance||def.emotionalGuidance,
       readingPractice:cur.readingPractice||def.readingPractice,
-      aiNarration:cur.aiNarration||def.aiNarration,
       futureCompatibility:cur.futureCompatibility||def.futureCompatibility,
       memo:cur.memo||def.memo,
       media:{
@@ -231,7 +228,6 @@ const mergeTrainingTemplateDefaults=templates=>{
         video:cur.media.video.length?cur.media.video:def.media.video,
         audio:cur.media.audio.length?cur.media.audio:def.media.audio,
         readingPractice:cur.media.readingPractice.length?cur.media.readingPractice:def.media.readingPractice,
-        aiNarration:cur.media.aiNarration.length?cur.media.aiNarration:def.media.aiNarration,
       }
     };
   };
@@ -1750,7 +1746,7 @@ function AIInboxView({cfg,compassKb,sv,flash}){
   </div>;
 }
 
-function AdminPrefView({year,month,prefs,shifts,cfg}){
+function AdminPrefView({year,month,prefs,shifts,cfg,sv}){
   const days=getDays(year,month);
   const {staff,venues}=cfg;
   const need=venues.length;
@@ -1769,6 +1765,16 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
   const over =dayInfo.filter(x=>x.applicants.length>need);
   const under=dayInfo.filter(x=>x.applicants.length>0&&x.applicants.length<need);
   const empty=dayInfo.filter(x=>x.applicants.length===0);
+  const setAssignment=(d,venueName,staffName)=>{
+    sv.shifts({...shifts,[d]:{...(shifts[d]||{}),[venueName]:staffName}});
+  };
+  const adminChoiceLabel=(name,d)=>{
+    const status=prefStatus(prefs,name,d);
+    if(status===AVAIL_OK) return `${name}（希望○）`;
+    if(status===AVAIL_MAYBE) return `${name}（希望△）`;
+    if(status===AVAIL_NG) return `${name}（希望×・要確認）`;
+    return `${name}（希望未提出・要確認）`;
+  };
   return <div>
     {/* 締め切りバナー */}
     <div style={{...GC,
@@ -1795,6 +1801,10 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
         <div style={{fontSize:22,fontWeight:800,color:c}}>{v}</div>
         <div style={{fontSize:11,color:C.muted}}>{l}</div>
       </div>)}
+    </div>
+    <div style={{...GC,background:"#eff6ff",border:`1px solid ${C.blue}`,fontSize:13,lineHeight:1.7}}>
+      電話やLINEなどで個別に出勤をお願いした場合は、希望未提出のスタッフも下の「確定コンシェルジュ」から選べます。
+      希望がない方には「要確認」と表示しますが、選択と保存は可能です。
     </div>
     {over.length>0&&<div style={{...GC,border:`2px solid ${C.red}`}}>
       <h3 style={{margin:"0 0 10px",color:C.red,fontSize:14}}>⚠️ 調整が必要な日（{need}名を超えています）</h3>
@@ -1836,9 +1846,19 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
               })}
               {!applicants.length&&<span style={{color:C.muted,fontSize:12}}>なし</span>}
             </div></td>
-            <td style={TD}><div style={{display:"flex",flexWrap:"wrap",gap:3}}>
-              {assigned.map(s=><span key={s} style={{background:C.greenL,color:C.green,borderRadius:4,padding:"1px 6px",fontSize:12,fontWeight:600}}>{s}</span>)}
-              {!assigned.length&&<span style={{color:C.muted,fontSize:12}}>未確定</span>}
+            <td style={TD}><div style={{display:"flex",flexDirection:"column",gap:6,minWidth:190}}>
+              {venues.map(v=>{
+                const value=shifts[d]?.[v.name]||"";
+                const outsidePreference=value&&!isAvailableStatus(prefStatus(prefs,value,d));
+                return <label key={v.name} style={{display:"grid",gridTemplateColumns:"72px 1fr",gap:6,alignItems:"center",fontSize:11,color:C.muted}}>
+                  <span>{v.name}</span>
+                  <select value={value} onChange={e=>setAssignment(d,v.name,e.target.value)}
+                    style={{width:"100%",border:`1px solid ${outsidePreference?C.amber:C.border}`,borderRadius:6,padding:"5px 6px",fontSize:12,background:"#fff",color:C.text}}>
+                    <option value="">-- 未定 --</option>
+                    {staff.map(s=><option key={s} value={s}>{adminChoiceLabel(s,d)}</option>)}
+                  </select>
+                </label>;
+              })}
             </div></td>
             <td style={{...TD,textAlign:"center"}}>
               {{over:<span style={{color:C.red,fontSize:11,fontWeight:700}}>⚠️ 絞る</span>,
@@ -1928,8 +1948,9 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
                   <option value="">-- 未定 --</option>
                   {staff.map(s=>{
                     const st=prefStatus(prefs,s,d);
-                    return <option key={s} value={s} style={{color:isAvailableStatus(st)?"inherit":"#aaa"}}>
-                      {s} {prefLabel(st)}
+                    const label=st===AVAIL_OK?"希望○":st===AVAIL_MAYBE?"希望△":st===AVAIL_NG?"希望×・要確認":"希望未提出・要確認";
+                    return <option key={s} value={s}>
+                      {s}（{label}）
                     </option>;
                   })}
                 </select>
@@ -4751,10 +4772,9 @@ const emptyTrainingMaterial=()=>({
   timing:"",
   emotionalGuidance:"",
   readingPractice:"",
-  aiNarration:"",
   futureCompatibility:"",
   memo:"",
-  media:{pdf:[],images:[],video:[],audio:[],readingPractice:[],aiNarration:[]}
+  media:{pdf:[],images:[],video:[],audio:[],readingPractice:[]}
 });
 const normalizeTrainingMaterial=material=>{
   const base=emptyTrainingMaterial();
@@ -4768,7 +4788,6 @@ const normalizeTrainingMaterial=material=>{
     timing:src.timing||"",
     emotionalGuidance:src.emotionalGuidance||"",
     readingPractice:src.readingPractice||"",
-    aiNarration:src.aiNarration||"",
     futureCompatibility:src.futureCompatibility||"",
     memo:src.memo||"",
     media:{
@@ -4777,7 +4796,6 @@ const normalizeTrainingMaterial=material=>{
       video:ensureArray(src.media?.video),
       audio:ensureArray(src.media?.audio),
       readingPractice:ensureArray(src.media?.readingPractice),
-      aiNarration:ensureArray(src.media?.aiNarration),
     }
   };
 };
@@ -4977,9 +4995,8 @@ function SupportManagerView({cfg,sv,flash}){
       </div>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:14}}>
-      {[["cards","カルテ"],["templates","教育テンプレート"],["ai","AIナレーション"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{...Btn(tab===id?C.green:"#fff",tab===id?"#fff":C.text),border:`2px solid ${tab===id?C.green:C.border}`,padding:"13px 12px",fontSize:15}}>{label}</button>)}
+      {[["cards","カルテ"],["templates","教育テンプレート"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{...Btn(tab===id?C.green:"#fff",tab===id?"#fff":C.text),border:`2px solid ${tab===id?C.green:C.border}`,padding:"13px 12px",fontSize:15}}>{label}</button>)}
     </div>
-    {tab==="ai"&&<CompassNarrationView cfg={cfg} sv={sv} flash={flash} uname="業務サポートマネージャー" role="support"/>}
     {tab==="templates"&&<TrainingTemplateManager templates={templates} staffList={managedStaff} onSave={saveTemplates}/>}
     {tab==="cards"&&<>
     <StaffManagementPanel staffList={managedStaff} onChange={saveStaffManagement}/>
@@ -5178,7 +5195,7 @@ function SupportGrowthChart({card,templates,trainers,onChange}){
         <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginBottom:10}}>
           <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>教え方・手順</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.manual||"-"}</div></section>
           <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>大事なポイント</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.importantPoints||"-"}</div></section>
-          {(material.commonMistakes||material.tips||material.timing||material.emotionalGuidance||material.readingPractice||material.aiNarration||material.futureCompatibility||material.memo)&&<section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>学習メモ</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8}}>{[["よくあるミス",material.commonMistakes],["教える人へのコツ",material.tips],["タイミング",material.timing],["気持ちの寄り添い方",material.emotionalGuidance],["読み練習",material.readingPractice],["AIナレーション連携",material.aiNarration],["今後増やしたい内容",material.futureCompatibility],["メモ",material.memo]].map(([label,value])=>value?<div key={label} style={{whiteSpace:"pre-wrap",lineHeight:1.55,fontSize:13,background:"#f9fafb",borderRadius:8,padding:9}}><strong>{label}</strong><br/>{value}</div>:null)}</div></section>}
+          {(material.commonMistakes||material.tips||material.timing||material.emotionalGuidance||material.readingPractice||material.futureCompatibility||material.memo)&&<section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>学習メモ</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8}}>{[["よくあるミス",material.commonMistakes],["教える人へのコツ",material.tips],["タイミング",material.timing],["気持ちの寄り添い方",material.emotionalGuidance],["読み練習",material.readingPractice],["今後増やしたい内容",material.futureCompatibility],["メモ",material.memo]].map(([label,value])=>value?<div key={label} style={{whiteSpace:"pre-wrap",lineHeight:1.55,fontSize:13,background:"#f9fafb",borderRadius:8,padding:9}}><strong>{label}</strong><br/>{value}</div>:null)}</div></section>}
         </div>
         <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>評価</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:6,marginBottom:10}}>

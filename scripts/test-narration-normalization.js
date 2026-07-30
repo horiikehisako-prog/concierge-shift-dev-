@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = `${fs.readFileSync("api/generate-narration.js", "utf8")}
-this.testHelpers = { normalizeQuotationContext, pickMemoryCards, extractStyleReferenceSection, narrationSentenceCount };`;
+this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, pickMemoryCards, extractStyleReferenceSection, narrationSentenceCount };`;
 const context = {
   module: { exports: {} },
   exports: {},
@@ -47,6 +47,39 @@ for (const banned of [
     `residual phrase: ${banned}`,
   );
 }
+
+const chienoPrompt = JSON.stringify({
+  hearingSheet: {
+    fullName: "堀池 チエノ",
+    narrationName: "チエノ",
+    age: "91",
+  },
+});
+const chienoFamilyNear = context.testHelpers.normalizeFamilyNearNarration({
+  openingNarration: [
+    "チエノ様を思うと、いつも笑っておられたお顔が浮かびます。笑っているお顔しか思い出せないほど、よく笑っておられた方でした。そのお顔が、ご家族の記憶に残っています。",
+    "歌をうたわれることがありました。踊られることもあり、そのお姿はいつも可愛いと感じられていた記憶として残っています。",
+    "手芸では、手を動かして形にしておられました。野菜を育て、お花にも手をかけておられたチエノ様。",
+    "ご家族を大切にしてこられたことも、チエノ様をたどるうえで欠かせない記憶でございます。",
+  ].join("\n\n"),
+  closingNarration: [
+    "親子三代で、六甲、小倉、下関、博多へご旅行に行かれました。どのご旅行も、お誕生日月である十月に行かれたものでした。",
+    "行き先の名をたどると、十月のご旅行が思い起こされます。私も彼女を見習い、明るく前向きに歩んでいきたいというお気持ちが残されています。",
+  ].join("\n\n"),
+}, chienoPrompt);
+const chienoFull = `${chienoFamilyNear.openingNarration}\n${chienoFamilyNear.closingNarration}`;
+for (const banned of [
+  "笑っているお顔しか思い出せないほど、よく笑っておられた方でした",
+  "可愛いと感じられていた記憶として",
+  "手を動かして形にしておられました",
+  "をたどるうえで欠かせない記憶",
+  "ご旅行に行かれました",
+  "行き先の名をたどると",
+  "私も彼女",
+]) {
+  assert.equal(chienoFull.includes(banned), false, `latest awkward phrase remained: ${banned}`);
+}
+assert.equal(chienoFamilyNear.closingNarration.includes("チエノ様のように"), true);
 
 const familyNear = context.testHelpers.normalizeQuotationContext({
   openingNarration: [
