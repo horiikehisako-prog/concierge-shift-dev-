@@ -267,6 +267,35 @@ const ensureArray = v => {
   if(Array.isArray(v)) return v;
   return Object.values(v); // Firebase が {0:"a",1:"b"} に変換した場合の対応
 };
+const staffNameKey = name => String(name||"").replace(/[\s　]+/g,"").trim();
+const canonicalStaffName = (name,staff) => {
+  const key=staffNameKey(name);
+  return ensureArray(staff).find(candidate=>staffNameKey(candidate)===key)||String(name||"");
+};
+const normalizePrefsForStaff = (prefs,staff) => {
+  const entries=Object.entries(prefs||{}).sort(([a],[b])=>{
+    const ca=canonicalStaffName(a,staff),cb=canonicalStaffName(b,staff);
+    return Number(a===ca)-Number(b===cb); // 現在の正式表記を最後に重ねる
+  });
+  const next={};
+  entries.forEach(([storedName,value])=>{
+    const name=canonicalStaffName(storedName,staff);
+    const record={...(next[name]||{})};
+    if(Array.isArray(value)) value.forEach(day=>{record[day]=AVAIL_OK;});
+    else if(value&&typeof value==="object") Object.assign(record,value);
+    next[name]=record;
+  });
+  return next;
+};
+const normalizeShiftsForStaff = (shifts,staff) => Object.fromEntries(
+  Object.entries(shifts||{}).map(([day,venues])=>[
+    day,
+    Object.fromEntries(Object.entries(venues||{}).map(([venue,name])=>[
+      venue,
+      name?canonicalStaffName(name,staff):name
+    ]))
+  ])
+);
 const normalizeConciergeVenues = venues => {
   const current = normV(ensureArray(venues)).flatMap(v =>
     v.options && v.options.length ? v.options.map(name => ({name,options:[]})) : [{name:v.name,options:[]}]
@@ -317,7 +346,7 @@ const AVAIL_MAYBE = "△";
 const AVAIL_NG = "×";
 const AVAIL_ORDER = ["", AVAIL_OK, AVAIL_MAYBE, AVAIL_NG];
 const prefStatus = (prefs, name, d) => {
-  const p = prefs?.[name];
+  const p = prefs?.[name] ?? Object.entries(prefs||{}).find(([storedName])=>staffNameKey(storedName)===staffNameKey(name))?.[1];
   if(Array.isArray(p)) return p.includes(d) ? AVAIL_OK : "";
   if(p && typeof p === "object") {
     const v = p[d] ?? p[String(d)];
@@ -1004,8 +1033,10 @@ const TD={padding:"6px 8px",borderBottom:`1px solid ${C.border}`,fontSize:13};
 // ─── APP ──────────────────────────────────────────────────────
 function App(){
   const now=new Date();
-  const [year,setYear]  =useState(now.getFullYear());
-  const [month,setMonth]=useState(now.getMonth()+1);
+  const savedYm=(()=>{try{return localStorage.getItem("compass-selected-ym")||"";}catch{return "";}})();
+  const savedYmMatch=savedYm.match(/^(\d{4})-(\d{2})$/);
+  const [year,setYear]  =useState(savedYmMatch?Number(savedYmMatch[1]):now.getFullYear());
+  const [month,setMonth]=useState(savedYmMatch?Number(savedYmMatch[2]):now.getMonth()+1);
   const [role,setRole]  =useState(null);
   const [uname,setUname]=useState("");
   const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null,compassKb:[]});
@@ -1013,6 +1044,7 @@ function App(){
   const [toast,setToast]=useState("");
 
   const ym =ymS(year,month);
+  useEffect(()=>{try{localStorage.setItem("compass-selected-ym",ym);}catch{}},[ym]);
   const raw=D.settings||{staff:DEFAULT_STAFF,venues:DEFAULT_VENUES};
   // パイプ区切り文字列から配列に変換、なければsettings内を参照
   const parsePipe = (str,fallback) => {
@@ -1081,8 +1113,11 @@ function App(){
       stLoad("mcStaff_str"),stLoad("assistStaff_str"),stLoad("compassKnowledgeBase"),
     ]);
     const mergedKb=mergeCompassKbDefaults(ckb);
+    const loadedStaff=ensureArray(s?.staff).length?ensureArray(s.staff):DEFAULT_STAFF;
+    const normalizedPrefs=normalizePrefsForStaff(pr||{},loadedStaff);
+    const normalizedShifts=normalizeShiftsForStaff(sh||{},loadedStaff);
     setD({
-      settings:s,shifts:sh||{},prefs:pr||{},att:at||{},vconf:vc||{},
+      settings:s,shifts:normalizedShifts,prefs:normalizedPrefs,att:at||{},vconf:vc||{},
       mcStaff:mcs||null,assistStaff:asts||null,compassKb:mergedKb,
     });
     if(mergedKb.length!==ensureArray(ckb).length) stSave("compassKnowledgeBase",mergedKb);
