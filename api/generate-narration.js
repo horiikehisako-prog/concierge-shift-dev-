@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.11";
+const API_BUILD_ID = "narration-studio-20260730.12";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -506,6 +506,7 @@ const ensureOpeningFinalLine = value => {
   text = text
     .replace(/[^。\n]*(?:まもなく|間もなく)開式(?:のお時間)?[^。\n]*。/gu, "")
     .replace(/皆様には、?開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
+    .replace(/これより、?[^。\n]*(?:葬儀|告別式|通夜)[^。\n]*(?:執り行|開式|開始)[^。\n]*。/gu, "")
     .replace(/(?:[^。\n]*、)?尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, fixed)
     .replace(/\s*尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, "");
   return `${text.trim()}\n\n${fixed}`;

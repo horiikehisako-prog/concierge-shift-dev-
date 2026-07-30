@@ -316,6 +316,7 @@ const duplicatedIntroDraft = context.testHelpers.applyNameRule({
     "チエノ様を思うと、笑っておられたお顔が浮かびます。",
     "笑っておられたお顔を偲び、まもなく開式のお時間でございます。",
     "皆様には、開式まで今しばらくお待ちくださいますようお願い申し上げます。",
+    "これより、故・堀池チエノ様の葬儀を執り行わせていただきます。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n"),
   closingNarration: "親子三代で旅行に出かけられました。",
@@ -325,6 +326,7 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("故・堀池故堀�
 assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀の日を迎えられました"), false);
 assert.equal((duplicatedIntroDraft.openingNarration.match(/まもなく開式のお時間でございます。/gu) || []).length, 1);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("開式まで今しばらくお待ち"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀を執り行わせていただきます"), false);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
