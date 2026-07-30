@@ -1,14 +1,14 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.8";
+const API_BUILD_ID = "narration-studio-20260730.9";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
 // quality report below handle the remaining non-critical issues.
-const ALLOW_EXTERNAL_QUALITY_RETRY = true;
+const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ALLOW_HARD_RETRY = false;
-const ENABLE_GUARDED_COPY_EDIT = false;
+const ENABLE_GUARDED_COPY_EDIT = true;
 const redactSecrets = value => String(value || "")
   .replace(/sk-(?:proj-)?[A-Za-z0-9_-]+/g, "[REDACTED_API_KEY]");
 
@@ -2133,6 +2133,8 @@ module.exports = async (req, res) => {
         "「歌われることがありました。踊られることもありました」「野菜を育てておられました。お花も育てておられました」のような取材項目の羅列は、近い動作を一つの自然な流れへまとめてください。",
         "笑顔の記憶を書いた直後に、よく笑う人だった、その顔が記憶に残る、と同じ内容を説明し直さないでください。",
         "「私」「彼」「彼女」は使用禁止です。ご家族のお気持ちはsourceFactsの意味を変えず、司会者個人の一人称にしないでください。",
+        "「〜のでしょう」「飾らないひととき」「今日ここに至るまで」「開式前にたどった記憶」「心を整えてまいります」「これからの日々へと進まれます」は削除してください。取材者や司会者の説明、進行の自己言及、根拠のない意味づけを残してはいけません。",
+        "draftが選択済みカードの一部を落としている場合、sourceFactsに明記された未使用の事実だけを補ってください。新しい事実を足すこととは区別し、野菜と花、歌と踊り、複数の旅行先など、同じカード内の異なる事実を省略しないでください。",
         "開式案内の直前で「感謝の思い」を二文連続させないでください。前の一文が定型案内と重なる場合は削ってください。",
         "抽象的な美辞、人生訓、標語、AIらしいまとめを加えないでください。事実だけでは支えられない文は、別の美文へ置き換えず削ってください。",
         "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて520〜700字、閉式後本文は200〜300字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
