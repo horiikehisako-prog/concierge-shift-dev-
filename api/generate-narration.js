@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.88";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.89";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -775,6 +775,10 @@ const normalizeQuotationContext = draft => {
         "歌ったり、踊ったりされる、愛らしいお姿も、ご家族の記憶に残っています。"
       )
       .replace(
+        /歌ったり、踊ったりされるお姿は、ご家族に愛らしく感じられていたとうかがっております。/gu,
+        "歌ったり、踊ったりされる愛らしいお姿も、ご家族の記憶に残っています。"
+      )
+      .replace(
         /手芸に親しみ、野菜やお花を育てることも、([^。\n]+?様)の暮らしの中にございました。/gu,
         "手芸に親しみ、野菜やお花にも手をかけておられました。"
       )
@@ -783,6 +787,7 @@ const normalizeQuotationContext = draft => {
         "折に触れて、$1と話しておられました。"
       )
       .replace(/また、折にふれて/gu, "折に触れて")
+      .replace(/また、よく(「[^」]+」)と話しておられました。/gu, "折に触れて、$1と話しておられました。")
       .replace(
         /好きなことに向かうひとときも、ふと立ち止まる仕草も、暮らしの中に穏やかに刻まれております。/gu,
         ""
@@ -820,6 +825,14 @@ const normalizeQuotationContext = draft => {
         "$1を忘れずにいたいという思いも、ご家族の胸にあります。"
       )
       .replace(
+        /その([^。\n]+?)を忘れずにいたいという思いを、今、静かに抱いておられます。/gu,
+        "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
+      )
+      .replace(
+        /その行き先の名とともに、([^。\n]+?様)と過ごされたひとときが残されております。/gu,
+        "その土地の名に触れるたび、親子三代で過ごした日のことも思い出されることでしょう。"
+      )
+      .replace(
         /(?:そのご旅行のことを思いながら、)?私も([^。\n]+?様)を見習い、明るく前向きに歩んでいきたいというお気持ちが残されております。/gu,
         "$1の明るさを見習い、前向きに過ごしていきたいという思いも、ご家族の胸にあります。"
       )
@@ -829,6 +842,10 @@ const normalizeQuotationContext = draft => {
       )
       .replace(
         /[^。\n]+?と過ごされた一つひとつに、今、ありがとうの思いが寄せられております。/gu,
+        ""
+      )
+      .replace(
+        /その折々のお姿を思い返しながら、今日までの歩みに、深い感謝をお寄せのことと存じます。/gu,
         ""
       )
       .replace(/ご家族の内に残されています。/gu, "ご家族の胸にあります。")
@@ -1760,6 +1777,40 @@ module.exports = async (req, res) => {
       prompt,
       extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
+    const firstDraft = parsed;
+    if (String(parsed?.openingNarration || "").length < 360) {
+      try {
+        const shortDraft = JSON.stringify({
+          openingNarration: parsed?.openingNarration || "",
+          closingNarration: String(parsed?.closingNarration || "")
+            .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し[\s\S]*$/u, "")
+            .trim(),
+        });
+        parsed = await requestNarration({
+          apiKey,
+          model,
+          temperature: 0.1,
+          maxTokens,
+          prompt,
+          timeoutMs: 32000,
+          extraInstruction: [
+            "LENGTH REPAIR: the first opening draft was too short.",
+            "Rewrite the complete opening and closing, using exactly the same sourceFacts and no new fact, feeling, adjective, scenery, action, or interpretation.",
+            "Use every opening anchor/support once. When one card contains two distinct facts, give each fact its own natural sentence instead of compressing both into one sentence.",
+            "Opening including its fixed introduction and final line must be about 400 to 520 Japanese characters. Aim for six to nine factual body sentences arranged in natural paragraphs.",
+            "Closing narrative body must be 160 to 240 Japanese characters and must not repeat opening facts.",
+            "Do not pad with an abstract summary, gratitude sentence, list of facts, interview-report wording, or a restatement of the same memory.",
+            `FIRST DRAFT TO REPAIR: ${shortDraft}`,
+          ].join(" "),
+        });
+      } catch (lengthRepairError) {
+        console.warn("[generate-narration] length repair skipped", {
+          buildId: API_BUILD_ID,
+          message: lengthRepairError?.message || String(lengthRepairError),
+        });
+        parsed = firstDraft;
+      }
+    }
     const generatedDraft = parsed;
     if (ENABLE_GUARDED_COPY_EDIT) try {
       const closingBodyForEdit = String(parsed?.closingNarration || "")
@@ -2240,6 +2291,7 @@ const compactNarrationPrompt = prompt => {
     "closingはサーバーが後で加える式次第案内を除き、160〜240字を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
     "anchorと各supportに使えるのは、それぞれ最大二文です。一つの事実を説明し直す三文目は書かないでください。",
+    "一つのカードに異なる事実が二つある場合は、無理に一文へ圧縮せず、一つずつ別の文で書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ別の事実です。",
     "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
     "各カードにdoNotRepeatTopicsがある場合、その話題は同じカードの文章に含まれていても使用禁止です。別の固有の内容だけを使ってください。",
     "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を従属節でつなぐ、歴史的現在を一度だけ使う、体言止めを一段落に一度だけ使う、という方法で自然な呼吸を作ってください。",
