@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.7";
+const API_BUILD_ID = "narration-studio-20260730.8";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2325,20 +2325,9 @@ module.exports = async (req, res) => {
         "seasonal grammar",
         "stacked noun fragments",
         "broken Japanese grammar",
-        "invented family feeling",
-        "outsider perspective",
-        "unsafe interpretation",
-        "opening closing overlap",
         "closing timeline",
         "too many direct quotes",
         "response incomplete",
-        "opening too short",
-        "excessive polite endings",
-        "repetitive past endings",
-        "excessive trait repetition",
-        "awkward narration style",
-        "reporter distance",
-        "residual AI narration",
       ]);
       const hasCriticalFailure = (lastCheck?.failures || []).some(failure => criticalFailures.has(failure));
       if (!hasCriticalFailure && (parsed?.openingNarration || parsed?.closingNarration)) {
