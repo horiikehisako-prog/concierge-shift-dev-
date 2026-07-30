@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-family-near-20260730.97";
+const API_BUILD_ID = "sprint27-family-near-20260730.98";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1456,6 +1456,38 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   return { ok: failures.length === 0, failures };
 };
 
+const narrationCandidateScore = (draft, prompt) => {
+  const check = qualityCheckNarration(draft, prompt);
+  const openingLength = String(draft?.openingNarration || "").length;
+  const closingBodyLength = String(draft?.closingNarration || "")
+    .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
+    .trim()
+    .length;
+  const severe = new Set([
+    "missing narration",
+    "broken Japanese grammar",
+    "invented family feeling",
+    "outsider perspective",
+    "unsafe interpretation",
+    "opening closing overlap",
+    "closing timeline",
+    "response incomplete",
+  ]);
+  const failurePenalty = check.failures.reduce(
+    (total, failure) => total + (severe.has(failure) ? 1000 : 100),
+    0,
+  );
+  const lengthPenalty =
+    Math.max(0, 380 - openingLength) +
+    Math.max(0, 140 - closingBodyLength) * 2;
+  return {
+    score: failurePenalty + lengthPenalty,
+    check,
+    openingLength,
+    closingBodyLength,
+  };
+};
+
 const buildLegacySystemPrompt = extraInstruction => [
   "ABSOLUTE FACT BOUNDARY: every concrete noun, action, place, conversation, reaction, facial expression, routine, motive, feeling, and scene must be explicitly present in the Hearing Sheet. Never add meals, rooms, windows, roads, scenery, photographs, homecoming, things shown to family, travel conversations, family reactions, or the deceased's inner feelings unless the Hearing Sheet states them. You may describe only a physical action inseparable from an explicitly supplied activity: craft/knitting may include moving the hands and taking shape; growing flowers or vegetables may include tending them and watching them grow; singing may include the voice; dancing may include bodily movement. These are descriptions of the supplied activity, not new events. Making any other scene vivid does not permit invention.",
   "FAMILY-INSIDE PERSPECTIVE: stay close to what the family actually remembers. Do not write an outsider's character evaluation and do not claim what the family felt unless that feeling is explicitly provided. Prefer the family's concrete fact over a polished interpretation.",
@@ -1979,6 +2011,7 @@ module.exports = async (req, res) => {
       return;
     }
     const prompt = compactNarrationPrompt(rawPrompt);
+    const debugQuality = body.debugQuality === true;
 
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.2, 0, 2);
@@ -2057,11 +2090,11 @@ module.exports = async (req, res) => {
         "「私」「彼」「彼女」は使用禁止です。ご家族のお気持ちはsourceFactsの意味を変えず、司会者個人の一人称にしないでください。",
         "開式案内の直前で「感謝の思い」を二文連続させないでください。前の一文が定型案内と重なる場合は削ってください。",
         "抽象的な美辞、人生訓、標語、AIらしいまとめを加えないでください。事実だけでは支えられない文は、別の美文へ置き換えず削ってください。",
-        "校正では文章を増やさないでください。文字数を満たすための補足や言い換えは不要です。同じ内容が二度あれば短い方へまとめ、事実だけでは支えられない文は削ってください。",
-        "自然さと正確さを長さより優先してください。短くなっても構いません。",
+        "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて380〜600字、閉式後本文は140〜230字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
+        "自然さと正確さを最優先しながら、初稿にある異なる事実と必要な段落の呼吸は残してください。",
         "最後に音読を想定し、一度で意味が伝わるか確認してから完成稿だけを返してください。",
       ].join(" ");
-      parsed = await requestNarration({
+      const editedDraft = await requestNarration({
         apiKey,
         model,
         temperature: 0.1,
@@ -2069,6 +2102,23 @@ module.exports = async (req, res) => {
         prompt: copyEditPrompt,
         timeoutMs: 18000,
         systemPromptOverride: copyEditSystemPrompt,
+      });
+      const normalizedGenerated = normalizeFamilyNearNarration(
+        normalizeQuotationContext(limitDirectQuotes(generatedDraft)),
+        rawPrompt
+      );
+      const normalizedEdited = normalizeFamilyNearNarration(
+        normalizeQuotationContext(limitDirectQuotes(editedDraft)),
+        rawPrompt
+      );
+      const generatedScore = narrationCandidateScore(normalizedGenerated, rawPrompt);
+      const editedScore = narrationCandidateScore(normalizedEdited, rawPrompt);
+      parsed = editedScore.score <= generatedScore.score ? normalizedEdited : normalizedGenerated;
+      console.log("[generate-narration] copy edit selection", {
+        buildId: API_BUILD_ID,
+        selected: editedScore.score <= generatedScore.score ? "edited" : "generated",
+        generatedScore,
+        editedScore,
       });
     } catch (copyEditError) {
       console.warn("[generate-narration] copy edit skipped", {
@@ -2256,6 +2306,12 @@ module.exports = async (req, res) => {
         code: "GENERATION_QUALITY_CHECK_FAILED",
         error: QUALITY_CHECK_FAILED_MESSAGE,
         qualityFailures: lastCheck?.failures || [],
+        ...(debugQuality ? {
+          qualityPreview: {
+            openingNarration: parsed?.openingNarration || "",
+            closingNarration: parsed?.closingNarration || "",
+          },
+        } : {}),
       }));
       return;
     }

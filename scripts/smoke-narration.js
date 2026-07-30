@@ -132,6 +132,7 @@ const main = async () => {
       model: "gpt-5.5",
       temperature: 0.2,
       maxTokens: 4200,
+      debugQuality: true,
     }),
   });
   const raw = await response.text();
