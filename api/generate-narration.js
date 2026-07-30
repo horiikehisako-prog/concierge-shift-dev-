@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.91";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.92";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -787,6 +787,10 @@ const normalizeQuotationContext = draft => {
         "いつも笑顔で、歌ったり、踊ったりされることもあった$1。その愛らしいお姿も、ご家族の記憶に残っています。"
       )
       .replace(
+        /歌に声を重ね、踊りに身体を動かされるお姿を、ご家族は愛らしく感じておられました。/gu,
+        "歌に声を重ね、踊りに身体を動かされる、愛らしいお姿。"
+      )
+      .replace(
         /手芸に親しみ、野菜やお花を育てることも、([^。\n]+?様)の暮らしの中にございました。/gu,
         "手芸に親しみ、野菜やお花にも手をかけておられました。"
       )
@@ -804,6 +808,14 @@ const normalizeQuotationContext = draft => {
       .replace(
         /人と接することを好まれ、思い立つとすぐに行動へ移される方でいらっしゃいました。人と言葉を交わすことも、([^。\n]+?様)の過ごし方の中にありました。/gu,
         "人と接することがお好きで、思い立つとすぐに行動へ移される方でした。"
+      )
+      .replace(
+        /人と接することを好まれました。思い立つとすぐに行動へ移されることもございました。/gu,
+        "人と接することがお好きで、思い立つとすぐに行動へ移されることもございました。"
+      )
+      .replace(
+        /ご家族とともに過ごされた場面に、[^。\n]+?の声や動きが思い出されます。/gu,
+        ""
       )
       .replace(
         /好きなことに向かうひとときも、ふと立ち止まる仕草も、暮らしの中に穏やかに刻まれております。/gu,
@@ -859,6 +871,14 @@ const normalizeQuotationContext = draft => {
       )
       .replace(
         /その([^。\n]+?)を忘れずにいたい。ご家族には、そのお気持ちがございます。/gu,
+        "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
+      )
+      .replace(
+        /((?:[^、。\n]+、){1,}[^、。\n]+)という行き先の名と、([^。\n]+?)という月が、ひとつの思い出として残ります。/gu,
+        "その土地の名や$2に触れるたび、親子三代で過ごした日も思い出されることでしょう。"
+      )
+      .replace(
+        /その([^。\n]+?)を忘れずにいたいという思いが、ご家族の中に残されております。/gu,
         "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
       )
       .replace(
@@ -1278,7 +1298,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
 };
 
 const buildLegacySystemPrompt = extraInstruction => [
-  "ABSOLUTE FACT BOUNDARY: every concrete noun, action, place, conversation, reaction, facial expression, routine, motive, feeling, and scene must be explicitly present in the Hearing Sheet. Never add meals, rooms, windows, roads, scenery, photographs, homecoming, things shown to family, checking how plants grew, travel conversations, family reactions, or the deceased's inner feelings unless the Hearing Sheet states them. Making a scene vivid does not permit invention.",
+  "ABSOLUTE FACT BOUNDARY: every concrete noun, action, place, conversation, reaction, facial expression, routine, motive, feeling, and scene must be explicitly present in the Hearing Sheet. Never add meals, rooms, windows, roads, scenery, photographs, homecoming, things shown to family, travel conversations, family reactions, or the deceased's inner feelings unless the Hearing Sheet states them. You may describe only a physical action inseparable from an explicitly supplied activity: craft/knitting may include moving the hands and taking shape; growing flowers or vegetables may include tending them and watching them grow; singing may include the voice; dancing may include bodily movement. These are descriptions of the supplied activity, not new events. Making any other scene vivid does not permit invention.",
   "FAMILY-INSIDE PERSPECTIVE: stay close to what the family actually remembers. Do not write an outsider's character evaluation and do not claim what the family felt unless that feeling is explicitly provided. Prefer the family's concrete fact over a polished interpretation.",
   "SENTENCE-END AUDIT: do not mechanically alternate endings. Two natural polite sentences may stand together, but never allow three in a row with the same です/ます rhythm outside fixed guidance. Do not escape into stacked noun fragments such as 手芸に向かわれる時間。野菜を育てる時間。 Use at most one deliberate noun-ending sentence in a paragraph, and only when it sounds complete aloud. Prefer connecting closely related facts into one grammatical sentence.",
   "NATURAL-JAPANESE POLISH: state one idea once. Never repeat お姿 twice in one sentence, never write 明るさを重ねる, and never leave a sentence as 家族を大切にしておられたこと。 Avoid flat reporting such as 歌ったり踊ったりすることもありました or いつも可愛いとのこと. Describe the supplied scene directly and finish every sentence with a natural predicate.",
@@ -2215,7 +2235,7 @@ const pickMemoryCards = compactSheet => {
     "personality",
     "valuedThings",
   ].map(byField).filter(Boolean).forEach(card => {
-    if (selectedOpening.length >= 4) return;
+    if (selectedOpening.length >= 5) return;
     if (selectedOpening.some(selected => selected.field === card.field)) return;
     if (selectedClosing.some(selected => selected.field === card.field)) return;
     if (selectedOpening.some(selected => memoryCardsOverlap(selected, card))) return;
@@ -2246,7 +2266,7 @@ const pickMemoryCards = compactSheet => {
     opening: {
       anchor: selectedOpening[0] || null,
       supports: selectedOpening.slice(1),
-      maximumFacts: 4,
+      maximumFacts: 5,
       purpose: "ご家族が最初に思い浮かべる、その人らしい一場面から始める",
     },
     closing: {
@@ -2320,7 +2340,7 @@ const compactNarrationPrompt = prompt => {
     "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
-    "openingは定型文を含めて400〜550字を目安にしてください。sourceFacts.openingに選ばれたanchorとsupportsを、重複部分を除いてすべて一度ずつ使ってください。選ばれたカードを理由なく省略してはいけません。",
+    "openingは定型文を含めて400〜550字を目安にしてください。sourceFacts.openingに選ばれたanchorとsupportsを、重複部分を除いてすべて一度ずつ使ってください。選ばれた最大五枚のカードを理由なく省略してはいけません。",
     "closingはサーバーが後で加える式次第案内を除き、160〜240字を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
     "anchorと各supportに使えるのは、それぞれ最大二文です。一つの事実を説明し直す三文目は書かないでください。",
