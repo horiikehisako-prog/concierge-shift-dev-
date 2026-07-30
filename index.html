@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 27 Build 20260730.80";
+const DEV_BUILD_LABEL = "Sprint 27 Build 20260730.81";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -1908,7 +1908,7 @@ function AdminPrefView({year,month,prefs,shifts,cfg,sv}){
   </div>;
 }
 
-function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
+function AdminShiftView({year,month,shifts,prefs,vconf,cfg,sv,generate}){
   const days=getDays(year,month);
   const {staff,venues}=cfg;
   // ローカル編集バッファ（保存ボタン押すまで確定しない）
@@ -1933,11 +1933,16 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
   const saveNow=()=>{ sv.shifts(local); setDirty(false); };
   const onGenerate=()=>{ generate(); setDirty(false); };
   return <div>
+    <style dangerouslySetInnerHTML={{__html:SHIFT_SCHEDULE_PRINT_STYLE}}/>
     <div style={{...GC,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
       <button style={Btn(C.blue)} onClick={onGenerate}>🔄 自動割り振り</button>
       <button style={{...Btn(dirty?C.green:"#94a3b8"),fontSize:13,padding:"9px 18px"}}
         onClick={saveNow} disabled={!dirty}>
         {dirty?"💾 保存する":"✅ 保存済み"}
+      </button>
+      <button className="shift-screen-only" onClick={()=>window.print()}
+        style={{...Btn(C.navy),fontSize:13,padding:"9px 18px"}}>
+        🖨️ 全体シフト印刷
       </button>
       {dirty&&<span style={{fontSize:12,color:C.amber,fontWeight:600}}>⚠️ 未保存の変更があります</span>}
     </div>
@@ -1996,6 +2001,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
         })}</tbody>
       </table>}
     </div>
+    <ShiftScheduleTable year={year} month={month} shifts={local} vconf={vconf} cfg={cfg} printCopy/>
   </div>;
 }
 
@@ -2916,26 +2922,75 @@ function StaffWish({year,month,prefs,sv,uname}){
 }
 
 // ─── 全体シフト（コンシェルジュ・ディレクター・事務 共通）─────────────
-function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
-  const printShift=()=>window.print();
+const SHIFT_SCHEDULE_PRINT_STYLE=`
+  @media print {
+    html, body { width:100%; height:auto; margin:0!important; padding:0!important; background:#fff!important; }
+    body * { visibility:hidden!important; }
+    .shift-schedule-print, .shift-schedule-print * { visibility:visible!important; }
+    .shift-schedule-print {
+      display:block!important;
+      position:absolute!important;
+      left:0!important;
+      top:0!important;
+      width:100%!important;
+      margin:0!important;
+      padding:0!important;
+      border:none!important;
+      border-radius:0!important;
+      box-shadow:none!important;
+      overflow:visible!important;
+      background:#fff!important;
+      color:#111!important;
+      print-color-adjust:exact;
+      -webkit-print-color-adjust:exact;
+    }
+    .shift-screen-only { display:none!important; }
+    .shift-print-heading { display:flex!important; }
+    .shift-schedule-table {
+      width:100%!important;
+      min-width:0!important;
+      table-layout:fixed!important;
+      border-collapse:collapse!important;
+      font-size:9px!important;
+    }
+    .shift-schedule-table th,
+    .shift-schedule-table td {
+      padding:1px 3px!important;
+      height:17px!important;
+      min-height:0!important;
+      line-height:1.05!important;
+      font-size:9px!important;
+      border:1px solid #aaa!important;
+    }
+    .shift-schedule-table td > div {
+      padding:0!important;
+      border:none!important;
+      border-radius:0!important;
+      background:transparent!important;
+    }
+    .shift-schedule-table td > div > div {
+      margin:0!important;
+      font-size:9px!important;
+      line-height:1.05!important;
+    }
+    @page { size:A4 portrait; margin:7mm; }
+  }
+`;
 
+function ShiftScheduleTable({year,month,shifts,vconf,cfg,uname="",printCopy=false}){
   const days=getDays(year,month);
   const {venues}=cfg;
   const today=new Date();
   const todayD=today.getDate();
   const isTM=year===today.getFullYear()&&month===today.getMonth()+1;
 
-  return <div>
- 
-    
-    <div style={{marginBottom:8}}>
-  <button onClick={printShift} style={{...Btn(C.navy),fontSize:13,padding:"8px 18px"}}>🖨️ 印刷する</button>
-</div>
-<div style={{...GC,padding:"10px 16px",fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap"}}>
-      <span>🟢 自分のシフト</span><span>📍 会場確定済</span><span>⏳ 前日確定待ち</span>
-    </div>
-    <div style={{...GC,overflowX:"auto",padding:0}}>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:340}}>
+  return <div className={`shift-schedule-print${printCopy?" shift-print-copy":""}`}
+    style={printCopy?{display:"none"}:{...GC,overflowX:"auto",padding:0}}>
+      <div className="shift-print-heading" style={{display:"none",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+        <strong style={{fontSize:14}}>全体シフト</strong>
+        <strong style={{fontSize:14}}>{year}年{month}月</strong>
+      </div>
+      <table className="shift-schedule-table" style={{width:"100%",borderCollapse:"collapse",minWidth:340}}>
         <thead>
           <tr style={{background:C.navy}}>
             <th style={{...TH,color:"rgba(255,255,255,.8)",borderBottom:"none",width:32}}>日</th>
@@ -2975,6 +3030,18 @@ function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
         </tbody>
       </table>
     </div>
+}
+
+function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
+  return <div>
+    <style dangerouslySetInnerHTML={{__html:SHIFT_SCHEDULE_PRINT_STYLE}}/>
+    <div className="shift-screen-only" style={{marginBottom:8}}>
+      <button onClick={()=>window.print()} style={{...Btn(C.navy),fontSize:13,padding:"8px 18px"}}>🖨️ 印刷する</button>
+    </div>
+    <div className="shift-screen-only" style={{...GC,padding:"10px 16px",fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap"}}>
+      <span>🟢 自分のシフト</span><span>📍 会場確定済</span><span>⏳ 前日確定待ち</span>
+    </div>
+    <ShiftScheduleTable year={year} month={month} shifts={shifts} vconf={vconf} cfg={cfg} uname={uname}/>
   </div>;
 }
 
