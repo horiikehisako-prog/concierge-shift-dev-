@@ -322,6 +322,7 @@ const duplicatedIntroDraft = context.testHelpers.applyNameRule({
     "皆様には、開式まで今しばらくお待ちくださいますようお願い申し上げます。",
     "本日は、チエノ様とともに過ごされた日々を胸に、",
     "これより、故・堀池チエノ様の葬儀を執り行わせていただきます。",
+    "ただいまより、チエノ様の葬儀を執り行います。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n"),
   closingNarration: "親子三代で旅行に出かけられました。",
@@ -334,6 +335,7 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("九十一歳にて"
 assert.equal((duplicatedIntroDraft.openingNarration.match(/まもなく開式のお時間でございます。/gu) || []).length, 1);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("開式まで今しばらくお待ち"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀を執り行わせていただきます"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀を執り行います"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列くださいますよう"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列を賜り"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("日々を胸に、"), false);

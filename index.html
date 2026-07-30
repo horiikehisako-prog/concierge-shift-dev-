@@ -3616,7 +3616,7 @@ const compassDefaultStudioPlan=sheet=>{
   const byField=field=>cards.find(card=>card.field===field);
   const openingOrder=["familyMemories","memorableEvents","hobbies","personality","favoritePhrases","valuedThings","travelAnniversaryEffort"];
   const closingOrder=["travelAnniversaryEffort","memorableEvents","valuedThings","hobbies","favoritePhrases","familyFeelings","personality"];
-  const openingFields=openingOrder.map(byField).filter(Boolean).slice(0,Math.min(3,Math.max(1,cards.length-1))).map(card=>card.field);
+  const openingFields=openingOrder.map(byField).filter(Boolean).slice(0,Math.min(5,Math.max(1,cards.length-1))).map(card=>card.field);
   const closingFields=closingOrder.map(byField).filter(card=>card&&!openingFields.includes(card.field)).slice(0,2).map(card=>card.field);
   if(!closingFields.length&&cards.length>1){
     const moved=openingFields.pop();
@@ -3631,7 +3631,7 @@ const compassPlanPayload=(sheet,studio)=>{
   const pick=fields=>ensureArray(fields).map(field=>cards.find(card=>card.field===field)).filter(Boolean).map(({field,label,text})=>({field,label,text}));
   const used=new Set([...ensureArray(studio?.openingFields),...ensureArray(studio?.closingFields)]);
   return {
-    opening:pick(studio?.openingFields).slice(0,3),
+    opening:pick(studio?.openingFields).slice(0,5),
     closing:pick(studio?.closingFields).slice(0,2),
     unusedFields:cards.filter(card=>!used.has(card.field)).map(card=>card.field),
   };
