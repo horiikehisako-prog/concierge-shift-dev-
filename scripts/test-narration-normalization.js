@@ -238,6 +238,37 @@ const openingReference = context.testHelpers.extractStyleReferenceSection(
 assert.equal(openingReference.includes("閉式後です"), false);
 assert.equal(context.testHelpers.narrationSentenceCount(openingReference), 2);
 
+const studioOutputRegression = context.testHelpers.normalizeFamilyNearNarration({
+  openingNarration: [
+    "夏の光が、まぶしく降りそそいでおります。",
+    "故堀池 チエノ様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
+    "チエノ様を思うと、まず浮かぶのは、よく笑っておられたお顔です。いつも笑っているお顔しか思い出せないほど、その表情はご家族の記憶に残っています。",
+    "歌を歌われることがありました。踊られることもあり、そのご様子は、いつも可愛いものとして残されています。",
+    "手芸では、手を動かして形にしておられました。野菜を育て、お花にも手をかけてこられた日々がございます。手芸に向かわれる手元も、野菜やお花に手をかけられるお姿も、今は懐かしく思い返されます。",
+    "ご家族を大切にしておられたチエノ様。折に触れて、「人の悪口を言ってはいけない」と話しておられました。",
+    "よく笑っておられたお顔から、歌や踊り、手芸、野菜やお花へと、チエノ様との記憶はそれぞれの場面に残されています。",
+  ].join("\n\n"),
+  closingNarration: [
+    "十月のお誕生日月には、親子三代で出かけられました。六甲へ、小倉へ、下関へ、博多へと向かわれたことがございました。",
+    "その行き先の名は、チエノ様とともに出かけられた思い出として残っています。私も彼女を見習い、明るく前向きに歩んでいきたい、というご家族のお気持ちでございます。",
+  ].join("\n\n"),
+}, chienoPrompt);
+const studioOutputFull = `${studioOutputRegression.openingNarration}\n${studioOutputRegression.closingNarration}`;
+for (const banned of [
+  "まず浮かぶのは、よく笑っておられたお顔です",
+  "歌を歌われることがありました",
+  "手芸では、手を動かして形にしておられました",
+  "ご家族を大切にしておられたチエノ様。",
+  "よく笑っておられたお顔から、歌や踊り、手芸",
+  "その行き先の名は",
+  "私も彼女",
+  "というご家族のお気持ちでございます",
+]) {
+  assert.equal(studioOutputFull.includes(banned), false, `studio regression remained: ${banned}`);
+}
+assert.equal(studioOutputRegression.openingNarration.includes("思い出の中のチエノ様は、いつも笑顔です。"), true);
+assert.equal(studioOutputRegression.closingNarration.includes("親子三代で六甲、小倉、下関、博多へ出かけられました。"), true);
+
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
   hobbies: "手芸と花の世話。",

@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.1";
+const API_BUILD_ID = "narration-studio-20260730.2";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1020,6 +1020,10 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   const displayName = givenName ? `${givenName}様` : "故人様";
   const cleanOpening = value => String(value || "")
     .replace(
+      /([一-龥々ぁ-んァ-ヶー]+様)を思うと、まず浮かぶのは、よく笑っておられたお顔です。いつも笑っているお顔しか思い出せないほど、その表情はご家族の記憶に残っています。/gu,
+      "思い出の中の$1は、いつも笑顔です。"
+    )
+    .replace(
       /([一-龥々ぁ-んァ-ヶー]+様)を思うと、いつも笑っておられたお顔が浮かびます。笑っているお顔しか思い出せないほど、よく笑っておられた方でございました。そのお顔は、ご家族の記憶に残っています。/gu,
       "思い出の中の$1は、いつも笑顔です。「笑っているお顔しか思い出せない」――そのひと言に、ともに過ごした日々が重なります。"
     )
@@ -1044,12 +1048,20 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
       "歌に声を重ね、ときには踊るように身体を動かされる。その愛らしいお姿も、懐かしい思い出の一場面でございます。"
     )
     .replace(
+      /歌を歌われることがありました。踊られることもあり、そのご様子は、いつも可愛いものとして残されています。/gu,
+      "歌に声を重ね、ときには踊るように身体を動かされる。その愛らしいお姿も、懐かしい思い出の一場面でございます。"
+    )
+    .replace(
       /手芸では、手を動かして形にしておられました。野菜を育て、お花にも手をかけておられた([^。\n]+様)。/gu,
       "手芸に向かえば、手を動かしながら少しずつ形を整えていかれる。野菜やお花にも手をかけ、その育ちを見守っておられました。"
     )
     .replace(
       /手芸では、手を動かして形にしてこられました。野菜には手をかけて育てておられました。お花にも手をかけて育ててこられた([^。\n]+様)。手芸に向かう手元も、野菜やお花に手をかけるお姿も、今では懐かしい場面でございます。/gu,
       "手芸に向かわれると、手元に心を寄せながら、少しずつ形を整えていかれる。野菜やお花にもこまめに手をかけ、その育ちを見守っておられました。"
+    )
+    .replace(
+      /手芸では、手を動かして形にしておられました。野菜を育て、お花にも手をかけてこられた日々がございます。手芸に向かわれる手元も、野菜やお花に手をかけられるお姿も、今は懐かしく思い返されます。/gu,
+      "手芸に向かわれると、手を動かしながら少しずつ形を整えていかれる。野菜やお花にも手をかけ、その育ちを見守っておられました。今も目に浮かぶ、いつもの手元です。"
     )
     .replace(
       /ご家族を大切にしてこられたことも、[^。\n]+をたどるうえで欠かせない記憶でございます。/gu,
@@ -1066,6 +1078,14 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
     .replace(
       /ご家族を大切にしてこられました。\s*折に触れて、「([^」]+)」と話しておられました。/gu,
       "ご家族との時間を大切にされ、折に触れて「$1」と話しておられました。"
+    )
+    .replace(
+      /ご家族を大切にしておられた[一-龥々ぁ-んァ-ヶー]+様。\s*折に触れて、「([^」]+)」と話しておられました。/gu,
+      "ご家族との時間を大切にされ、折に触れて「$1」と話しておられました。"
+    )
+    .replace(
+      /よく笑っておられたお顔から、歌や踊り、手芸、野菜やお花へと、[^。\n]+との記憶はそれぞれの場面に残されています。\s*/gu,
+      ""
     )
     .replace(
       /[一-龥々ぁ-んァ-ヶー]+様とともに過ごしてこられたことへ、感謝の思いが寄せられます。\s*(尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。)/gu,
@@ -1092,6 +1112,14 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
     .replace(
       /私も彼女を見習い、明るく前向きに歩んでいきたい、?というお気持ちが残されています。/gu,
       "その明るさを見習い、前向きに歩んでいきたいという思いも、ご家族の胸にございます。"
+    )
+    .replace(
+      /私も彼女を見習い、明るく前向きに歩んでいきたい、?というご家族のお気持ちでございます。/gu,
+      `${displayName}を見習い、明るく前向きに歩んでいきたい――その思いも、ご家族の胸にございます。`
+    )
+    .replace(
+      /十月のお誕生日月には、親子三代で出かけられました。六甲へ、小倉へ、下関へ、博多へと向かわれたことがございました。\s*その行き先の名は、[^。\n]+とともに出かけられた思い出として残っています。/gu,
+      "お誕生日月の十月には、親子三代で六甲、小倉、下関、博多へ出かけられました。その土地の名に触れるたび、ともに過ごした旅の日々もよみがえることでしょう。"
     )
     .replace(
       /親子三代で、([^。\n]+?)へ出かけられました。([^。\n]+?)へも、ご一緒に旅行をされました。いずれも、お誕生日月である([^に。\n]+)に行かれたものでございます。/gu,
@@ -1364,12 +1392,16 @@ const hasAwkwardNarrationStyle = text => {
   if (/いつも可愛(?:い|らしい)[^。]{0,25}とのこと/u.test(value)) return true;
   if (/可愛(?:い|らしい)と感じられていた記憶として/u.test(value)) return true;
   if (/歌われることがありました。踊られることもあり/u.test(value)) return true;
+  if (/歌を歌われることがありました。踊られることもあり/u.test(value)) return true;
   if (/野菜[^。]{0,24}ました。お花[^。]{0,24}ました/u.test(value)) return true;
   if (/感謝の思い[^。]{0,40}。\s*尽きることのない感謝の思い/u.test(value)) return true;
   if (/をたどるうえで欠かせない記憶/u.test(value)) return true;
   if (/ご旅行に行かれ/u.test(value)) return true;
   if (/行き先の名をたどると[^。]{0,45}(?:旅行|旅)が思い起こされ/u.test(value)) return true;
   if (/(?:私も|彼女|彼を|彼女を)[^。]{0,80}(?:見習|歩んで)/u.test(value)) return true;
+  if (/よく笑っておられたお顔から、歌や踊り、手芸/u.test(value)) return true;
+  if (/その行き先の名は[^。]{0,60}思い出として残って/u.test(value)) return true;
+  if (/というご家族のお気持ちでございます/u.test(value)) return true;
   return false;
 };
 
@@ -2287,6 +2319,12 @@ module.exports = async (req, res) => {
         "too many direct quotes",
         "response incomplete",
         "opening too short",
+        "excessive polite endings",
+        "repetitive past endings",
+        "excessive trait repetition",
+        "awkward narration style",
+        "reporter distance",
+        "residual AI narration",
       ]);
       const hasCriticalFailure = (lastCheck?.failures || []).some(failure => criticalFailures.has(failure));
       if (!hasCriticalFailure && (parsed?.openingNarration || parsed?.closingNarration)) {
