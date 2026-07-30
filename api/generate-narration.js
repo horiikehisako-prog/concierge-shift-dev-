@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.26";
+const API_BUILD_ID = "narration-studio-20260730.27";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1177,7 +1177,7 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
       "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ともに過ごした旅の日々もよみがえります。"
     )
     .replace(
-      /([^。\n]+へ旅行されたことがありました。)\s*(いずれも誕生日月の[^。\n]+(?:です|でした|でございました)。)\s*親子三代で出かけられました。/gu,
+      /([^。\n]+へ旅行されたことがありました。)\s*(いずれも誕生日月の[^。\n]+(?:です|でした|でございました)。)\s*親子三代で(?:出かけられました|出かけられた[^。\n]*。)/gu,
       "親子三代で、$1\n$2"
     )
     .replace(
