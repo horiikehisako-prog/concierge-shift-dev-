@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-family-near-20260730.98";
+const API_BUILD_ID = "narration-studio-20260730.1";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2537,6 +2537,40 @@ const pickMemoryCards = compactSheet => {
   };
 };
 
+const staffSelectedMemoryPlan = (compactSheet, plan) => {
+  const normalizeCards = (items, limit) => asArray(items)
+    .map(item => {
+      const field = String(item?.field || "").trim();
+      if (!MEMORY_FIELD_ORDER.includes(field) || !compactSheet[field]) return null;
+      return {
+        field,
+        label: compactText(item?.label || "", 80),
+        text: compactText(compactSheet[field], 900),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, limit);
+  const opening = normalizeCards(plan?.opening, 3);
+  const closing = normalizeCards(plan?.closing, 2)
+    .filter(card => !opening.some(openingCard => openingCard.field === card.field));
+  if (!opening.length || !closing.length) return null;
+  return {
+    opening: {
+      anchor: opening[0],
+      supports: opening.slice(1),
+      maximumFacts: 3,
+      purpose: "スタッフが選んだ中心の記憶から始め、選択された補助事実だけで人物像を描く",
+    },
+    closing: {
+      anchor: closing[0],
+      supports: closing.slice(1),
+      maximumFacts: 2,
+      purpose: "スタッフが閉式後用に残した別の記憶だけを使い、お花のお別れへ静かにつなぐ",
+    },
+    selectedByStaff: true,
+  };
+};
+
 const compactNarrationPrompt = prompt => {
   const payload = extractPromptPayload(prompt);
   if (!payload) return compactText(prompt, 6000);
@@ -2573,7 +2607,8 @@ const compactNarrationPrompt = prompt => {
     };
   })[0] || null;
 
-  const memoryPlan = pickMemoryCards(compactSheet);
+  const memoryPlan = staffSelectedMemoryPlan(compactSheet, payload.staffCompositionPlan)
+    || pickMemoryCards(compactSheet);
   const identity = {};
   [
     "deceasedName",
@@ -2598,8 +2633,20 @@ const compactNarrationPrompt = prompt => {
     ].filter(Boolean),
   };
 
+  const revisionMode = payload.workflowMode === "revision" && String(payload.revisionDraft || "").trim();
+  const revisionInstruction = compactText(payload.revisionInstruction || "不自然な日本語、事実の重複、機械的な文末だけを整える", 500);
+  const taskInstruction = revisionMode
+    ? [
+        "これは新規作成ではなく、スタッフが選んだ構成を守る校正です。",
+        "revisionDraftの開式前・閉式後を全文校正し、指定された修正だけを行ってください。",
+        "事実の追加、場面の創作、人物評価の追加、開式前と閉式後の材料交換は禁止です。",
+        `スタッフの修正指示: ${revisionInstruction}`,
+      ].join("\n")
+    : "スタッフが選んだ事実カードの構成どおりに、新しい下書きを作成してください。";
+
   return [
     "以下のJSONを材料に、葬儀ナレーションの完成稿を書いてください。",
+    taskInstruction,
     "sourceFacts以外の事実は使わないでください。openingとclosingの材料は意図的に分けられています。",
     "sourceFactsの名詞と動作を、自然な尊敬語と助詞へ整える範囲で書いてください。入力にない形容詞、副詞、仕草、場所の細部、家族の反応、本人の内心を足してはいけません。",
     "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
@@ -2634,6 +2681,10 @@ const compactNarrationPrompt = prompt => {
       forbiddenWords: asArray(writingRules.forbiddenWords).slice(0, 20),
       sourceFacts,
       memoryPlan,
+      revision: revisionMode ? {
+        instruction: revisionInstruction,
+        draft: compactText(payload.revisionDraft, 7000),
+      } : null,
       styleReference: selectedStyleReference,
       composition: {
         opening: [

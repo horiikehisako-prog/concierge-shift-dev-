@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = `${fs.readFileSync("api/generate-narration.js", "utf8")}
-this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, pickMemoryCards, extractStyleReferenceSection, narrationSentenceCount };`;
+this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount };`;
 const context = {
   module: { exports: {} },
   exports: {},
@@ -237,5 +237,54 @@ const openingReference = context.testHelpers.extractStyleReferenceSection(
 );
 assert.equal(openingReference.includes("閉式後です"), false);
 assert.equal(context.testHelpers.narrationSentenceCount(openingReference), 2);
+
+const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
+  familyMemories: "家族で過ごした具体的な思い出。",
+  hobbies: "手芸と花の世話。",
+  travelAnniversaryEffort: "親子三代で出かけた旅行。",
+  familyFeelings: "明るさを見習いたい。",
+}, {
+  opening: [
+    { field: "familyMemories", label: "家族との思い出" },
+    { field: "hobbies", label: "趣味" },
+  ],
+  closing: [
+    { field: "travelAnniversaryEffort", label: "旅行" },
+    { field: "familyFeelings", label: "家族の気持ち" },
+  ],
+});
+assert.equal(staffPlan.selectedByStaff, true);
+assert.deepEqual(
+  [staffPlan.opening.anchor.field, ...staffPlan.opening.supports.map(card => card.field)],
+  ["familyMemories", "hobbies"],
+);
+assert.deepEqual(
+  [staffPlan.closing.anchor.field, ...staffPlan.closing.supports.map(card => card.field)],
+  ["travelAnniversaryEffort", "familyFeelings"],
+);
+
+const studioPrompt = context.testHelpers.compactNarrationPrompt(`instructions
+${JSON.stringify({
+  workflowMode: "revision",
+  revisionDraft: "【開式前ナレーション】下書き。\\n\\n【閉式後ナレーション】下書き。",
+  revisionInstruction: "不自然な日本語だけを直す",
+  hearingSheet: {
+    deceasedName: "試験 花子",
+    narrationName: "花子",
+    age: "88",
+    familyMemories: "家族で過ごした具体的な思い出。",
+    hobbies: "手芸と花の世話。",
+    travelAnniversaryEffort: "親子三代で出かけた旅行。",
+    familyFeelings: "明るさを見習いたい。",
+  },
+  staffCompositionPlan: {
+    opening: [{ field: "hobbies", label: "趣味" }],
+    closing: [{ field: "travelAnniversaryEffort", label: "旅行" }],
+  },
+  writingRules: { season: "夏", theme: "家族愛", forbiddenWords: [] },
+})}`);
+assert.equal(studioPrompt.includes("スタッフが選んだ構成を守る校正"), true);
+assert.equal(studioPrompt.includes('"selectedByStaff": true'), true);
+assert.equal(studioPrompt.includes("不自然な日本語だけを直す"), true);
 
 console.log("narration normalization tests passed");
