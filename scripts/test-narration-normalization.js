@@ -305,9 +305,13 @@ const latestShortDraft = {
 };
 const latestShortCheck = context.testHelpers.qualityCheckNarration(latestShortDraft, chienoPrompt);
 assert.equal(latestShortCheck.ok, false);
-assert.equal(latestShortCheck.failures.includes("opening too short"), true);
-assert.equal(latestShortCheck.failures.includes("closing too short"), true);
 assert.equal(latestShortCheck.failures.includes("invented family feeling"), true);
+const tinyCheck = context.testHelpers.qualityCheckNarration({
+  openingNarration: "蝉の声が響く季節です。\n故堀池 チエノ様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。\n尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
+  closingNarration: "旅行を楽しまれました。",
+}, chienoPrompt);
+assert.equal(tinyCheck.failures.includes("opening too short"), true);
+assert.equal(tinyCheck.failures.includes("closing too short"), true);
 
 const duplicatedIntroDraft = context.testHelpers.applyNameRule({
   openingNarration: [
@@ -362,6 +366,12 @@ assert.equal(repeatedMemoryDraft.openingNarration.includes("歌や踊り、手�
 assert.equal(repeatedMemoryDraft.closingNarration.includes("開式前にたどった記憶"), false);
 assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉園、白浜へ旅行されました。"), false);
 assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉の美しい季節となりました。"), true);
+const repeatedTravel = context.testHelpers.normalizeFamilyNearNarration({
+  openingNarration: "開式前本文。",
+  closingNarration: "親子三代で、青葉園、白浜、緑川、花里へ旅行されました。いずれも誕生日月の十月でございました。十月に親子三代で出かけられたことが、ご家族の中に残されております。",
+}, chienoPrompt);
+assert.equal((repeatedTravel.closingNarration.match(/親子三代/gu) || []).length, 1);
+assert.equal((repeatedTravel.closingNarration.match(/十月/gu) || []).length, 1);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",

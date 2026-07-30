@@ -18,6 +18,7 @@ const cases = {
         { field: "hobbies", label: "趣味・好きだったこと" },
         { field: "personality", label: "お人柄・性格" },
         { field: "favoritePhrases", label: "口癖・よく言っていたこと" },
+        { field: "valuedThings", label: "大切にしていたこと" },
       ],
       closing: [
         { field: "travelAnniversaryEffort", label: "旅行・記念日" },

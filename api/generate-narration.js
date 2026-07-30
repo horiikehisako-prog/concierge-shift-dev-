@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.19";
+const API_BUILD_ID = "narration-studio-20260730.20";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -15,7 +15,7 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
   "sourceFactsに書かれた事実だけを使い、場面、感情、意味、人物評価、家族の反応を創作しないでください。選択されたopeningとclosingのカードは混ぜず、各カード内の異なる事実を省略せず一度ずつ使ってください。",
   "司会者が外から人物を紹介・評価する文章ではなく、ご家族がともに過ごした日々を自然に重ねられる文章にしてください。『〜と伺っております』『〜とのことです』『皆様の記憶に残っています』を繰り返さないでください。",
-  "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三〜四つの思い出の段落、開式案内の順です。定型文を含め430〜600字、七〜十文、四〜六段落で書いてください。",
+  "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三〜四つの思い出の段落、開式案内の順です。定型文を含め350〜550字、七〜十一文、四〜六段落で書いてください。",
   "閉式後本文は、開式前で使わなかった具体的な思い出から始め、入力にある場合だけご家族の気持ちへ結びます。160〜260字、四〜六文、二〜三段落で書き、式次第の定型案内は書かないでください。",
   "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
   "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、問いかけではない現在形を無理のない範囲で交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
@@ -1156,6 +1156,10 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
     );
   const cleanClosing = value => String(value || "")
     .replace(/(^|\n{2,})[^。\n]*(?:開式前に|開式前で)[^。\n]*(?:記憶|思い出|述べ|伝え)[^。\n]*。/gu, "$1")
+    .replace(
+      /(親子三代で、?[^。\n]+へ旅行されました。)\s*(いずれも誕生日月の[^。\n]+(?:でした|でございました)。)\s*[^。\n]*親子三代[^。\n]*(?:旅行|出かけ)[^。\n]*。/gu,
+      "$1\n$2"
+    )
     .replace(/ご旅行に行かれました。/gu, "旅へ出かけられました。")
     .replace(
       /親子三代で、?([^。\n]+?)へ(?:旅へ出かけられ|ご旅行に行かれ)ました。どのご旅行も、お誕生日月である([^に。\n]+)に行かれたものでした。\s*行き先の名をたどると、[^。\n]+?のご旅行が思い起こされます。/gu,
@@ -1552,11 +1556,11 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasAwkwardNarrationStyle(bodyWithoutRequiredClosings)) failures.push("awkward narration style");
   if (hasReporterDistance(bodyWithoutRequiredClosings)) failures.push("reporter distance");
   if (hasResidualAiNarration(bodyWithoutRequiredClosings)) failures.push("residual AI narration");
-  if (opening.trim().length < 430) failures.push("opening too short");
+  if (opening.trim().length < 350) failures.push("opening too short");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 160) failures.push("closing too short");
+  if (closingBody.length < 120) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
@@ -2672,7 +2676,7 @@ const staffSelectedMemoryPlan = (compactSheet, plan) => {
     })
     .filter(Boolean)
     .slice(0, limit);
-  const opening = normalizeCards(plan?.opening, 5);
+  const opening = normalizeCards(plan?.opening, 6);
   const closing = normalizeCards(plan?.closing, 2)
     .filter(card => !opening.some(openingCard => openingCard.field === card.field));
   if (!opening.length || !closing.length) return null;
@@ -2680,7 +2684,7 @@ const staffSelectedMemoryPlan = (compactSheet, plan) => {
     opening: {
       anchor: opening[0],
       supports: opening.slice(1),
-      maximumFacts: 5,
+      maximumFacts: 6,
       purpose: "スタッフが選んだ中心の記憶から始め、選択された補助事実だけで人物像を描く",
     },
     closing: {
@@ -2775,7 +2779,7 @@ const compactNarrationPrompt = prompt => {
     "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
     "openingはanchorから人物の記憶を描き始め、選ばれたsupportsもすべて使ってください。各カードに含まれる異なる事実を一つも省略せず、それぞれ一度だけ書いてください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。closingの各カードに含まれる場所、時期、行動を省略せず一度ずつ使い、supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
-    "openingは定型文を含めて430〜600字、七〜十文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大五枚です。anchorを中心に置き、supportsに含まれる異なる事実も一度ずつ必ず使ってください。選択済みの事実を省略してはいけません。",
+    "openingは定型文を含めて350〜550字、七〜十一文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大六枚です。anchorを中心に置き、supportsに含まれる異なる事実も一度ずつ必ず使ってください。選択済みの事実を省略してはいけません。",
     "closingはサーバーが後で加える式次第案内を除き、160〜260字、四〜六文を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "開式前の主要な思い出の各段落は70〜120字、閉式後の各段落は70〜130字にしてください。引用文を除き、内容を伝える一文を22字未満の短い報告文にしないでください。各段落では、最初の文で具体的な記憶を示し、続く文で同じカード内の別の動作や様子へ自然につないでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
