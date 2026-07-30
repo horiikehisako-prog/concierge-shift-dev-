@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.89";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.90";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -779,6 +779,10 @@ const normalizeQuotationContext = draft => {
         "歌ったり、踊ったりされる愛らしいお姿も、ご家族の記憶に残っています。"
       )
       .replace(
+        /歌われることがあり、踊られることもありました。そのお姿を、ご家族は愛らしく感じておられました。/gu,
+        "歌ったり、踊ったりされる愛らしいお姿も、ご家族の記憶に残っています。"
+      )
+      .replace(
         /手芸に親しみ、野菜やお花を育てることも、([^。\n]+?様)の暮らしの中にございました。/gu,
         "手芸に親しみ、野菜やお花にも手をかけておられました。"
       )
@@ -831,6 +835,14 @@ const normalizeQuotationContext = draft => {
       .replace(
         /その行き先の名とともに、([^。\n]+?様)と過ごされたひとときが残されております。/gu,
         "その土地の名に触れるたび、親子三代で過ごした日のことも思い出されることでしょう。"
+      )
+      .replace(
+        /行き先の名と、?[^。\n]+?という月が、あの時のことを静かに伝えてまいります。/gu,
+        "その土地の名やお誕生日の月に触れるたび、親子三代で過ごした日も思い出されることでしょう。"
+      )
+      .replace(
+        /その([^。\n]+?)を忘れずにいたいというご家族のお気持ちが、今、残されております。/gu,
+        "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
       )
       .replace(
         /(?:そのご旅行のことを思いながら、)?私も([^。\n]+?様)を見習い、明るく前向きに歩んでいきたいというお気持ちが残されております。/gu,
@@ -1494,7 +1506,7 @@ const requestNarration = async ({
         max_output_tokens: outputTokenLimit,
       };
       body.text = {
-        verbosity: "medium",
+        verbosity: "high",
         format: { type: "json_object" },
       };
 
