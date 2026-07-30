@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.5";
+const API_BUILD_ID = "narration-studio-20260730.6";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2089,7 +2089,7 @@ module.exports = async (req, res) => {
           extraInstruction: [
             "LENGTH REPAIR: the first opening draft was too short.",
             "Rewrite the complete opening and closing, using exactly the same sourceFacts and no new fact, feeling, adjective, scenery, action, or interpretation.",
-            "Use every opening anchor/support once. When one card contains two distinct facts, give each fact its own natural sentence instead of compressing both into one sentence.",
+            "Use every selected opening and closing card. Every distinct fact inside a selected card must appear exactly once. Omission is a failed repair. When one card contains two or more distinct facts, connect them in one natural paragraph instead of dropping one or turning them into a list.",
             "Opening including its fixed introduction and final line must be about 520 to 700 Japanese characters. Match the referenceShape and aim for twelve to sixteen factual body sentences arranged in four to six natural paragraphs.",
             "Closing narrative body must be 200 to 300 Japanese characters, arranged in two or three natural paragraphs, and must not repeat opening facts.",
             "Do not pad with an abstract summary, gratitude sentence, list of facts, interview-report wording, or a restatement of the same memory. To match the textbook depth, up to three opening paragraphs may end with one short family-near afterglow sentence tied to the exact scene just described.",
@@ -2701,13 +2701,13 @@ const compactNarrationPrompt = prompt => {
     "sourceFacts以外の事実は使わないでください。openingとclosingの材料は意図的に分けられています。",
     "sourceFactsの名詞と動作を、自然な尊敬語と助詞へ整える範囲で書いてください。入力にない形容詞、副詞、仕草、場所の細部、家族の反応、本人の内心を足してはいけません。",
     "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
-    "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
-    "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
-    "openingは定型文を含めて520〜700字、十一〜十五文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsは同じ人物像を自然に深められるものだけを一度ずつ使ってください。流れを壊すsupportは省略して構いません。",
+    "openingはanchorから人物の記憶を描き始め、選ばれたsupportsもすべて使ってください。各カードに含まれる異なる事実を一つも省略せず、それぞれ一度だけ書いてください。",
+    "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。closingの各カードに含まれる場所、時期、行動を省略せず一度ずつ使い、supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
+    "openingは定型文を含めて520〜700字、十一〜十五文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsに含まれる異なる事実も一度ずつ必ず使ってください。選択済みの事実を省略してはいけません。",
     "closingはサーバーが後で加える式次第案内を除き、200〜300字、五〜八文を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
     "anchorは三〜五文、各supportは二〜三文を目安とします。一つの事実を別の言葉で説明し直して文数を増やしてはいけません。カードに複数の具体的な事実があれば、それぞれを自然につないで描いてください。",
-    "一つのカードに異なる事実が二つある場合は、無理に一文へ圧縮せず、一つずつ別の文で書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ別の事実です。",
+    "一つのカードに異なる事実が二つ以上ある場合は、無理に一文へ圧縮せず、一つずつ自然につないで書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ省略できない別の事実です。",
     "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
     "各カードにdoNotRepeatTopicsがある場合、その話題は同じカードの文章に含まれていても使用禁止です。別の固有の内容だけを使ってください。",
     "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を接続助詞や連用形でつなぎ、現在形は思い出が今も目に浮かぶ箇所に一度だけ使って、自然な呼吸を作ってください。体言止めは一段落に一度までです。",
