@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260731.30";
+const API_BUILD_ID = "narration-studio-20260731.31";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1091,6 +1091,18 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   };
   const cleanOpening = value => collapseRepeatedSmileParagraph(ensureExactSmileFact(value), displayName)
     .replace(
+      /歌に声を重ね、ときには踊るように身体を動かされる姿を、ご家族はいつも可愛いと感じておられました。/gu,
+      "歌に声を重ね、ときには踊るように身体を動かされる。思い出の中には、そんな愛らしいお姿もございます。"
+    )
+    .replace(
+      /手芸を楽しむときには手を動かして形にし、野菜や花にも手をかけて育てておられました。その育つ様子を見守ることも、[^。\n]+の暮らしの中にありました。/gu,
+      "手芸に向かう手元には、少しずつ形が生まれてゆく時間。野菜や花のそばには、日々の育ちを見守るまなざし。どちらも、暮らしの中にあった大切なひとときです。"
+    )
+    .replace(
+      /明るく前向きで、人と接することが大好きだった([^。\n]+)は、思い立ったらすぐに行動されました。人を悪く言ってはいけないとよく話され、家族を大切にしておられました。/gu,
+      "明るく前向きで、人と接することがお好きだった$1。思い立てばすぐに動かれる、その軽やかさもお持ちでした。\n\n「人の悪口を言ってはいけない」と、折に触れて話しておられました。"
+    )
+    .replace(
       /歌に声を重ね、ときには踊るように身体を動かされる姿は、いつも可愛いものとして残されています。/gu,
       `歌に声を重ね、ときには踊るように身体を動かされる。そのお姿を、ご家族はいつも可愛らしく感じておられました。`
     )
@@ -1189,6 +1201,10 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   };
   const cleanClosing = value => ensureExactFamilyFeeling(value)
     .replace(/(^|\n{2,})[^。\n]*(?:開式前に|開式前で)[^。\n]*(?:記憶|思い出|述べ|伝え)[^。\n]*。/gu, "$1")
+    .replace(
+      /親子三代で、?([^。\n]+)へ旅行されました。いずれも、?[^。\n]*誕生日月である([^。\n]+?)のことでした。親子三代で[^。\n]*旅行[^。\n]*。/gu,
+      "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ご家族で過ごした旅の日々もよみがえることでしょう。"
+    )
     .replace(
       /(その明るさを見習い、前向きに歩んでいきたい――そのお気持ちも、ご家族の胸にあります。)\s*十月の旅[^。\n]*。/gu,
       "$1"
