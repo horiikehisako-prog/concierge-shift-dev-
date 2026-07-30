@@ -517,6 +517,13 @@ assert.equal((stablePortrait.closingNarration.match(/親子三代/gu) || []).len
 assert.equal((stablePortrait.closingNarration.match(/十月/gu) || []).length, 1);
 const stablePortraitCheck = context.testHelpers.qualityCheckNarration(stablePortrait, stablePortraitPrompt);
 assert.equal(stablePortraitCheck.failures.length, 0);
+const alternatePhrasePrompt = stablePortraitPrompt.replace(
+  "人の悪口を言ってはいけない",
+  "人を悪く言ってはいけない"
+);
+const alternatePhrasePortrait = context.testHelpers.buildStableFamilyPortrait({}, alternatePhrasePrompt);
+assert.notEqual(alternatePhrasePortrait, null);
+assert.equal(alternatePhrasePortrait.openingNarration.includes("「人を悪く言ってはいけない」"), true);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",

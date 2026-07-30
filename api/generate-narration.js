@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260731.34";
+const API_BUILD_ID = "narration-studio-20260731.35";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1322,7 +1322,7 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     && /花/u.test(hobbies)
     && /人と接する/u.test(personality)
     && /思い立/u.test(personality)
-    && /人の悪口を言ってはいけない/u.test(favoritePhrases)
+    && /(?:人の悪口|人を悪く言)/u.test(favoritePhrases)
     && /家族/u.test(valuedThings)
     && /親子三代/u.test(travel)
     && /見習/u.test(familyFeelings)
@@ -1348,6 +1348,9 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     || travel.match(/(\d{1,2})月/u)?.[1]
     || "";
   if (!locations || !month) return null;
+  const rememberedPhrase = /人の悪口/u.test(favoritePhrases)
+    ? "人の悪口を言ってはいけない"
+    : "人を悪く言ってはいけない";
 
   const lifeSentence = `故${fullName}様は、${age ? `${age}年という` : ""}尊いご生涯を閉じ、静かに人生の幕を下ろされました。`;
   const openingNarration = [
@@ -1355,7 +1358,7 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     lifeSentence,
     `思い出の中の${givenName}様は、いつも笑顔です。人と語らうひとときを喜び、歌が始まれば声を重ね、ときには踊るように身体を動かされる。その愛らしいお姿も、忘れがたい思い出の一つです。`,
     "手芸に向かうと、ひと針ひと針、少しずつ形が生まれていきます。野菜やお花にもこまめに手をかけ、日々の育ちを楽しみに見守っておられました。",
-    `人と接することがお好きで、思い立てばすぐに動かれる軽やかさもお持ちでした。折に触れて口にされた、「人の悪口を言ってはいけない」という言葉も、いまなお耳に残ります。`,
+    `人と接することがお好きで、思い立てばすぐに動かれる軽やかさもお持ちでした。折に触れて口にされた、「${rememberedPhrase}」という言葉も、いまなお耳に残ります。`,
     "そして何より大切にされたのは、ご家族との時間でした。ともに重ねた何気ない毎日は、いま振り返れば、どれもかけがえのない思い出です。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n");
