@@ -467,6 +467,26 @@ const missingSeasonDraft = context.testHelpers.applyNameRule({
 assert.equal(missingSeasonDraft.openingNarration.startsWith("蝉の声が遠く近くに響くこの季節。\n故試験 花子様は、"), true);
 assert.equal((missingSeasonDraft.openingNarration.match(/故試験 花子様/gu) || []).length, 1);
 
+const thirdProductionSmokeDraft = context.testHelpers.normalizeFamilyNearNarration({
+  openingNarration: [
+    "蝉の声が遠く近くに響くこの季節。",
+    "故試験 花子様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
+    "「いつも笑っている顔しか思い出せない」とご家族が語られるほど、日々のそばには花子様の笑顔がありました。",
+    "歌に声を重ね、ときには踊るように身体を動かされる姿を、ご家族はいつも可愛いと感じていました。",
+    "手芸を楽しむときには、手を動かして少しずつ形にしていかれる。野菜や花にも手をかけ、その育ちを見守っておられました。",
+    "人と接することが大好きで、思い立ったらすぐに行動される花子様。明るく前向きに過ごされる中で、人を悪く言ってはいけないと、よく話しておられました。",
+    "そして、花子様が大切にしてこられたのはご家族でした。その思いを受けながら、",
+  ].join("\n\n"),
+  closingNarration: "親子三代で青葉園、白浜、緑川、花里へ旅行されました。いずれも誕生日月の十月のことでした。花子様とご家族がそろって出かけられた記憶として、今もその月が思い出されます。\n\nその明るさを見習い、前向きに歩んでいきたい――そのお気持ちも、ご家族の胸にあります。",
+}, exactSmilePrompt);
+const thirdProductionFull = `${thirdProductionSmokeDraft.openingNarration}\n${thirdProductionSmokeDraft.closingNarration}`;
+assert.equal(thirdProductionFull.includes("その思いを受けながら、"), false);
+assert.equal(thirdProductionFull.includes("可愛いと感じていました"), false);
+assert.equal(thirdProductionFull.includes("育ちを見守っておられました"), false);
+assert.equal(thirdProductionFull.includes("すぐに行動される"), false);
+assert.equal((thirdProductionSmokeDraft.closingNarration.match(/親子三代/gu) || []).length, 1);
+assert.equal((thirdProductionSmokeDraft.closingNarration.match(/十月/gu) || []).length, 1);
+
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
   hobbies: "手芸と花の世話。",

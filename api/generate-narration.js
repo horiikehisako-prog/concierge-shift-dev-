@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260731.32";
+const API_BUILD_ID = "narration-studio-20260731.33";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1097,6 +1097,10 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   };
   const cleanOpening = value => collapseRepeatedSmileParagraph(ensureExactSmileFact(value), displayName)
     .replace(
+      /歌に声を重ね、ときには踊るように身体を動かされる姿を、ご家族はいつも可愛いと感じていました。/gu,
+      "歌に声を重ね、ときには踊るように身体を動かされる。その姿には、思わず頬が緩むような愛らしさがありました。"
+    )
+    .replace(
       /歌に声を重ね、ときには踊るように身体を動かされる姿を、ご家族はいつも可愛いと感じておられました。/gu,
       "歌に声を重ね、ときには踊るように身体を動かされる。思い出の中には、そんな愛らしいお姿もございます。"
     )
@@ -1109,12 +1113,24 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
       "手芸に向かう手元には、少しずつ形が生まれてゆく時間。野菜や花のそばには、日々の育ちを見守るまなざし。どちらも、暮らしの中にあった大切なひとときです。"
     )
     .replace(
+      /手芸を楽しむときには、手を動かして少しずつ形にしていかれる。野菜や花にも手をかけ、その育ちを見守っておられました。/gu,
+      "手芸に向かう手元には、少しずつ形が生まれてゆく時間。野菜や花のそばには、日々の育ちを見守るまなざし。どちらも、暮らしの中にあった大切なひとときです。"
+    )
+    .replace(
       /明るく前向きで、人と接することが大好きだった([^。\n]+)は、思い立ったらすぐに行動されました。人を悪く言ってはいけないとよく話され、家族を大切にしておられました。/gu,
       "明るく前向きで、人と接することがお好きだった$1。思い立てばすぐに動かれる、その軽やかさもお持ちでした。\n\n「人の悪口を言ってはいけない」と、折に触れて話しておられました。"
     )
     .replace(
       /人と接することが大好きで、思い立ったらすぐに行動される([^。\n]+)。人を悪く言ってはいけないとよく話し、家族を大切にしてこられました。/gu,
       "人と接することがお好きで、思い立てばすぐに動かれる$1。その軽やかさも、ご本人らしい一面です。\n\n折に触れて口にされた、「人の悪口を言ってはいけない」という言葉。ご家族を大切にされた日々とともに、いまも心に残ります。"
+    )
+    .replace(
+      /人と接することが大好きで、思い立ったらすぐに行動される([^。\n]+)。明るく前向きに過ごされる中で、人を悪く言ってはいけないと、よく話しておられました。/gu,
+      "人と接することがお好きで、思い立てばすぐに動かれる$1。その軽やかさも、ご本人らしい一面でした。\n\n「人の悪口を言ってはいけない」。折に触れて聞いたその言葉も、いまなお耳に残ります。"
+    )
+    .replace(
+      /そして、([^。\n]+)が大切にしてこられたのはご家族でした。その思いを受けながら、/gu,
+      "そして何より大切にされたのは、ご家族との時間でした。ともに過ごした何気ない日々も、いまではかけがえのない思い出です。"
     )
     .replace(
       /歌に声を重ね、ときには踊るように身体を動かされる姿は、いつも可愛いものとして残されています。/gu,
@@ -1215,6 +1231,10 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   };
   const cleanClosing = value => ensureExactFamilyFeeling(value)
     .replace(/(^|\n{2,})[^。\n]*(?:開式前に|開式前で)[^。\n]*(?:記憶|思い出|述べ|伝え)[^。\n]*。/gu, "$1")
+    .replace(
+      /親子三代で、?([^。\n]+)へ旅行されました。いずれも誕生日月の([^。\n]+?)のことでした。[^。\n]+とご家族がそろって出かけられた記憶として、[^。\n]*。/gu,
+      "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ご家族で過ごした旅の日々もよみがえることでしょう。"
+    )
     .replace(
       /親子三代で、?([^。\n]+)へ旅行されました。いずれも、?[^。\n]*誕生日月である([^。\n]+?)のことでした。親子三代で[^。\n]*旅行[^。\n]*。/gu,
       "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ご家族で過ごした旅の日々もよみがえることでしょう。"
