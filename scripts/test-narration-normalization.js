@@ -289,6 +289,26 @@ assert.equal(staleProductionCheck.failures.includes("excessive trait repetition"
 assert.equal(staleProductionCheck.failures.includes("repetitive past endings"), true);
 assert.equal(context.testHelpers.narrationCandidateScore(staleProductionDraft, chienoPrompt).score >= 2000, true);
 
+const latestShortDraft = {
+  openingNarration: [
+    "蝉の声が響く夏の日でございます。",
+    "故堀池 チエノ様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
+    "チエノ様を思うと、いつも笑っておられたお顔が浮かびます。ほかのお顔を思い出せないほど、よく笑っておられた方でした。その表情は、ご家族の記憶に残っています。",
+    "歌を歌われることがありました。踊られることもあり、そのお姿を可愛いと感じておられた記憶が残されています。声を重ね、身体を動かされるチエノ様。そこで浮かぶお姿も、ご家族の記憶の中にあります。",
+    "手芸では、手を動かして形にしておられました。野菜を育て、お花にも手をかけてこられた日々がありました。手芸に向かう手元も、野菜やお花に手をかけるお姿も、今では懐かしい場面です。",
+    "ご家族を大切にしておられたチエノ様。折に触れて、「人の悪口を言ってはいけない」と話しておられました。",
+    "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
+  ].join("\n\n"),
+  closingNarration: [
+    "親子三代で、六甲、小倉、下関、博多へ旅へ出かけられました。いずれも、お誕生日月である十月のご旅行でした。訪れた地名と十月という月が、これからもご家族の中に残ってまいります。私も彼女を見習い、明るく前向きに歩んでいきたい、という思いが寄せられています。",
+  ].join("\n\n"),
+};
+const latestShortCheck = context.testHelpers.qualityCheckNarration(latestShortDraft, chienoPrompt);
+assert.equal(latestShortCheck.ok, false);
+assert.equal(latestShortCheck.failures.includes("opening too short"), true);
+assert.equal(latestShortCheck.failures.includes("closing too short"), true);
+assert.equal(latestShortCheck.failures.includes("invented family feeling"), true);
+
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
   hobbies: "手芸と花の世話。",

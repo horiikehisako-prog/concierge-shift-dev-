@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.3";
+const API_BUILD_ID = "narration-studio-20260730.4";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1480,11 +1480,11 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasAwkwardNarrationStyle(bodyWithoutRequiredClosings)) failures.push("awkward narration style");
   if (hasReporterDistance(bodyWithoutRequiredClosings)) failures.push("reporter distance");
   if (hasResidualAiNarration(bodyWithoutRequiredClosings)) failures.push("residual AI narration");
-  if (opening.trim().length < 330) failures.push("opening too short");
+  if (opening.trim().length < 480) failures.push("opening too short");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 110) failures.push("closing too short");
+  if (closingBody.length < 180) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
@@ -1516,8 +1516,8 @@ const narrationCandidateScore = (draft, prompt) => {
     0,
   );
   const lengthPenalty =
-    Math.max(0, 380 - openingLength) +
-    Math.max(0, 140 - closingBodyLength) * 2;
+    Math.max(0, 520 - openingLength) +
+    Math.max(0, 200 - closingBodyLength) * 2;
   return {
     score: failurePenalty + lengthPenalty,
     check,
@@ -1643,7 +1643,7 @@ const buildSystemPrompt = extraInstruction => [
   "ご家族を文の観察者として何度も登場させないでください。「ご家族が思い出される」のように書かず、記憶の中の表情や動作を文の中心に置いてください。",
   "文末は意味に合わせて自然に変えてください。同じ「ました・でした・ございます」を三文続けず、避けるためだけの体言止めも重ねないでください。すべての文に自然な述語を置いてください。",
   "開式前は、事実が十分なら430〜620字を目安にします。八〜十一文ほど、三〜五段落で構成し、短い報告文を並べず、関係する記憶を自然につないでください。長さのための抽象表現は足さないでください。",
-  "閉式後本文はclosing.anchorを静かにたどり、開式前の要約をしません。closing.supportsにご家族のお気持ちがある場合だけ、内容を変えずに結んでください。具体的な記憶から余韻へ進む三〜五文、160〜240字を目安にしてください。",
+  "閉式後本文はclosing.anchorを静かにたどり、開式前の要約をしません。closing.supportsにご家族のお気持ちがある場合だけ、内容を変えずに結んでください。具体的な記憶から余韻へ進む五〜八文、200〜300字を目安にしてください。",
   "「〜ことがありました」「〜しておられました」を一項目ずつ並べる人物紹介は禁止です。関連する事実は、時間・動作・対象のつながりが自然になる一文または一段落へまとめてください。",
   "「そのお顔はご家族の記憶に残っています」のように、直前の記憶を説明し直すだけの文は削ってください。一つの事実は一度だけ書き、次の具体的な記憶へ進んでください。",
   "一人称の「私」、三人称代名詞の「彼・彼女」は使用禁止です。ご家族のお気持ちは、sourceFactsにある表現を主語なしで自然に受け、司会者個人の言葉へ変えないでください。",
@@ -2065,7 +2065,12 @@ module.exports = async (req, res) => {
       extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
     const firstDraft = parsed;
-    if (String(parsed?.openingNarration || "").length < 360) {
+    if (
+      String(parsed?.openingNarration || "").length < 500 ||
+      String(parsed?.closingNarration || "")
+        .replace(/(?:\d+|[〇一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し[\s\S]*$/u, "")
+        .trim().length < 190
+    ) {
       try {
         const shortDraft = JSON.stringify({
           openingNarration: parsed?.openingNarration || "",
@@ -2084,8 +2089,8 @@ module.exports = async (req, res) => {
             "LENGTH REPAIR: the first opening draft was too short.",
             "Rewrite the complete opening and closing, using exactly the same sourceFacts and no new fact, feeling, adjective, scenery, action, or interpretation.",
             "Use every opening anchor/support once. When one card contains two distinct facts, give each fact its own natural sentence instead of compressing both into one sentence.",
-            "Opening including its fixed introduction and final line must be about 400 to 520 Japanese characters. Match the referenceShape and aim for ten to fourteen factual body sentences arranged in natural paragraphs.",
-            "Closing narrative body must be 160 to 240 Japanese characters and must not repeat opening facts.",
+            "Opening including its fixed introduction and final line must be about 520 to 700 Japanese characters. Match the referenceShape and aim for twelve to sixteen factual body sentences arranged in four to six natural paragraphs.",
+            "Closing narrative body must be 200 to 300 Japanese characters, arranged in two or three natural paragraphs, and must not repeat opening facts.",
             "Do not pad with an abstract summary, gratitude sentence, list of facts, interview-report wording, or a restatement of the same memory. To match the textbook depth, up to three opening paragraphs may end with one short family-near afterglow sentence tied to the exact scene just described.",
             `FIRST DRAFT TO REPAIR: ${shortDraft}`,
           ].join(" "),
@@ -2128,7 +2133,7 @@ module.exports = async (req, res) => {
         "「私」「彼」「彼女」は使用禁止です。ご家族のお気持ちはsourceFactsの意味を変えず、司会者個人の一人称にしないでください。",
         "開式案内の直前で「感謝の思い」を二文連続させないでください。前の一文が定型案内と重なる場合は削ってください。",
         "抽象的な美辞、人生訓、標語、AIらしいまとめを加えないでください。事実だけでは支えられない文は、別の美文へ置き換えず削ってください。",
-        "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて380〜600字、閉式後本文は140〜230字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
+        "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて520〜700字、閉式後本文は200〜300字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
         "自然さと正確さを最優先しながら、初稿にある異なる事実と必要な段落の呼吸は残してください。",
         "最後に音読を想定し、一度で意味が伝わるか確認してから完成稿だけを返してください。",
       ].join(" ");
@@ -2697,7 +2702,7 @@ const compactNarrationPrompt = prompt => {
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
     "openingは定型文を含めて430〜620字、八〜十一文、三〜五段落を目安にしてください。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsは同じ人物像を自然に深められるものだけを一度ずつ使ってください。流れを壊すsupportは省略して構いません。",
-    "closingはサーバーが後で加える式次第案内を除き、160〜240字を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
+    "closingはサーバーが後で加える式次第案内を除き、200〜300字、五〜八文を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
     "anchorは二〜三文、各supportは一〜二文を上限とします。一つの事実を別の言葉で説明し直す文は書かないでください。",
     "一つのカードに異なる事実が二つある場合は、無理に一文へ圧縮せず、一つずつ別の文で書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ別の事実です。",
