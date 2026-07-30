@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.15";
+const API_BUILD_ID = "narration-studio-20260730.16";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -15,8 +15,8 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
   "sourceFactsに書かれた事実だけを使い、場面、感情、意味、人物評価、家族の反応を創作しないでください。選択されたopeningとclosingのカードは混ぜず、各カード内の異なる事実を省略せず一度ずつ使ってください。",
   "司会者が外から人物を紹介・評価する文章ではなく、ご家族がともに過ごした日々を自然に重ねられる文章にしてください。『〜と伺っております』『〜とのことです』『皆様の記憶に残っています』を繰り返さないでください。",
-  "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三つの思い出の段落、開式案内の順です。定型文を含め520〜700字、十一〜十五文、四〜六段落で書いてください。",
-  "閉式後本文は、開式前で使わなかった具体的な思い出から始め、入力にある場合だけご家族の気持ちへ結びます。200〜300字、五〜八文、二〜三段落で書き、式次第の定型案内は書かないでください。",
+  "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三つの思い出の段落、開式案内の順です。定型文を含め430〜600字、七〜十文、四〜六段落で書いてください。",
+  "閉式後本文は、開式前で使わなかった具体的な思い出から始め、入力にある場合だけご家族の気持ちへ結びます。160〜260字、四〜六文、二〜三段落で書き、式次第の定型案内は書かないでください。",
   "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
   "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、問いかけではない現在形を無理のない範囲で交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
   "同じ内容は一度だけ書いてください。笑顔を書いた直後に、よく笑う人だった、その顔が記憶に残る、と説明し直してはいけません。歌と踊り、手芸と草花、旅行先など、近い事実は一つの流れへまとめてください。",
@@ -409,7 +409,12 @@ const startsWithSeasonDeceasedLife = opening => {
 
 const closingStartsWithSeasonalLanguage = closing => {
   const beginning = normalizeText(closing).slice(0, 40);
-  return SEASONAL_STARTERS.some(word => beginning.startsWith(normalizeText(word)));
+  return SEASONAL_STARTERS.some(word => {
+    const normalizedWord = normalizeText(word);
+    if (!beginning.startsWith(normalizedWord)) return false;
+    const next = beginning.slice(normalizedWord.length, normalizedWord.length + 1);
+    return !next || /[はがもにのを、。とへで]/u.test(next);
+  });
 };
 
 const safeOpenAiError = json => {
@@ -1049,7 +1054,7 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   const displayName = givenName ? `${givenName}様` : "故人様";
   const cleanOpening = value => String(value || "")
     .replace(
-      /(^|\n{2,})[^\n]*いつも笑っている(?:お)?顔しか思い出せない[^\n]*/gu,
+      /(^|\n{2,})(?:(?!\n{2,})[\s\S])*いつも笑っている(?:お)?顔しか思い出せない(?:(?!\n{2,})[\s\S])*/gu,
       `$1「いつも笑っている顔しか思い出せない」とご家族が語られるほど、日々のそばには${displayName}の笑顔がありました。`
     )
     .replace(
@@ -1524,11 +1529,11 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasAwkwardNarrationStyle(bodyWithoutRequiredClosings)) failures.push("awkward narration style");
   if (hasReporterDistance(bodyWithoutRequiredClosings)) failures.push("reporter distance");
   if (hasResidualAiNarration(bodyWithoutRequiredClosings)) failures.push("residual AI narration");
-  if (opening.trim().length < 480) failures.push("opening too short");
+  if (opening.trim().length < 430) failures.push("opening too short");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 180) failures.push("closing too short");
+  if (closingBody.length < 160) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
@@ -2734,6 +2739,7 @@ const compactNarrationPrompt = prompt => {
         "これは新規作成ではなく、スタッフが選んだ構成を守る校正です。",
         "revisionDraftの開式前・閉式後を全文校正し、指定された修正だけを行ってください。",
         "事実の追加、場面の創作、人物評価の追加、開式前と閉式後の材料交換は禁止です。",
+        "字数を増やすために文を足してはいけません。同じ笑顔、動作、思い出を説明し直した文は削り、残した文の助詞と流れだけを整えてください。",
         `スタッフの修正指示: ${revisionInstruction}`,
       ].join("\n")
     : "スタッフが選んだ事実カードの構成どおりに、新しい下書きを作成してください。";
@@ -2746,11 +2752,11 @@ const compactNarrationPrompt = prompt => {
     "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
     "openingはanchorから人物の記憶を描き始め、選ばれたsupportsもすべて使ってください。各カードに含まれる異なる事実を一つも省略せず、それぞれ一度だけ書いてください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。closingの各カードに含まれる場所、時期、行動を省略せず一度ずつ使い、supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
-    "openingは定型文を含めて520〜700字、十一〜十五文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsに含まれる異なる事実も一度ずつ必ず使ってください。選択済みの事実を省略してはいけません。",
-    "closingはサーバーが後で加える式次第案内を除き、200〜300字、五〜八文を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
-    "開式前の主要な思い出の各段落は90〜140字、閉式後の各段落は90〜150字にしてください。引用文を除き、内容を伝える一文を22字未満の短い報告文にしないでください。各段落では、最初の文で具体的な記憶を示し、続く文で同じカード内の別の動作や様子へ自然につないでください。",
+    "openingは定型文を含めて430〜600字、七〜十文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsに含まれる異なる事実も一度ずつ必ず使ってください。選択済みの事実を省略してはいけません。",
+    "closingはサーバーが後で加える式次第案内を除き、160〜260字、四〜六文を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
+    "開式前の主要な思い出の各段落は70〜120字、閉式後の各段落は70〜130字にしてください。引用文を除き、内容を伝える一文を22字未満の短い報告文にしないでください。各段落では、最初の文で具体的な記憶を示し、続く文で同じカード内の別の動作や様子へ自然につないでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
-    "anchorは三〜五文、各supportは二〜三文を目安とします。一つの事実を別の言葉で説明し直して文数を増やしてはいけません。カードに複数の具体的な事実があれば、それぞれを自然につないで描いてください。",
+    "anchorも各supportも一〜二文を目安とします。一つの事実を別の言葉で説明し直して文数を増やしてはいけません。カードに複数の具体的な事実があれば、それぞれを自然につないで描いてください。",
     "一つのカードに異なる事実が二つ以上ある場合は、無理に一文へ圧縮せず、一つずつ自然につないで書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ省略できない別の事実です。",
     "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
     "各カードにdoNotRepeatTopicsがある場合、その話題は同じカードの文章に含まれていても使用禁止です。別の固有の内容だけを使ってください。",
@@ -2762,7 +2768,7 @@ const compactNarrationPrompt = prompt => {
     "開式案内の直前に「感謝の思いが寄せられます」を置き、その次も「感謝の思いを胸に」と重ねることは禁止です。具体的な記憶を一つ受ける橋渡しから、定型案内へ直接つないでください。",
     "別の場所へ出向く二つの動作は「人と言葉を交わし、地域の集まりにも欠かさず出かけられました」のように一文へつないでください。短い敬体文を二つ並べないでください。",
     "「時間を重ねる」「日々を重ねる」「時間が記憶につながる」「身近な記憶」「日常の一こま」「お姿がそこにある」「その声にのせて」「ひと続きの記憶」「胸に静かに留められる」「旅の余韻」「暮らしに刻まれる」「時間が流れる」「いつもの席」「ここに集う思い」「お見送りいたします」は使わないでください。事実を抽象語へ置き換えず、その場面を平明に書いてください。",
-    "各段落の最後に抽象的な人物評を足さないでください。ただし開式前全体で最大三回まで、その段落に書いた同じ場面がご家族の記憶に残ることを示す、短い余韻文を一文だけ置いて構いません。",
+    "各段落の最後に抽象的な人物評を足さないでください。余韻文は開式前全体で一度までとし、同じ事実の言い直しにならない場合だけ置いてください。",
     "余韻文は直前の具体物を必ず受けてください。例は「その愛らしいお姿も、ご家族の記憶に残っています」「手芸に向かう手元も、草花に手をかけるお姿も、今では懐かしい日常の一場面です」です。人物評・人生訓・新しい感情は加えないでください。",
     "本文の最後に、すでに書いた趣味・性格・思い出を読点で並べる要約行を置かないでください。同じ事実を文章と一覧の両方で書くことは禁止です。",
     "事実に必ず含まれる動作だけは、場面として丁寧に描いて構いません。手芸・編み物なら手を動かして形にすること、草花や野菜を育てるなら手をかけて育つ様子を見ること、歌や踊りなら声を重ねたり身体を動かしたりすることです。",

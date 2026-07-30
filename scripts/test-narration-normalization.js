@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = `${fs.readFileSync("api/generate-narration.js", "utf8")}
-this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, qualityCheckNarration, narrationCandidateScore, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount, applyNameRule };`;
+this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, qualityCheckNarration, narrationCandidateScore, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount, applyNameRule, closingStartsWithSeasonalLanguage };`;
 const context = {
   module: { exports: {} },
   exports: {},
@@ -339,7 +339,7 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("日々を胸に、"
 
 const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: [
-    "花子様を思うとき、ご家族の中にまず浮かぶのは、笑っているお顔でございました。いつも笑っている顔しか思い出せないほど、よく笑っておられたことが、まず心に浮かびます。何か特別な場面だけではなく、その表情が記憶の入口となっております。",
+    "花子様を思うとき、ご家族の中にまず浮かぶのは、笑っているお顔でございました。\nいつも笑っている顔しか思い出せないほど、よく笑っておられたことが、まず心に浮かびます。\n何か特別な場面だけではなく、その表情が記憶の入口となっております。",
     "歌に声を重ね、ときには踊るように身体を動かされました。",
     "手芸を楽しみ、野菜や花にも手をかけておられました。",
     "笑っておられたお顔、歌や踊り、手芸、野菜や花に触れる日々をたどりながら、花子様へ心を寄せてまいります。",
@@ -353,6 +353,8 @@ assert.equal((repeatedMemoryDraft.openingNarration.match(/いつも笑ってい�
 assert.equal(repeatedMemoryDraft.openingNarration.includes("記憶の入口"), false);
 assert.equal(repeatedMemoryDraft.openingNarration.includes("歌や踊り、手芸、野菜や花"), false);
 assert.equal(repeatedMemoryDraft.closingNarration.includes("開式前にたどった記憶"), false);
+assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉園、白浜へ旅行されました。"), false);
+assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉の美しい季節となりました。"), true);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
