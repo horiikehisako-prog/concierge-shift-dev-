@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.27";
+const API_BUILD_ID = "narration-studio-20260730.28";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1170,15 +1170,24 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
       /[一-龥々ぁ-んァ-ヶー]+様とともに過ごしてこられたことへ、感謝の思いが寄せられます。\s*(尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。)/gu,
       "$1"
     );
-  const cleanClosing = value => String(value || "")
+  const requiresExactFamilyFeeling = /明るさを見習い、?前向きに歩んでいきたい/u.test(hearingText);
+  const ensureExactFamilyFeeling = value => {
+    const text = String(value || "");
+    if (!requiresExactFamilyFeeling) return text;
+    const canonical = "その明るさを見習い、前向きに歩んでいきたい――そのお気持ちも、ご家族の胸にあります。";
+    return /明るさ[^\n]*前向き/u.test(text)
+      ? text.replace(/(^|\n{2,})[^\n]*明るさ[^\n]*前向き[^\n]*/u, `$1${canonical}`)
+      : `${text.trim()}\n\n${canonical}`;
+  };
+  const cleanClosing = value => ensureExactFamilyFeeling(value)
     .replace(/(^|\n{2,})[^。\n]*(?:開式前に|開式前で)[^。\n]*(?:記憶|思い出|述べ|伝え)[^。\n]*。/gu, "$1")
     .replace(
-      /親子三代で、?([^。\n]+)へ旅行されました。いずれも誕生日月の([^。\n]+?)(?:です|でした|でございました)。[^。\n]*三代[^。\n]*。/gu,
+      /親子三代で、?([^。\n]+)へ旅行されました。いずれも誕生日月の([^。\n]+?)(?:のこと)?(?:です|でした|でございました)。[^。\n]*三代[^。\n]*。/gu,
       "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ともに過ごした旅の日々もよみがえります。"
     )
     .replace(
-      /([^。\n]+へ旅行されたことがありました。)\s*(いずれも誕生日月の[^。\n]+(?:です|でした|でございました)。)\s*親子三代で(?:出かけられました|出かけられた[^。\n]*。)/gu,
-      "親子三代で、$1\n$2"
+      /([^。\n]+へ旅行されたことがありました。)\s*いずれも誕生日月の([^。\n]+?)(?:のこと)?(?:です|でした|でございました)。\s*親子三代で(?:出かけられました|出かけられた[^。\n]*。)/gu,
+      "お誕生日月の$2には、親子三代で$1"
     )
     .replace(
       /(親子三代で、?[^。\n]+へ旅行されました。)\s*(いずれも誕生日月の[^。\n]+(?:でした|でございました)。)\s*[^。\n]*親子三代[^。\n]*(?:旅行|出かけ)[^。\n]*。/gu,
