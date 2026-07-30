@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.10";
+const API_BUILD_ID = "narration-studio-20260730.11";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -453,11 +453,20 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
   const exactLifeSentence = `${fullLabel}は、${age ? `${age}年という` : ""}尊いご生涯を閉じ、静かに人生の幕を下ろされました。`;
   const escapedGiven = givenName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const escapedFull = fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedAge = age.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   text = text
     .replace(new RegExp(`本日、?故?${escapedGiven}様とのお別れの時を迎えました。?`, "u"), "")
     .replace(new RegExp(`本日、?故?${escapedFull}様とのお別れの時を迎えました。?`, "u"), "")
     .replace(new RegExp(`本日、?${fullLabel}とのお別れの時を迎えました。?`, "u"), "")
     .trim();
+  // Remove any model-written life introduction before inserting the single
+  // canonical sentence. This also repairs duplicated forms such as
+  // 「故・堀池故堀池 チエノ様」 and nonstandard funeral-day wording.
+  const lifeIntroPattern = new RegExp(
+    `[^。\\n]{0,40}(?:${escapedFull}|${escapedGiven})様?[^。\\n]{0,100}(?:${escapedAge ? `${escapedAge}|` : ""}[〇零一二三四五六七八九十百]+年|ご生涯|人生の幕|葬儀の日|葬儀の時)[^。\\n]{0,100}。`,
+    "gu"
+  );
+  text = text.replace(lifeIntroPattern, "").trim();
   text = text
     .replace(new RegExp(`故${escapedFull}様は、?`, "u"), `${fullLabel}は、`)
     .replace(new RegExp(`故?${escapedGiven}様は、?`, "u"), `${fullLabel}は、`);
@@ -467,12 +476,10 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
     /[^。\n]{0,140}(?:\d+|[〇零一二三四五六七八九十百]+)年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。/u,
     exactLifeSentence
   );
-  if (!text.slice(0, 220).includes(fullName)) {
-    const firstSentence = text.match(/^(.+?[。！？])/u)?.[1] || "";
-    text = firstSentence
-      ? `${firstSentence}${exactLifeSentence}${text.slice(firstSentence.length).trimStart()}`
-      : `${exactLifeSentence}${text}`;
-  }
+  const firstSentence = text.match(/^(.+?[。！？])/u)?.[1] || "";
+  text = firstSentence
+    ? `${firstSentence}\n${exactLifeSentence}\n${text.slice(firstSentence.length).trimStart()}`
+    : `${exactLifeSentence}\n${text}`;
   return text;
 };
 
@@ -497,6 +504,8 @@ const ensureOpeningFinalLine = value => {
   let text = String(value || "").trim();
   if (!text) return "";
   text = text
+    .replace(/[^。\n]*(?:まもなく|間もなく)開式(?:のお時間)?[^。\n]*。/gu, "")
+    .replace(/皆様には、?開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
     .replace(/(?:[^。\n]*、)?尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, fixed)
     .replace(/\s*尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, "");
   return `${text.trim()}\n\n${fixed}`;

@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = `${fs.readFileSync("api/generate-narration.js", "utf8")}
-this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, qualityCheckNarration, narrationCandidateScore, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount };`;
+this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, qualityCheckNarration, narrationCandidateScore, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount, applyNameRule };`;
 const context = {
   module: { exports: {} },
   exports: {},
@@ -308,6 +308,23 @@ assert.equal(latestShortCheck.ok, false);
 assert.equal(latestShortCheck.failures.includes("opening too short"), true);
 assert.equal(latestShortCheck.failures.includes("closing too short"), true);
 assert.equal(latestShortCheck.failures.includes("invented family feeling"), true);
+
+const duplicatedIntroDraft = context.testHelpers.applyNameRule({
+  openingNarration: [
+    "夏の陽ざしが深まり、蝉の声に季節の盛りを感じるころでございます。",
+    "故・堀池故堀池 チエノ様は、九十一年のご生涯を歩まれ、このたび葬儀の日を迎えられました。",
+    "チエノ様を思うと、笑っておられたお顔が浮かびます。",
+    "笑っておられたお顔を偲び、まもなく開式のお時間でございます。",
+    "皆様には、開式まで今しばらくお待ちくださいますようお願い申し上げます。",
+    "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
+  ].join("\n\n"),
+  closingNarration: "親子三代で旅行に出かけられました。",
+}, chienoPrompt);
+assert.equal((duplicatedIntroDraft.openingNarration.match(/故堀池 チエノ様/gu) || []).length, 1);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("故・堀池故堀池"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀の日を迎えられました"), false);
+assert.equal((duplicatedIntroDraft.openingNarration.match(/まもなく開式のお時間でございます。/gu) || []).length, 1);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("開式まで今しばらくお待ち"), false);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
