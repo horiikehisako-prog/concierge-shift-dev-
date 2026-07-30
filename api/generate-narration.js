@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.6";
+const API_BUILD_ID = "narration-studio-20260730.7";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2092,6 +2092,7 @@ module.exports = async (req, res) => {
             "Use every selected opening and closing card. Every distinct fact inside a selected card must appear exactly once. Omission is a failed repair. When one card contains two or more distinct facts, connect them in one natural paragraph instead of dropping one or turning them into a list.",
             "Opening including its fixed introduction and final line must be about 520 to 700 Japanese characters. Match the referenceShape and aim for twelve to sixteen factual body sentences arranged in four to six natural paragraphs.",
             "Closing narrative body must be 200 to 300 Japanese characters, arranged in two or three natural paragraphs, and must not repeat opening facts.",
+            "Each main opening memory paragraph must contain 90-140 Japanese characters. Each closing paragraph must contain 90-150 Japanese characters. Except for an exact quotation, do not use a content sentence shorter than 22 Japanese characters.",
             "Do not pad with an abstract summary, gratitude sentence, list of facts, interview-report wording, or a restatement of the same memory. To match the textbook depth, up to three opening paragraphs may end with one short family-near afterglow sentence tied to the exact scene just described.",
             `FIRST DRAFT TO REPAIR: ${shortDraft}`,
           ].join(" "),
@@ -2705,6 +2706,7 @@ const compactNarrationPrompt = prompt => {
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。closingの各カードに含まれる場所、時期、行動を省略せず一度ずつ使い、supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
     "openingは定型文を含めて520〜700字、十一〜十五文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsに含まれる異なる事実も一度ずつ必ず使ってください。選択済みの事実を省略してはいけません。",
     "closingはサーバーが後で加える式次第案内を除き、200〜300字、五〜八文を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
+    "開式前の主要な思い出の各段落は90〜140字、閉式後の各段落は90〜150字にしてください。引用文を除き、内容を伝える一文を22字未満の短い報告文にしないでください。各段落では、最初の文で具体的な記憶を示し、続く文で同じカード内の別の動作や様子へ自然につないでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
     "anchorは三〜五文、各supportは二〜三文を目安とします。一つの事実を別の言葉で説明し直して文数を増やしてはいけません。カードに複数の具体的な事実があれば、それぞれを自然につないで描いてください。",
     "一つのカードに異なる事実が二つ以上ある場合は、無理に一文へ圧縮せず、一つずつ自然につないで書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ省略できない別の事実です。",
