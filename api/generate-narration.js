@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.24";
+const API_BUILD_ID = "narration-studio-20260730.25";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -492,7 +492,7 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
 const normalizeOpeningSeasonSentence = (value, prompt) => {
   const text = String(value || "").trim();
   const firstSentence = text.match(/^(.+?[。！？])/u)?.[1] || "";
-  if (!firstSentence || !/(?:別れ|ご生涯|人生の幕|旅立|お見送り|葬送)/u.test(firstSentence)) return text;
+  if (!firstSentence || !/(?:別れ|ご生涯|人生の幕|旅立|お見送り|葬送|葬儀|告別式|通夜)/u.test(firstSentence)) return text;
   const payload = extractPromptPayload(prompt) || {};
   const season = String(payload.season || payload?.writingRules?.season || "").toLowerCase();
   const replacement = season.includes("spring") || season.includes("春")
@@ -1173,6 +1173,10 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   const cleanClosing = value => String(value || "")
     .replace(/(^|\n{2,})[^。\n]*(?:開式前に|開式前で)[^。\n]*(?:記憶|思い出|述べ|伝え)[^。\n]*。/gu, "$1")
     .replace(
+      /([^。\n]+へ旅行されたことがありました。)\s*(いずれも誕生日月の[^。\n]+(?:です|でした|でございました)。)\s*親子三代で出かけられました。/gu,
+      "親子三代で、$1\n$2"
+    )
+    .replace(
       /(親子三代で、?[^。\n]+へ旅行されました。)\s*(いずれも誕生日月の[^。\n]+(?:でした|でございました)。)\s*[^。\n]*親子三代[^。\n]*(?:旅行|出かけ)[^。\n]*。/gu,
       "$1\n$2"
     )
@@ -1230,7 +1234,9 @@ const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/[^。\n]*開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:ご起立|合掌|お迎え)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
   .replace(/[^。\n]*皆様[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
-  .replace(/[^。\n]*これより[^。\n]*お別れ[^。\n]*(?:迎え|臨み)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*これより[^。\n]*お別れ[^。\n]*(?:迎え|臨み|進め)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*(?:まもなく|間もなく)[^。\n]*(?:葬儀|告別式|通夜)[^。\n]*(?:開式|開始)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*お別れの時[^。\n]*(?:進ん|進め)[^。\n]*。/gu, "")
   .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
   .replace(/\n{3,}/gu, "\n\n")
   .trim();

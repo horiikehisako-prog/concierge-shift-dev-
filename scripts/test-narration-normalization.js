@@ -330,6 +330,8 @@ const duplicatedIntroDraft = context.testHelpers.applyNameRule({
     "本日は、チエノ様とともに過ごされた日々を胸に、",
     "これより、故・堀池チエノ様の葬儀を執り行わせていただきます。",
     "ただいまより、チエノ様の葬儀を執り行います。",
+    "家族を大切にされたチエノ様へ、これより皆様とともにお別れの時を進めてまいります。",
+    "まもなく、堀池チエノ様の葬儀を開式いたします。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n"),
   closingNarration: "親子三代で旅行に出かけられました。",
@@ -350,6 +352,8 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("お心をお寄せ"
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご起立"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご静粛に"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("これより皆様とともにお迎え"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("お別れの時を進め"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀を開式"), false);
 
 const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: [
@@ -388,7 +392,7 @@ assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉園、
 assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉の美しい季節となりました。"), true);
 const repeatedTravel = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: "開式前本文。",
-  closingNarration: "親子三代で、青葉園、白浜、緑川、花里へ旅行されました。いずれも誕生日月の十月でございました。十月に親子三代で出かけられたことが、ご家族の中に残されております。",
+  closingNarration: "青葉園、白浜、緑川、花里へ旅行されたことがありました。いずれも誕生日月の十月のことです。親子三代で出かけられました。",
 }, chienoPrompt);
 assert.equal((repeatedTravel.closingNarration.match(/親子三代/gu) || []).length, 1);
 assert.equal((repeatedTravel.closingNarration.match(/十月/gu) || []).length, 1);
