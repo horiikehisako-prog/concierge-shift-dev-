@@ -320,6 +320,7 @@ const duplicatedIntroDraft = context.testHelpers.applyNameRule({
     "故・堀池故堀池 チエノ様は、九十一年のご生涯を歩まれ、このたび葬儀の日を迎えられました。",
     "去る二〇二六年七月四日、九十一歳にて生涯を閉じられました、堀池チエノ様の葬儀にあたり、開式に先立ち、ともに過ごされた日々を振り返らせていただきます。",
     "チエノ様を思うと、笑っておられたお顔が浮かびます。",
+    "そのご生涯を偲び、",
     "明るく前向きな故堀池 チエノ様は、思い立つとすぐに動かれました。",
     "皆様には、どうぞお心静かにご参列くださいますよう、お願い申し上げます。",
     "皆様には、しばらくの間、静かにお心をお寄せくださいますようお願い申し上げます。",
@@ -354,6 +355,7 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("ご静粛に"), fal
 assert.equal(duplicatedIntroDraft.openingNarration.includes("これより皆様とともにお迎え"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("お別れの時を進め"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀を開式"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("そのご生涯を偲び、"), false);
 
 const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: [
@@ -385,11 +387,12 @@ const exactSmilePrompt = JSON.stringify({
 });
 const restoredSmile = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: "夏の季節です。\n故試験 花子様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。\nご家族の記憶に残る花子様は、いつも笑顔でいらっしゃいました。\n歌を楽しまれました。",
-  closingNarration: "旅行を楽しまれました。\n\nその明るさを心に、これからの日々も前向きに歩んでいきたいと感じています。",
+  closingNarration: "旅行を楽しまれました。\n\nその明るさを心に、これからの日々も前を向いて歩んでいきたいと感じています。",
 }, exactSmilePrompt);
 assert.equal((restoredSmile.openingNarration.match(/いつも笑っている顔しか思い出せない/gu) || []).length, 1);
 assert.equal(restoredSmile.openingNarration.includes("歌を楽しまれました"), true);
 assert.equal(restoredSmile.closingNarration.includes("その明るさを見習い、前向きに歩んでいきたい"), true);
+assert.equal(restoredSmile.closingNarration.includes("前を向いて"), false);
 assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉園、白浜へ旅行されました。"), false);
 assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉の美しい季節となりました。"), true);
 const repeatedTravel = context.testHelpers.normalizeFamilyNearNarration({

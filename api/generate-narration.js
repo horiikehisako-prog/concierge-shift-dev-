@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.28";
+const API_BUILD_ID = "narration-studio-20260730.29";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1175,8 +1175,8 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
     const text = String(value || "");
     if (!requiresExactFamilyFeeling) return text;
     const canonical = "その明るさを見習い、前向きに歩んでいきたい――そのお気持ちも、ご家族の胸にあります。";
-    return /明るさ[^\n]*前向き/u.test(text)
-      ? text.replace(/(^|\n{2,})[^\n]*明るさ[^\n]*前向き[^\n]*/u, `$1${canonical}`)
+    return /明るさ[^\n]*(?:前向き|前を向いて)/u.test(text)
+      ? text.replace(/(^|\n{2,})[^\n]*明るさ[^\n]*(?:前向き|前を向いて)[^\n]*/u, `$1${canonical}`)
       : `${text.trim()}\n\n${canonical}`;
   };
   const cleanClosing = value => ensureExactFamilyFeeling(value)
@@ -1250,6 +1250,7 @@ const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/[^。\n]*これより[^。\n]*お別れ[^。\n]*(?:迎え|臨み|進め)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:まもなく|間もなく)[^。\n]*(?:葬儀|告別式|通夜)[^。\n]*(?:開式|開始)[^。\n]*。/gu, "")
   .replace(/[^。\n]*お別れの時[^。\n]*(?:進ん|進め)[^。\n]*。/gu, "")
+  .replace(/(?:^|\n{2,})[^。\n！？]+[、，](?=\n{2,}|$)/gu, "")
   .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
   .replace(/\n{3,}/gu, "\n\n")
   .trim();
