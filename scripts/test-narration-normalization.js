@@ -402,6 +402,28 @@ const repeatedTravel = context.testHelpers.normalizeFamilyNearNarration({
 assert.equal((repeatedTravel.closingNarration.match(/親子三代/gu) || []).length, 1);
 assert.equal((repeatedTravel.closingNarration.match(/十月/gu) || []).length, 1);
 
+const latestUserDraft = context.testHelpers.normalizeFamilyNearNarration({
+  openingNarration: [
+    "夏の光が深まり、蝉の声に季節の盛りを感じる頃でございます。",
+    "故試験 花子様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
+    "「いつも笑っている顔しか思い出せない」とご家族が語られるほど、日々のそばには花子様の笑顔がありました。",
+    "歌に声を重ね、ときには踊るように身体を動かされる姿は、いつも可愛いものとして残されています。",
+    "手芸に向かえば、手を動かして形にしていかれる。野菜やお花にも手をかけ、育つ様子を見守ってこられました。",
+    "明るく、前向きで、人の悪口を言わず、行動力をもって人と接することを大好きにされていました。口癖のように人の悪口を言ってはいけないと言われ、その言葉もご家族のそばにあります。",
+  ].join("\n\n"),
+  closingNarration: [
+    "親子三代で、六甲、小倉、下関、博多へ旅行に行かれました。どの旅も、お誕生日月である十月に出かけられたものです。親子三代で同じ行程をたどったことが、花子様との思い出として残されています。",
+    "その明るさを心に、これからの日々も前を向いて歩んでいきたいという思いが、ご家族にはあります。十月の旅のことも、これから静かに思い返されてまいります。",
+  ].join("\n\n"),
+}, exactSmilePrompt);
+const latestUserFull = `${latestUserDraft.openingNarration}\n${latestUserDraft.closingNarration}`;
+assert.equal(latestUserFull.includes("人と接することを大好きにされていました"), false);
+assert.equal((latestUserFull.match(/人の悪口を言ってはいけない/gu) || []).length, 1);
+assert.equal(latestUserFull.includes("旅行に行かれました"), false);
+assert.equal((latestUserDraft.closingNarration.match(/親子三代/gu) || []).length, 1);
+assert.equal((latestUserDraft.closingNarration.match(/十月/gu) || []).length, 1);
+assert.equal(latestUserDraft.closingNarration.includes("その明るさを見習い、前向きに歩んでいきたい"), true);
+
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
   hobbies: "手芸と花の世話。",

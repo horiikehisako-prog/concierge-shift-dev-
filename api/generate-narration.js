@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.29";
+const API_BUILD_ID = "narration-studio-20260731.30";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1091,6 +1091,14 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   };
   const cleanOpening = value => collapseRepeatedSmileParagraph(ensureExactSmileFact(value), displayName)
     .replace(
+      /歌に声を重ね、ときには踊るように身体を動かされる姿は、いつも可愛いものとして残されています。/gu,
+      `歌に声を重ね、ときには踊るように身体を動かされる。そのお姿を、ご家族はいつも可愛らしく感じておられました。`
+    )
+    .replace(
+      /明るく、?前向きで、?人の悪口を言わず、?行動力をもって人と接することを大好きにされていました。口癖のように人の悪口を言ってはいけないと言われ、その言葉もご家族のそばにあります。/gu,
+      `明るく前向きで、人と接することがお好きだった${displayName}。思い立てばすぐに行動へ移される、その軽やかさもお持ちでした。\n\n「人の悪口を言ってはいけない」と、折に触れて話しておられました。`
+    )
+    .replace(
       /明るく前向きに人と接することを大切にし、人と関わることを好まれた/gu,
       "明るく前向きで、人と接することを喜ばれる"
     )
@@ -1182,6 +1190,14 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   const cleanClosing = value => ensureExactFamilyFeeling(value)
     .replace(/(^|\n{2,})[^。\n]*(?:開式前に|開式前で)[^。\n]*(?:記憶|思い出|述べ|伝え)[^。\n]*。/gu, "$1")
     .replace(
+      /(その明るさを見習い、前向きに歩んでいきたい――そのお気持ちも、ご家族の胸にあります。)\s*十月の旅[^。\n]*。/gu,
+      "$1"
+    )
+    .replace(
+      /親子三代で、?([^。\n]+)へ旅行に行かれました。どの旅も、お誕生日月である([^に。\n]+)に出かけられたものです。親子三代で同じ行程をたどったことが、[^。\n]*。/gu,
+      "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ともに過ごした旅の日々もよみがえります。"
+    )
+    .replace(
       /親子三代で、?([^。\n]+)へ旅行されました。いずれも誕生日月の([^。\n]+?)(?:のこと)?(?:です|でした|でございました)。[^。\n]*三代[^。\n]*。/gu,
       "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ともに過ごした旅の日々もよみがえります。"
     )
@@ -1193,7 +1209,7 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
       /(親子三代で、?[^。\n]+へ旅行されました。)\s*(いずれも誕生日月の[^。\n]+(?:でした|でございました)。)\s*[^。\n]*親子三代[^。\n]*(?:旅行|出かけ)[^。\n]*。/gu,
       "$1\n$2"
     )
-    .replace(/ご旅行に行かれました。/gu, "旅へ出かけられました。")
+    .replace(/(?:ご)?旅行に行かれました。/gu, "旅へ出かけられました。")
     .replace(
       /親子三代で、?([^。\n]+?)へ(?:旅へ出かけられ|ご旅行に行かれ)ました。どのご旅行も、お誕生日月である([^に。\n]+)に行かれたものでした。\s*行き先の名をたどると、[^。\n]+?のご旅行が思い起こされます。/gu,
       "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ご家族で過ごした時間もよみがえることでしょう。"
