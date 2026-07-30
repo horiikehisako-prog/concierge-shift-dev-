@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.20";
+const API_BUILD_ID = "narration-studio-20260730.21";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -9,7 +9,7 @@ const API_BUILD_ID = "narration-studio-20260730.20";
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ALLOW_HARD_RETRY = false;
 const ENABLE_LENGTH_REPAIR = false;
-const ENABLE_GUARDED_COPY_EDIT = false;
+const ENABLE_GUARDED_COPY_EDIT = true;
 const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族が聞いて「本当にその人らしい」と感じられる、落ち着いた読み上げ原稿を書いてください。",
   "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
@@ -1212,6 +1212,7 @@ const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/[^。\n]*(?:ご参列|お心静かに)[^。\n]*(?:ください|お願い申し上げ|存じます)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:お心をお寄せ|お心を寄せ)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
   .replace(/[^。\n]*開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*(?:ご起立|合掌|お迎え)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
   .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
   .replace(/\n{3,}/gu, "\n\n")
   .trim();

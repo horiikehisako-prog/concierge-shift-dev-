@@ -322,6 +322,7 @@ const duplicatedIntroDraft = context.testHelpers.applyNameRule({
     "チエノ様を思うと、笑っておられたお顔が浮かびます。",
     "皆様には、どうぞお心静かにご参列くださいますよう、お願い申し上げます。",
     "皆様には、しばらくの間、静かにお心をお寄せくださいますようお願い申し上げます。",
+    "皆様にはご起立いただき、合掌にてお迎えくださいますようお願い申し上げます。",
     "笑っておられたお顔を偲び、まもなく開式のお時間でございます。",
     "皆様には、開式まで今しばらくお待ちくださいますようお願い申し上げます。",
     "本日は、チエノ様とともに過ごされた日々を胸に、",
@@ -344,6 +345,7 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列くださ�
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列を賜り"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("日々を胸に、"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("お心をお寄せ"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("ご起立"), false);
 
 const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: [
