@@ -317,6 +317,7 @@ const duplicatedIntroDraft = context.testHelpers.applyNameRule({
     "去る二〇二六年七月四日、九十一歳にて生涯を閉じられました、堀池チエノ様の葬儀にあたり、開式に先立ち、ともに過ごされた日々を振り返らせていただきます。",
     "チエノ様を思うと、笑っておられたお顔が浮かびます。",
     "皆様には、どうぞお心静かにご参列くださいますよう、お願い申し上げます。",
+    "皆様には、しばらくの間、静かにお心をお寄せくださいますようお願い申し上げます。",
     "笑っておられたお顔を偲び、まもなく開式のお時間でございます。",
     "皆様には、開式まで今しばらくお待ちくださいますようお願い申し上げます。",
     "本日は、チエノ様とともに過ごされた日々を胸に、",
@@ -336,10 +337,11 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀を執り行�
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列くださいますよう"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列を賜り"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("日々を胸に、"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("お心をお寄せ"), false);
 
 const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: [
-    "花子様を思うとき、ご家族の中にまず浮かぶのは、笑っているお顔でございました。\nいつも笑っている顔しか思い出せないほど、よく笑っておられたことが、まず心に浮かびます。\n何か特別な場面だけではなく、その表情が記憶の入口となっております。",
+    "蝉の声が遠く近くに響く、この季節。\n故試験 花子様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。\n花子様を思うとき、ご家族の中にまず浮かぶのは、笑っているお顔でございました。\nいつも笑っている顔しか思い出せないほど、よく笑っておられたことが、まず心に浮かびます。\n何か特別な場面だけではなく、その表情が記憶の入口となっております。",
     "歌に声を重ね、ときには踊るように身体を動かされました。",
     "手芸を楽しみ、野菜や花にも手をかけておられました。",
     "笑っておられたお顔、歌や踊り、手芸、野菜や花に触れる日々をたどりながら、花子様へ心を寄せてまいります。",
@@ -350,6 +352,9 @@ const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   ].join("\n\n"),
 }, chienoPrompt);
 assert.equal((repeatedMemoryDraft.openingNarration.match(/いつも笑っている顔しか思い出せない/gu) || []).length, 1);
+assert.equal(repeatedMemoryDraft.openingNarration.includes("蝉の声が遠く近くに響く"), true);
+assert.equal(repeatedMemoryDraft.openingNarration.includes("故試験 花子様は"), true);
+assert.equal(repeatedMemoryDraft.openingNarration.includes("花子様を思うとき"), false);
 assert.equal(repeatedMemoryDraft.openingNarration.includes("記憶の入口"), false);
 assert.equal(repeatedMemoryDraft.openingNarration.includes("歌や踊り、手芸、野菜や花"), false);
 assert.equal(repeatedMemoryDraft.closingNarration.includes("開式前にたどった記憶"), false);

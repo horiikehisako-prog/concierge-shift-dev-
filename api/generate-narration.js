@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.16";
+const API_BUILD_ID = "narration-studio-20260730.17";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1049,14 +1049,32 @@ const normalizeQuotationContext = draft => {
   };
 };
 
+const collapseRepeatedSmileParagraph = (value, displayName) => {
+  const smileFact = /いつも笑っている(?:お)?顔しか思い出せない/u;
+  const canonical = `「いつも笑っている顔しか思い出せない」とご家族が語られるほど、日々のそばには${displayName}の笑顔がありました。`;
+  return String(value || "")
+    .split(/(\n{2,})/u)
+    .map(part => {
+      if (/^\n{2,}$/u.test(part) || !smileFact.test(part)) return part;
+      const sentences = part.match(/[^。！？]*[。！？]?/gu)
+        ?.map(sentence => sentence.trim())
+        .filter(Boolean) || [];
+      const smileIndex = sentences.findIndex(sentence => smileFact.test(sentence));
+      if (smileIndex < 0) return part;
+      const prefix = sentences
+        .slice(0, smileIndex)
+        .filter(sentence => !/(?:笑|お顔|表情|思い浮か)/u.test(sentence))
+        .join("\n")
+        .trim();
+      return prefix ? `${prefix}\n${canonical}` : canonical;
+    })
+    .join("");
+};
+
 const normalizeFamilyNearNarration = (draft, prompt) => {
   const { givenName } = nameRuleFromPrompt(prompt);
   const displayName = givenName ? `${givenName}様` : "故人様";
-  const cleanOpening = value => String(value || "")
-    .replace(
-      /(^|\n{2,})(?:(?!\n{2,})[\s\S])*いつも笑っている(?:お)?顔しか思い出せない(?:(?!\n{2,})[\s\S])*/gu,
-      `$1「いつも笑っている顔しか思い出せない」とご家族が語られるほど、日々のそばには${displayName}の笑顔がありました。`
-    )
+  const cleanOpening = value => collapseRepeatedSmileParagraph(value, displayName)
     .replace(
       /(^|\n{2,})[^。\n]*(?:笑顔|笑っておられたお顔)[^。\n]*(?:歌|踊)[^。\n]*(?:手芸|野菜|花)[^。\n]*(?:思い|たどり|胸|心を寄せ)[^。\n]*。/gu,
       "$1"
@@ -1185,6 +1203,8 @@ const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/[^。\n]*(?:ご多用|ご参列|ご会葬)[^。\n]*(?:ありがとう|御礼|感謝)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:葬儀にあたり|開式に先立ち)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:ご参列|お心静かに)[^。\n]*(?:ください|お願い申し上げ|存じます)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*(?:お心をお寄せ|お心を寄せ)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
   .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
   .replace(/\n{3,}/gu, "\n\n")
   .trim();
