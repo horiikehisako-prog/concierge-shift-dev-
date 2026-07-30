@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = `${fs.readFileSync("api/generate-narration.js", "utf8")}
-this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount };`;
+this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, qualityCheckNarration, narrationCandidateScore, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount };`;
 const context = {
   module: { exports: {} },
   exports: {},
@@ -268,6 +268,26 @@ for (const banned of [
 }
 assert.equal(studioOutputRegression.openingNarration.includes("思い出の中のチエノ様は、いつも笑顔です。"), true);
 assert.equal(studioOutputRegression.closingNarration.includes("親子三代で六甲、小倉、下関、博多へ出かけられました。"), true);
+
+const staleProductionDraft = {
+  openingNarration: [
+    "夏の光が、庭先にも濃く注ぐ頃でございます。",
+    "故堀池 チエノ様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。",
+    "チエノ様といえば、いつも笑っておられるお顔が思い浮かびます。よく笑われるその表情ばかりが思い出されるほど、そのお顔は近くにありました。その笑顔も、ご家族の記憶に残っています。",
+    "歌を歌われることがありました。踊られることもあり、そのご様子はいつも可愛らしいものでした。声を重ね、身体を動かされるお姿も、チエノ様を思う場面の一つです。",
+    "手芸では、手を動かして形にしておられました。野菜には手をかけて育てておられました。お花にも手をかけて育てておられました。手芸に向かう手元も、野菜やお花に手をかけるお姿も、今では懐かしく思い出されます。",
+    "ご家族を大切にされていたチエノ様。折に触れて、「人の悪口を言ってはいけない」と話しておられました。",
+    "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
+  ].join("\n\n"),
+  closingNarration: [
+    "お誕生日月の十月には、親子三代で旅行に行かれました。六甲へ行かれました。小倉へも行かれ、下関、博多へも足を運ばれました。十月に出かけられたそれぞれの旅は、親子三代で過ごされた思い出として残されています。チエノ様のように、明るく前向きでありたい。そのお気持ちが、これからの日々へと続いてまいります。",
+  ].join("\n\n"),
+};
+const staleProductionCheck = context.testHelpers.qualityCheckNarration(staleProductionDraft, chienoPrompt);
+assert.equal(staleProductionCheck.ok, false);
+assert.equal(staleProductionCheck.failures.includes("excessive trait repetition"), true);
+assert.equal(staleProductionCheck.failures.includes("repetitive past endings"), true);
+assert.equal(context.testHelpers.narrationCandidateScore(staleProductionDraft, chienoPrompt).score >= 2000, true);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
