@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.94";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.95";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -795,6 +795,10 @@ const normalizeQuotationContext = draft => {
         "歌に声を重ね、踊りに身体を動かされる、愛らしいお姿。"
       )
       .replace(
+        /歌を歌われ、踊られるお姿もありました。そのお姿を、ご家族は愛らしく感じておられたとのことです。/gu,
+        "歌ったり、踊ったりされる、愛らしいそのお姿。ご家族には、懐かしい思い出として残っています。"
+      )
+      .replace(
         /手芸に親しみ、野菜やお花を育てることも、([^。\n]+?様)の暮らしの中にございました。/gu,
         "手芸に親しみ、野菜やお花にも手をかけておられました。"
       )
@@ -805,6 +809,10 @@ const normalizeQuotationContext = draft => {
       .replace(
         /育つ様子を見ておられる([^。\n]+?様)でございました。/gu,
         "育つ様子を見守っておられました。"
+      )
+      .replace(
+        /編み物を楽しみ、手を動かして形にしておられました。庭の草花にも手をかけ、育つ様子を見ておられました。/gu,
+        "編み物では、手を動かしながら少しずつ形にしていかれる。庭の草花にも手をかけ、育つ様子を見守っておられました。"
       )
       .replace(
         /日々の中では、よく、(「[^」]+」)と話しておられました。/gu,
@@ -827,6 +835,10 @@ const normalizeQuotationContext = draft => {
         "人と接することがお好きで、思い立つとすぐに行動へ移される方でした。"
       )
       .replace(
+        /人と接することがお好きで、思い立つとすぐに行動へ移しておられました。朗らかに人と関わられ、よく(「[^」]+」)と話しておられました。/gu,
+        "人と接することがお好きで、思い立つとすぐに行動へ移される方でした。折に触れて、$1と話しておられました。"
+      )
+      .replace(
         /家族を大切にされていた([^。\n]+?様)は、よく(「[^」]+」)と話しておられました。/gu,
         "ご家族を大切にされ、折に触れて、$2と話しておられました。"
       )
@@ -837,6 +849,10 @@ const normalizeQuotationContext = draft => {
       .replace(
         /これまでの日々にいただいたものへ、深く感謝を捧げます。/gu,
         ""
+      )
+      .replace(
+        /ご家族を大切にしてこられた([^。\n]+?様)。その歩みを前に、言葉にならないほどの感謝があふれてまいります。/gu,
+        "ご家族を大切にしてこられた$1。そうした何気ない日々が、今、ご家族の胸によみがえっていることと存じます。"
       )
       .replace(
         /好きなことに向かうひとときも、ふと立ち止まる仕草も、暮らしの中に穏やかに刻まれております。/gu,
@@ -917,6 +933,10 @@ const normalizeQuotationContext = draft => {
       .replace(
         /その([^。\n]+?)を忘れずにいたいという思いが、ご家族の中に残されています。/gu,
         "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
+      )
+      .replace(
+        /親子三代で、((?:[^、。\n]+、){1,}[^、。\n]+)へ旅行されたことがございました。いずれも誕生日月の([^で。\n]+)であり、その行き先の名が、今もひとつずつたどられてまいります。\s*([^。\n]+)に出かけた親子三代の旅行。ご家族は、([^。\n]+?様)のその([^。\n]+?)を忘れずにいたいと願っておられます。/gu,
+        "お誕生日月の$2には、親子三代で$1へ出かけられました。その土地の名に触れるたび、ご家族で過ごした日のことも思い出されることでしょう。$4の$5を忘れずにいたいという思いも、ご家族の胸にあります。"
       )
       .replace(
         /その([^。\n]+?)を忘れずにいたいというご家族のお気持ちが、今、残されております。/gu,
