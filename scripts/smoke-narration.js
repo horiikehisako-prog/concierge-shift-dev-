@@ -6,23 +6,23 @@ const endpoint = process.env.NARRATION_ENDPOINT
 const caseName = process.argv[2] || "calm-male";
 
 const cases = {
-  "chieno-91": {
+  "family-near-91": {
     textbook: "001_90代女性_家族を支えた暮らし.md",
     theme: "家族愛",
     tags: ["90代", "女性", "家族", "笑顔", "旅行", "手芸"],
     hearingSheet: {
-      deceasedName: "堀池 チエノ",
-      narrationName: "チエノ",
+      deceasedName: "試験 花子",
+      narrationName: "花子",
       age: "91",
       gender: "女性",
       familyRelation: "子",
       deceasedDate: "2026-07-20",
       ceremonyType: "葬儀",
       familyMemories: "いつも笑っている顔しか思い出せないほど、よく笑う人だった。歌ったり踊ったりする姿を、家族はいつも可愛いと感じていた。",
-      memorableEvents: "親子三代で六甲、小倉、下関、博多へ旅行した。いずれも誕生日月の十月だった。",
+      memorableEvents: "親子三代で青葉園、白浜、緑川、花里へ旅行した。いずれも誕生日月の十月だった。",
       hobbies: "手芸を楽しみ、野菜や花を育てていた。",
       personality: "明るく前向きで、人と接することが大好きだった。思い立ったらすぐに行動した。",
-      favoritePhrases: "「人の悪口を言ってはいけない」とよく話していた。",
+      favoritePhrases: "「人を悪く言ってはいけない」とよく話していた。",
       valuedThings: "家族を大切にしていた。",
       familyFeelings: "その明るさを見習い、前向きに歩んでいきたい。",
     },
