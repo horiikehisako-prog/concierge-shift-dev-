@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.92";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.93";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -791,6 +791,10 @@ const normalizeQuotationContext = draft => {
         "歌に声を重ね、踊りに身体を動かされる、愛らしいお姿。"
       )
       .replace(
+        /歌うときには声を出し、踊るときには身体を動かされる。そのお姿を、ご家族は愛らしく感じておられました。/gu,
+        "歌に声を重ね、踊りに身体を動かされる、愛らしいお姿。"
+      )
+      .replace(
         /手芸に親しみ、野菜やお花を育てることも、([^。\n]+?様)の暮らしの中にございました。/gu,
         "手芸に親しみ、野菜やお花にも手をかけておられました。"
       )
@@ -805,6 +809,7 @@ const normalizeQuotationContext = draft => {
       .replace(/また、折にふれて/gu, "折に触れて")
       .replace(/また、よく(「[^」]+」)と話しておられました。/gu, "折に触れて、$1と話しておられました。")
       .replace(/そして、よく(「[^」]+」)と話しておられました。/gu, "折に触れて、$1と話しておられました。")
+      .replace(/朗らかでいらしたその口から、よく(「[^」]+」)と話しておられました。/gu, "折に触れて、$1と話しておられました。")
       .replace(
         /人と接することを好まれ、思い立つとすぐに行動へ移される方でいらっしゃいました。人と言葉を交わすことも、([^。\n]+?様)の過ごし方の中にありました。/gu,
         "人と接することがお好きで、思い立つとすぐに行動へ移される方でした。"
@@ -876,6 +881,14 @@ const normalizeQuotationContext = draft => {
       .replace(
         /((?:[^、。\n]+、){1,}[^、。\n]+)という行き先の名と、([^。\n]+?)という月が、ひとつの思い出として残ります。/gu,
         "その土地の名や$2に触れるたび、親子三代で過ごした日も思い出されることでしょう。"
+      )
+      .replace(
+        /((?:[^、。\n]+、){1,}[^、。\n]+)という行き先の名と、([^。\n]+?)という月が並びます。/gu,
+        "その土地の名や$2に触れるたび、親子三代で過ごした日も思い出されることでしょう。"
+      )
+      .replace(
+        /その([^。\n]+?)を忘れずにいたいというお気持ちでいらっしゃいます。/gu,
+        "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
       )
       .replace(
         /その([^。\n]+?)を忘れずにいたいという思いが、ご家族の中に残されております。/gu,
@@ -1850,7 +1863,7 @@ module.exports = async (req, res) => {
             "LENGTH REPAIR: the first opening draft was too short.",
             "Rewrite the complete opening and closing, using exactly the same sourceFacts and no new fact, feeling, adjective, scenery, action, or interpretation.",
             "Use every opening anchor/support once. When one card contains two distinct facts, give each fact its own natural sentence instead of compressing both into one sentence.",
-            "Opening including its fixed introduction and final line must be about 400 to 520 Japanese characters. Aim for six to nine factual body sentences arranged in natural paragraphs.",
+            "Opening including its fixed introduction and final line must be about 400 to 520 Japanese characters. Match the referenceShape and aim for ten to fourteen factual body sentences arranged in natural paragraphs.",
             "Closing narrative body must be 160 to 240 Japanese characters and must not repeat opening facts.",
             "Do not pad with an abstract summary, gratitude sentence, list of facts, interview-report wording, or a restatement of the same memory.",
             `FIRST DRAFT TO REPAIR: ${shortDraft}`,
@@ -2132,6 +2145,30 @@ const compactText = (value, max = 700) => {
 
 const asArray = value => Array.isArray(value) ? value : [];
 
+const extractStyleReferenceSection = (value, section) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const openingMarker = /(?:^|\n)#{0,4}\s*【?開式前(?:ナレーション)?】?\s*(?:\n|$)/u;
+  const closingMarker = /(?:^|\n)#{0,4}\s*【?閉式後(?:ナレーション)?】?\s*(?:\n|$)/u;
+  const openingMatch = openingMarker.exec(text);
+  const closingMatch = closingMarker.exec(text);
+  if (section === "opening" && openingMatch) {
+    const start = openingMatch.index + openingMatch[0].length;
+    const end = closingMatch?.index > start ? closingMatch.index : text.length;
+    return text.slice(start, end).trim();
+  }
+  if (section === "closing" && closingMatch) {
+    return text.slice(closingMatch.index + closingMatch[0].length).trim();
+  }
+  return text;
+};
+
+const narrationSentenceCount = value => String(value || "")
+  .split(/[。！？]/u)
+  .map(part => part.trim())
+  .filter(Boolean)
+  .length;
+
 const MEMORY_FIELD_ORDER = [
   "familyMemories",
   "memorableEvents",
@@ -2299,14 +2336,20 @@ const compactNarrationPrompt = prompt => {
     }
   });
 
-  const selectedStyleReference = asArray(payload.selectedLibraryStyleReferences).slice(0, 1).map(ref => ({
-    title: compactText(ref.title, 100),
-    theme: compactText(ref.theme, 100),
-    tags: asArray(ref.tags).slice(0, 10),
-    openingNarration: compactText(ref.openingNarration, 900),
-    closingNarration: compactText(ref.closingNarration, 700),
-    writingNotes: compactText(ref.writingNotes || ref.approvalReason, 300),
-  }))[0] || null;
+  const selectedStyleReference = asArray(payload.selectedLibraryStyleReferences).slice(0, 1).map(ref => {
+    const referenceOpening = extractStyleReferenceSection(ref.openingNarration, "opening");
+    const referenceClosing = extractStyleReferenceSection(ref.closingNarration, "closing");
+    return {
+      title: compactText(ref.title, 100),
+      theme: compactText(ref.theme, 100),
+      tags: asArray(ref.tags).slice(0, 10),
+      openingNarration: compactText(referenceOpening, 1600),
+      closingNarration: compactText(referenceClosing, 1000),
+      openingSentenceCount: narrationSentenceCount(referenceOpening),
+      closingSentenceCount: narrationSentenceCount(referenceClosing),
+      writingNotes: compactText(ref.writingNotes || ref.approvalReason, 300),
+    };
+  })[0] || null;
 
   const memoryPlan = pickMemoryCards(compactSheet);
   const identity = {};
@@ -2390,6 +2433,17 @@ const compactNarrationPrompt = prompt => {
           "短文を並べるだけでなく、関係の近い事実は一文の中で自然につなぐ",
           "段落末に抽象的な解説を足さない",
         ],
+        referenceShape: selectedStyleReference ? {
+          openingSentenceTarget: Math.max(
+            10,
+            Math.min(14, selectedStyleReference.openingSentenceCount || 10),
+          ),
+          closingBodySentenceTarget: Math.max(
+            3,
+            Math.min(6, selectedStyleReference.closingSentenceCount || 4),
+          ),
+          instruction: "教科書の文章はコピーせず、開式前の文数と段落の呼吸だけを近づける",
+        } : null,
       },
     }, null, 2),
   ].join("\n");

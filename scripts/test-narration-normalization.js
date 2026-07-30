@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = `${fs.readFileSync("api/generate-narration.js", "utf8")}
-this.testHelpers = { normalizeQuotationContext, pickMemoryCards };`;
+this.testHelpers = { normalizeQuotationContext, pickMemoryCards, extractStyleReferenceSection, narrationSentenceCount };`;
 const context = {
   module: { exports: {} },
   exports: {},
@@ -151,5 +151,20 @@ assert.equal(
   smilingPlan.opening.supports.some(card => card.field === "valuedThings"),
   true,
 );
+
+const markdownReference = [
+  "# 教科書",
+  "### 【開式前ナレーション】",
+  "一文目です。",
+  "二文目です。",
+  "### 【閉式後ナレーション】",
+  "閉式後です。",
+].join("\n\n");
+const openingReference = context.testHelpers.extractStyleReferenceSection(
+  markdownReference,
+  "opening",
+);
+assert.equal(openingReference.includes("閉式後です"), false);
+assert.equal(context.testHelpers.narrationSentenceCount(openingReference), 2);
 
 console.log("narration normalization tests passed");
