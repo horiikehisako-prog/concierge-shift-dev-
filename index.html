@@ -42,7 +42,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 27 Build 20260730.79";
+const DEV_BUILD_LABEL = "Sprint 27 Build 20260730.80";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -4611,12 +4611,50 @@ function PrintableSheet({year,month,shifts,att,vconf,cfg}){
 
   const printStyle=`
     @media print {
+      html, body { width: 100%; height: auto; margin: 0 !important; padding: 0 !important; }
       body * { visibility: hidden; }
       #print-sheet, #print-sheet * { visibility: visible; }
-      #print-sheet { position: absolute; left: 0; top: 0; width: 100%; }
+      #print-sheet {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 0 !important;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
       .no-print { display: none !important; }
-      @page { size: A4; margin: 10mm; }
-      table { page-break-inside: auto; }
+      #print-sheet .shift-print-main { font-size: 8.5px !important; }
+      #print-sheet .shift-print-main th,
+      #print-sheet .shift-print-main td {
+        padding: 1px 2px !important;
+        height: 14px !important;
+        line-height: 1.05 !important;
+      }
+      #print-sheet .shift-print-summary {
+        margin-top: 4px !important;
+        gap: 6px !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      #print-sheet .shift-print-totals {
+        font-size: 8.5px !important;
+        min-width: 170px !important;
+      }
+      #print-sheet .shift-print-totals th,
+      #print-sheet .shift-print-totals td {
+        padding: 1px 3px !important;
+        height: 13px !important;
+        line-height: 1 !important;
+        font-size: 8.5px !important;
+      }
+      #print-sheet .shift-print-memo {
+        padding: 4px 7px !important;
+        min-height: 42px !important;
+        font-size: 9px !important;
+      }
+      @page { size: A4 portrait; margin: 6mm; }
+      table { page-break-inside: avoid; }
       tr { page-break-inside: avoid; }
     }
   `;
@@ -4645,7 +4683,7 @@ function PrintableSheet({year,month,shifts,att,vconf,cfg}){
       </div>
 
       {/* メイン表 */}
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,tableLayout:"fixed"}}>
+      <table className="shift-print-main" style={{width:"100%",borderCollapse:"collapse",fontSize:11,tableLayout:"fixed"}}>
         <thead>
           <tr style={{background:"#f0f0f0"}}>
             <th style={{...PS.th,width:"5%"}}>日付</th>
@@ -4699,8 +4737,8 @@ function PrintableSheet({year,month,shifts,att,vconf,cfg}){
       </table>
 
       {/* 合計表 */}
-      <div style={{marginTop:12,display:"flex",gap:16,alignItems:"flex-start"}}>
-        <table style={{borderCollapse:"collapse",fontSize:11,minWidth:200}}>
+      <div className="shift-print-summary" style={{marginTop:12,display:"flex",gap:16,alignItems:"flex-start"}}>
+        <table className="shift-print-totals" style={{borderCollapse:"collapse",fontSize:11,minWidth:200}}>
           <thead><tr style={{background:"#f0f0f0"}}>
             <th style={PS.th}>名前</th><th style={PS.th}>日数</th><th style={PS.th}>合計時間</th>
           </tr></thead>
@@ -4719,7 +4757,7 @@ function PrintableSheet({year,month,shifts,att,vconf,cfg}){
             </tr>
           </tbody>
         </table>
-        <div style={{flex:1,border:"1px solid #ccc",padding:"6px 12px",fontSize:11,minHeight:60}}>
+        <div className="shift-print-memo" style={{flex:1,border:"1px solid #ccc",padding:"6px 12px",fontSize:11,minHeight:60}}>
           <div style={{fontWeight:700,marginBottom:4}}>備考</div>
         </div>
       </div>
