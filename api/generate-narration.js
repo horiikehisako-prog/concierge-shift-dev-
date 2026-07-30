@@ -1,13 +1,14 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.4";
+const API_BUILD_ID = "narration-studio-20260730.5";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
 // quality report below handle the remaining non-critical issues.
-const ALLOW_EXTERNAL_QUALITY_RETRY = false;
-const ENABLE_GUARDED_COPY_EDIT = true;
+const ALLOW_EXTERNAL_QUALITY_RETRY = true;
+const ALLOW_HARD_RETRY = false;
+const ENABLE_GUARDED_COPY_EDIT = false;
 const redactSecrets = value => String(value || "")
   .replace(/sk-(?:proj-)?[A-Za-z0-9_-]+/g, "[REDACTED_API_KEY]");
 
@@ -2234,6 +2235,7 @@ module.exports = async (req, res) => {
         openingNarration: parsed?.openingNarration || "",
         closingNarration: draftClosingBody,
       });
+      const retryLengthInstruction = "Write openingNarration in 520-700 Japanese characters and four to six paragraphs. Write the closing narrative body in 200-300 Japanese characters and two or three paragraphs; the server appends fixed guidance later. Never gain length by repeating a trait, listing interview fields, or adding unsupported interpretation.";
       const retryInstruction = useFocusedEditorialPass
         ? `Act as a meticulous Japanese funeral-MC copy editor. Edit the DRAFT below instead of inventing a new composition. Preserve its selected facts, section allocation, and meaning. Remove repetition, reporter distance, abstract AI phrases, incomplete noun endings, and mechanical です・ます rhythm. Replace とうかがっております with direct, family-near narration. Delete inferred labels such as ご本人らしいまめやかさ, meta-writing such as 言葉にしすぎなくても, narrator declarations such as 敬意をもって向き合います, and poetic abstractions such as 耳にそっと戻ってくる, 注がれたものへ, 日々の重なり, or かけがえのないものとして重ねる. Do not add a single new fact, emotion, object, interpretation, or scene. Keep the required opening introduction and opening final sentence. Return only the closing narrative body because the server appends the fixed guidance. DRAFT TO EDIT: ${focusedDraft}`
         : `The previous attempt failed these checks: ${firstFailures.join(", ")}. Write a fresh complete version, not a shortened patch. Every Japanese sentence must have correct particles and a complete subject-predicate relationship. Never produce collisions such as にが, をを, or raw-input transformations such as 家族を大切にしていたを大切にされた. State the smile idea only once; do not repeat it through 顔, よく笑う, 笑顔, and 明るさ. Never repeat お姿 twice in one sentence. Do not write flat reporting such as 歌ったり踊ったりすることもありました, いつも笑っていたお顔とのことです, お方でいらっしゃいました, 皆様がよくご存じです, or ご家族が語ってくださった. Stay inside the family's remembered scene instead of reporting the interview. Never write 明るさを重ねる or leave a sentence as 家族を大切にしておられたこと。 Complete it with a natural predicate. After a supplied quotation, do not explain it as 人との向き合い方, 生き方, 考え方, 教え, or philosophy; let the words stand quietly. Avoid AI-like abstractions such as 暮らしに寄り添う楽しみ. Do not write an extra age phrase beyond the required opening introduction. Never turn 明るさを見習いたい into 明るく前向きに歩んでいきたい. Do not claim that the room or atmosphere became brighter. Do not invent artifacts such as 手芸の品, interpret a supplied action as 前を向いて動く, call a voice 忘れがたい, or instruct the family to お進みください. If the family says that singing and dancing looked cute, describe that specific姿 only; never rewrite it as いつも可愛い方だった. Partition facts before writing: opening uses at most three facts and closing uses only one or two facts never used in opening. Do not write any fixed closing guidance because the server appends it. Do not use stacked noun fragments or mixed seasonal grammar.`;
@@ -2243,7 +2245,7 @@ module.exports = async (req, res) => {
         temperature,
         maxTokens,
         prompt,
-        extraInstruction: retryInstruction,
+        extraInstruction: [retryLengthInstruction, retryInstruction].join(" "),
       });
       parsed = normalizeFamilyNearNarration(
         normalizeQuotationContext(limitDirectQuotes(parsed)),
@@ -2280,7 +2282,7 @@ module.exports = async (req, res) => {
       "opening too short",
     ]);
     const remainingFailures = lastCheck?.failures || [];
-    if (ALLOW_EXTERNAL_QUALITY_RETRY && !lastCheck?.ok && remainingFailures.some(failure => hardRetryFailures.has(failure))) {
+    if (ALLOW_HARD_RETRY && !lastCheck?.ok && remainingFailures.some(failure => hardRetryFailures.has(failure))) {
       console.warn("[generate-narration] retrying minimal grounded version", {
         buildId: API_BUILD_ID,
         failures: remainingFailures,
@@ -2701,10 +2703,10 @@ const compactNarrationPrompt = prompt => {
     "sourceFactsにある動作を書いたら、その動作の後ろへ新しい描写を足さず、そこで文を終えてください。「支度を整える」を「一つひとつ整える」、「外まで見送る」を「最後まで見届ける」のように広げてはいけません。",
     "openingはanchorから人物の記憶を描き始め、supportsは流れが自然になるものだけを使ってください。",
     "closingはopeningを要約せず、closingのanchorから別の思い出を静かにたどってください。supportsに明記されたご家族のお気持ちがあれば、意味を広げずに結んでください。",
-    "openingは定型文を含めて430〜620字、八〜十一文、三〜五段落を目安にしてください。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsは同じ人物像を自然に深められるものだけを一度ずつ使ってください。流れを壊すsupportは省略して構いません。",
+    "openingは定型文を含めて520〜700字、十一〜十五文、四〜六段落にしてください。短い取材報告文を並べて字数を満たしてはいけません。sourceFacts.openingは最大三枚です。anchorを中心に置き、supportsは同じ人物像を自然に深められるものだけを一度ずつ使ってください。流れを壊すsupportは省略して構いません。",
     "closingはサーバーが後で加える式次第案内を除き、200〜300字、五〜八文を目安にしてください。一つの具体的な思い出と、入力にある場合だけ家族の気持ちを結んでください。",
     "段落は、具体的な行動や日常の場面から始めてください。人物評を先に置き、後から事実で説明する書き方は避けてください。",
-    "anchorは二〜三文、各supportは一〜二文を上限とします。一つの事実を別の言葉で説明し直す文は書かないでください。",
+    "anchorは三〜五文、各supportは二〜三文を目安とします。一つの事実を別の言葉で説明し直して文数を増やしてはいけません。カードに複数の具体的な事実があれば、それぞれを自然につないで描いてください。",
     "一つのカードに異なる事実が二つある場合は、無理に一文へ圧縮せず、一つずつ別の文で書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ別の事実です。",
     "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
     "各カードにdoNotRepeatTopicsがある場合、その話題は同じカードの文章に含まれていても使用禁止です。別の固有の内容だけを使ってください。",
