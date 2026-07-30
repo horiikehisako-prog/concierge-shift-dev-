@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260731.31";
+const API_BUILD_ID = "narration-studio-20260731.32";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -492,7 +492,6 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
 const normalizeOpeningSeasonSentence = (value, prompt) => {
   const text = String(value || "").trim();
   const firstSentence = text.match(/^(.+?[。！？])/u)?.[1] || "";
-  if (!firstSentence || !/(?:別れ|ご生涯|人生の幕|旅立|お見送り|葬送|葬儀|告別式|通夜)/u.test(firstSentence)) return text;
   const payload = extractPromptPayload(prompt) || {};
   const season = String(payload.season || payload?.writingRules?.season || "").toLowerCase();
   const replacement = season.includes("spring") || season.includes("春")
@@ -501,8 +500,15 @@ const normalizeOpeningSeasonSentence = (value, prompt) => {
       ? "木々の葉が色づき始める頃となりました。"
       : season.includes("winter") || season.includes("冬")
         ? "澄んだ空気に、冬の深まりを感じる頃となりました。"
-        : "蝉の声が遠く近くに響く、この季節。";
-  return `${replacement}${text.slice(firstSentence.length).trimStart()}`;
+        : "蝉の声が遠く近くに響くこの季節。";
+  if (!firstSentence) return `${replacement}\n${text}`.trim();
+  if (/(?:季節|頃|蝉|木々|若葉|青葉|桜|花々|風|空|光|陽射し|陽ざし|木漏れ日|雨|雪|紅葉|虫の声|澄んだ空気)/u.test(firstSentence)) {
+    return text;
+  }
+  if (/(?:別れ|ご生涯|人生の幕|旅立|お見送り|葬送|葬儀|告別式|通夜)/u.test(firstSentence)) {
+    return `${replacement}\n${text.slice(firstSentence.length).trimStart()}`;
+  }
+  return `${replacement}\n${text}`;
 };
 
 const ensureOpeningFinalLine = value => {
@@ -1099,8 +1105,16 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
       "手芸に向かう手元には、少しずつ形が生まれてゆく時間。野菜や花のそばには、日々の育ちを見守るまなざし。どちらも、暮らしの中にあった大切なひとときです。"
     )
     .replace(
+      /手芸を楽しむときには、手を動かして少しずつ形にしていかれる。野菜や花にも手をかけ、育つ様子を見ておられました。/gu,
+      "手芸に向かう手元には、少しずつ形が生まれてゆく時間。野菜や花のそばには、日々の育ちを見守るまなざし。どちらも、暮らしの中にあった大切なひとときです。"
+    )
+    .replace(
       /明るく前向きで、人と接することが大好きだった([^。\n]+)は、思い立ったらすぐに行動されました。人を悪く言ってはいけないとよく話され、家族を大切にしておられました。/gu,
       "明るく前向きで、人と接することがお好きだった$1。思い立てばすぐに動かれる、その軽やかさもお持ちでした。\n\n「人の悪口を言ってはいけない」と、折に触れて話しておられました。"
+    )
+    .replace(
+      /人と接することが大好きで、思い立ったらすぐに行動される([^。\n]+)。人を悪く言ってはいけないとよく話し、家族を大切にしてこられました。/gu,
+      "人と接することがお好きで、思い立てばすぐに動かれる$1。その軽やかさも、ご本人らしい一面です。\n\n折に触れて口にされた、「人の悪口を言ってはいけない」という言葉。ご家族を大切にされた日々とともに、いまも心に残ります。"
     )
     .replace(
       /歌に声を重ね、ときには踊るように身体を動かされる姿は、いつも可愛いものとして残されています。/gu,
