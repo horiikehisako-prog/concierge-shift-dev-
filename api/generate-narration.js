@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "sprint27-textbook-guided-20260730.93";
+const API_BUILD_ID = "sprint27-textbook-guided-20260730.94";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -803,6 +803,10 @@ const normalizeQuotationContext = draft => {
         "編み物では、手を動かしながら少しずつ形にしていかれる。庭の草花にも手をかけ、育つ様子を見守っておられました。"
       )
       .replace(
+        /育つ様子を見ておられる([^。\n]+?様)でございました。/gu,
+        "育つ様子を見守っておられました。"
+      )
+      .replace(
         /日々の中では、よく、(「[^」]+」)と話しておられました。/gu,
         "折に触れて、$1と話しておられました。"
       )
@@ -819,7 +823,19 @@ const normalizeQuotationContext = draft => {
         "人と接することがお好きで、思い立つとすぐに行動へ移されることもございました。"
       )
       .replace(
+        /人と接することを好まれ、朗らかに過ごされました。思い立つと、すぐに行動へ移されました。/gu,
+        "人と接することがお好きで、思い立つとすぐに行動へ移される方でした。"
+      )
+      .replace(
+        /家族を大切にされていた([^。\n]+?様)は、よく(「[^」]+」)と話しておられました。/gu,
+        "ご家族を大切にされ、折に触れて、$2と話しておられました。"
+      )
+      .replace(
         /ご家族とともに過ごされた場面に、[^。\n]+?の声や動きが思い出されます。/gu,
+        ""
+      )
+      .replace(
+        /これまでの日々にいただいたものへ、深く感謝を捧げます。/gu,
         ""
       )
       .replace(
@@ -892,6 +908,14 @@ const normalizeQuotationContext = draft => {
       )
       .replace(
         /その([^。\n]+?)を忘れずにいたいという思いが、ご家族の中に残されております。/gu,
+        "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
+      )
+      .replace(
+        /((?:[^、。\n]+、){1,}[^、。\n]+)へと向かわれた[^。\n]+?の旅行。その一つひとつの行き先が、親子三代で過ごされた時をたどらせてくれます。/gu,
+        "その土地の名に触れるたび、親子三代で過ごした日も思い出されることでしょう。"
+      )
+      .replace(
+        /その([^。\n]+?)を忘れずにいたいという思いが、ご家族の中に残されています。/gu,
         "その$1を忘れずにいたいという思いも、ご家族の胸にあります。"
       )
       .replace(
@@ -1865,7 +1889,7 @@ module.exports = async (req, res) => {
             "Use every opening anchor/support once. When one card contains two distinct facts, give each fact its own natural sentence instead of compressing both into one sentence.",
             "Opening including its fixed introduction and final line must be about 400 to 520 Japanese characters. Match the referenceShape and aim for ten to fourteen factual body sentences arranged in natural paragraphs.",
             "Closing narrative body must be 160 to 240 Japanese characters and must not repeat opening facts.",
-            "Do not pad with an abstract summary, gratitude sentence, list of facts, interview-report wording, or a restatement of the same memory.",
+            "Do not pad with an abstract summary, gratitude sentence, list of facts, interview-report wording, or a restatement of the same memory. To match the textbook depth, up to three opening paragraphs may end with one short family-near afterglow sentence tied to the exact scene just described.",
             `FIRST DRAFT TO REPAIR: ${shortDraft}`,
           ].join(" "),
         });
@@ -2394,7 +2418,8 @@ const compactNarrationPrompt = prompt => {
     "同じ主語の近い動作は一文にまとめてください。悪い例は「朝には支度を整えておられました。帰宅後は居間で過ごしておられました。」です。自然な例は「朝、支度を整えておられるお姿。帰宅後は、居間で静かに過ごされる。」です。",
     "別の場所へ出向く二つの動作は「人と言葉を交わし、地域の集まりにも欠かさず出かけられました」のように一文へつないでください。短い敬体文を二つ並べないでください。",
     "「時間を重ねる」「日々を重ねる」「時間が記憶につながる」「身近な記憶」「日常の一こま」「お姿がそこにある」「その声にのせて」「ひと続きの記憶」「胸に静かに留められる」「旅の余韻」「暮らしに刻まれる」「時間が流れる」「いつもの席」「ここに集う思い」「お見送りいたします」は使わないでください。事実を抽象語へ置き換えず、その場面を平明に書いてください。",
-    "各段落の最後に抽象的なまとめを足さないでください。場面そのものが人柄を伝えるところで止めてください。",
+    "各段落の最後に抽象的な人物評を足さないでください。ただし開式前全体で最大三回まで、その段落に書いた同じ場面がご家族の記憶に残ることを示す、短い余韻文を一文だけ置いて構いません。",
+    "余韻文は直前の具体物を必ず受けてください。例は「その愛らしいお姿も、ご家族の記憶に残っています」「手芸に向かう手元も、草花に手をかけるお姿も、今では懐かしい日常の一場面です」です。人物評・人生訓・新しい感情は加えないでください。",
     "本文の最後に、すでに書いた趣味・性格・思い出を読点で並べる要約行を置かないでください。同じ事実を文章と一覧の両方で書くことは禁止です。",
     "事実に必ず含まれる動作だけは、場面として丁寧に描いて構いません。手芸・編み物なら手を動かして形にすること、草花や野菜を育てるなら手をかけて育つ様子を見ること、歌や踊りなら声を重ねたり身体を動かしたりすることです。",
     "ただし、その場にいた人、家族の反応、本人の内心、部屋、食事、天候など、元の事実から必ずとは言えないものは足さないでください。",
