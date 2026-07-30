@@ -320,6 +320,7 @@ const duplicatedIntroDraft = context.testHelpers.applyNameRule({
     "故・堀池故堀池 チエノ様は、九十一年のご生涯を歩まれ、このたび葬儀の日を迎えられました。",
     "去る二〇二六年七月四日、九十一歳にて生涯を閉じられました、堀池チエノ様の葬儀にあたり、開式に先立ち、ともに過ごされた日々を振り返らせていただきます。",
     "チエノ様を思うと、笑っておられたお顔が浮かびます。",
+    "明るく前向きな故堀池 チエノ様は、思い立つとすぐに動かれました。",
     "皆様には、どうぞお心静かにご参列くださいますよう、お願い申し上げます。",
     "皆様には、しばらくの間、静かにお心をお寄せくださいますようお願い申し上げます。",
     "皆様にはご起立いただき、合掌にてお迎えくださいますようお願い申し上げます。",
@@ -346,6 +347,7 @@ assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列を賜り"
 assert.equal(duplicatedIntroDraft.openingNarration.includes("日々を胸に、"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("お心をお寄せ"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご起立"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("これより皆様とともにお迎え"), false);
 
 const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: [

@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.21";
+const API_BUILD_ID = "narration-studio-20260730.22";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -476,9 +476,6 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
     "gu"
   );
   text = text.replace(lifeIntroPattern, "").trim();
-  text = text
-    .replace(new RegExp(`故${escapedFull}様は、?`, "u"), `${fullLabel}は、`)
-    .replace(new RegExp(`故?${escapedGiven}様は、?`, "u"), `${fullLabel}は、`);
   // The model sometimes duplicates the surname or the 故 prefix. Replace the
   // entire fixed life-introduction sentence instead of trying to repair names.
   text = text.replace(
@@ -1213,6 +1210,7 @@ const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/[^。\n]*(?:お心をお寄せ|お心を寄せ)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
   .replace(/[^。\n]*開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:ご起立|合掌|お迎え)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*これより[^。\n]*お別れ[^。\n]*(?:迎え|臨み)[^。\n]*。/gu, "")
   .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
   .replace(/\n{3,}/gu, "\n\n")
   .trim();
