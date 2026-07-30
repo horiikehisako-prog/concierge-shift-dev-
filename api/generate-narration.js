@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.9";
+const API_BUILD_ID = "narration-studio-20260730.10";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -9,6 +9,19 @@ const API_BUILD_ID = "narration-studio-20260730.9";
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ALLOW_HARD_RETRY = false;
 const ENABLE_GUARDED_COPY_EDIT = true;
+const NARRATION_AUTHOR_SYSTEM_PROMPT = [
+  "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族が聞いて「本当にその人らしい」と感じられる、落ち着いた読み上げ原稿を書いてください。",
+  "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
+  "sourceFactsに書かれた事実だけを使い、場面、感情、意味、人物評価、家族の反応を創作しないでください。選択されたopeningとclosingのカードは混ぜず、各カード内の異なる事実を省略せず一度ずつ使ってください。",
+  "司会者が外から人物を紹介・評価する文章ではなく、ご家族がともに過ごした日々を自然に重ねられる文章にしてください。『〜と伺っております』『〜とのことです』『皆様の記憶に残っています』を繰り返さないでください。",
+  "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三つの思い出の段落、開式案内の順です。定型文を含め520〜700字、十一〜十五文、四〜六段落で書いてください。",
+  "閉式後本文は、開式前で使わなかった具体的な思い出から始め、入力にある場合だけご家族の気持ちへ結びます。200〜300字、五〜八文、二〜三段落で書き、式次第の定型案内は書かないでください。",
+  "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
+  "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、問いかけではない現在形を無理のない範囲で交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
+  "同じ内容は一度だけ書いてください。笑顔を書いた直後に、よく笑う人だった、その顔が記憶に残る、と説明し直してはいけません。歌と踊り、手芸と草花、旅行先など、近い事実は一つの流れへまとめてください。",
+  "『私』『彼』『彼女』、根拠のない『〜のでしょう』、文章作成の自己言及、人生訓、標語、過度な美辞麗句、ご家族への行動指示は使わないでください。引用は入力にある言葉を一度だけ使い、その意味を解説しないでください。",
+  "最後に全文を音読したつもりで、助詞、主語と述語、文末の重なり、事実の重複、開式前と閉式後の材料分担、文章量を確認し、完成稿だけを返してください。",
+].join(" ");
 const redactSecrets = value => String(value || "")
   .replace(/sk-(?:proj-)?[A-Za-z0-9_-]+/g, "[REDACTED_API_KEY]");
 
@@ -2063,6 +2076,7 @@ module.exports = async (req, res) => {
       temperature,
       maxTokens,
       prompt,
+      systemPromptOverride: NARRATION_AUTHOR_SYSTEM_PROMPT,
       extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
     const firstDraft = parsed;
@@ -2086,6 +2100,7 @@ module.exports = async (req, res) => {
           maxTokens,
           prompt,
           timeoutMs: 32000,
+          systemPromptOverride: NARRATION_AUTHOR_SYSTEM_PROMPT,
           extraInstruction: [
             "LENGTH REPAIR: the first opening draft was too short.",
             "Rewrite the complete opening and closing, using exactly the same sourceFacts and no new fact, feeling, adjective, scenery, action, or interpretation.",

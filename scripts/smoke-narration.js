@@ -4,8 +4,42 @@ const path = require("node:path");
 const endpoint = process.env.NARRATION_ENDPOINT
   || "https://concierge-shift-dev.vercel.app/api/generate-narration";
 const caseName = process.argv[2] || "calm-male";
+const shouldRevise = process.argv[3] === "revise";
 
 const cases = {
+  "studio-family-near-91": {
+    textbook: "001_90代女性_家族を支えた暮らし.md",
+    theme: "家族愛",
+    tags: ["90代", "女性", "家族", "笑顔", "旅行", "手芸"],
+    staffCompositionPlan: {
+      opening: [
+        { field: "familyMemories", label: "ご家族との思い出" },
+        { field: "memorableEvents", label: "印象的な出来事" },
+        { field: "hobbies", label: "趣味・好きだったこと" },
+      ],
+      closing: [
+        { field: "travelAnniversaryEffort", label: "旅行・記念日" },
+        { field: "familyFeelings", label: "ご家族のお気持ち" },
+      ],
+    },
+    hearingSheet: {
+      deceasedName: "試験 花子",
+      narrationName: "花子",
+      age: "91",
+      gender: "女性",
+      familyRelation: "子",
+      deceasedDate: "2026-07-20",
+      ceremonyType: "葬儀",
+      familyMemories: "いつも笑っている顔しか思い出せないほど、よく笑う人だった。",
+      memorableEvents: "歌ったり踊ったりする姿を、家族はいつも可愛いと感じていた。",
+      hobbies: "手芸を楽しみ、野菜や花を育てていた。",
+      personality: "明るく前向きで、人と接することが大好きだった。思い立ったらすぐに行動した。",
+      favoritePhrases: "「人を悪く言ってはいけない」とよく話していた。",
+      valuedThings: "家族を大切にしていた。",
+      travelAnniversaryEffort: "親子三代で青葉園、白浜、緑川、花里へ旅行した。いずれも誕生日月の十月だった。",
+      familyFeelings: "その明るさを見習い、前向きに歩んでいきたい。",
+    },
+  },
   "family-near-91": {
     textbook: "001_90代女性_家族を支えた暮らし.md",
     theme: "家族愛",
@@ -106,6 +140,7 @@ const textbookPath = path.resolve(
 const textbook = fs.readFileSync(textbookPath, "utf8");
 const promptPayload = {
   hearingSheet: selected.hearingSheet,
+  staffCompositionPlan: selected.staffCompositionPlan,
   writingRules: {
     season: "夏",
     theme: selected.theme,
@@ -143,12 +178,57 @@ const main = async () => {
     // Keep non-JSON server output visible for diagnostics.
   }
 
-  process.stdout.write(`${JSON.stringify({
+  const firstResult = {
     caseName,
     endpoint,
     status: response.status,
     elapsedSeconds: Math.round((Date.now() - startedAt) / 100) / 10,
     body,
+  };
+  if (!shouldRevise || !response.ok || !body?.openingNarration || !body?.closingNarration) {
+    process.stdout.write(`${JSON.stringify(firstResult, null, 2)}\n`);
+    return;
+  }
+
+  const revisionPayload = {
+    ...promptPayload,
+    workflowMode: "revision",
+    revisionDraft: [
+      "【開式前ナレーション】",
+      body.openingNarration,
+      "",
+      "【閉式後ナレーション】",
+      body.closingNarration,
+    ].join("\n"),
+    revisionInstruction: "同じ内容の言い直しと一覧のような要約を削り、家族の記憶に近い自然な日本語へ全文を整える。事実の分担と十分な文章量は保ち、ました・です・ございますが三文続かないようにする。",
+  };
+  const revisionStartedAt = Date.now();
+  const revisionResponse = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    signal: AbortSignal.timeout(180_000),
+    body: JSON.stringify({
+      prompt: `Create narration from this JSON:\n${JSON.stringify(revisionPayload)}`,
+      model: "gpt-5.5",
+      temperature: 0.2,
+      maxTokens: 4200,
+      debugQuality: true,
+    }),
+  });
+  const revisionRaw = await revisionResponse.text();
+  let revisionBody = revisionRaw;
+  try {
+    revisionBody = JSON.parse(revisionRaw);
+  } catch (_) {
+    // Keep non-JSON output visible for diagnostics.
+  }
+  process.stdout.write(`${JSON.stringify({
+    first: firstResult,
+    revision: {
+      status: revisionResponse.status,
+      elapsedSeconds: Math.round((Date.now() - revisionStartedAt) / 100) / 10,
+      body: revisionBody,
+    },
   }, null, 2)}\n`);
 };
 
