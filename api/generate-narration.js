@@ -1,14 +1,15 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.13";
+const API_BUILD_ID = "narration-studio-20260730.14";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
 // quality report below handle the remaining non-critical issues.
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ALLOW_HARD_RETRY = false;
-const ENABLE_GUARDED_COPY_EDIT = true;
+const ENABLE_LENGTH_REPAIR = false;
+const ENABLE_GUARDED_COPY_EDIT = false;
 const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族が聞いて「本当にその人らしい」と感じられる、落ち着いた読み上げ原稿を書いてください。",
   "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
@@ -2108,10 +2109,13 @@ module.exports = async (req, res) => {
     });
     const firstDraft = parsed;
     if (
-      String(parsed?.openingNarration || "").length < 500 ||
-      String(parsed?.closingNarration || "")
-        .replace(/(?:\d+|[〇一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し[\s\S]*$/u, "")
-        .trim().length < 190
+      ENABLE_LENGTH_REPAIR &&
+      (
+        String(parsed?.openingNarration || "").length < 500 ||
+        String(parsed?.closingNarration || "")
+          .replace(/(?:\d+|[〇一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し[\s\S]*$/u, "")
+          .trim().length < 190
+      )
     ) {
       try {
         const shortDraft = JSON.stringify({
