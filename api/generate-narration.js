@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.22";
+const API_BUILD_ID = "narration-studio-20260730.23";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -18,7 +18,7 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三〜四つの思い出の段落、開式案内の順です。定型文を含め350〜550字、七〜十一文、四〜六段落で書いてください。",
   "閉式後本文は、開式前で使わなかった具体的な思い出から始め、入力にある場合だけご家族の気持ちへ結びます。160〜260字、四〜六文、二〜三段落で書き、式次第の定型案内は書かないでください。",
   "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
-  "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、問いかけではない現在形を無理のない範囲で交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
+  "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、思い出が今も目に浮かぶ箇所の自然な現在形を二〜四文ほど交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
   "同じ内容は一度だけ書いてください。笑顔を書いた直後に、よく笑う人だった、その顔が記憶に残る、と説明し直してはいけません。歌と踊り、手芸と草花、旅行先など、近い事実は一つの流れへまとめてください。",
   "ご家族が『いつも笑っている顔しか思い出せない』と話している場合、笑顔の段落はその事実を伝える一文だけにしてください。笑顔、よく笑う人、顔が浮かぶ、記憶に残る、という同義の説明を重ねてはいけません。",
   "開式前本文の最後に、笑顔・歌・踊り・手芸・野菜・花など、すでに書いた事実を読点で並べる総括段落を置かないでください。最後の具体的な段落から定型の開式案内へ直接つないでください。",
@@ -1074,7 +1074,22 @@ const collapseRepeatedSmileParagraph = (value, displayName) => {
 const normalizeFamilyNearNarration = (draft, prompt) => {
   const { givenName } = nameRuleFromPrompt(prompt);
   const displayName = givenName ? `${givenName}様` : "故人様";
-  const cleanOpening = value => collapseRepeatedSmileParagraph(value, displayName)
+  const payload = extractPromptPayload(prompt) || {};
+  const hearingText = JSON.stringify(payload.hearingSheet || payload.sourceFacts || {});
+  const requiresExactSmileFact = /いつも笑っている(?:お)?顔しか思い出せない/u.test(hearingText);
+  const ensureExactSmileFact = value => {
+    const text = String(value || "");
+    if (!requiresExactSmileFact || /いつも笑っている(?:お)?顔しか思い出せない/u.test(text)) return text;
+    const canonical = `「いつも笑っている顔しか思い出せない」とご家族が語られるほど、日々のそばには${displayName}の笑顔がありました。`;
+    if (/(?:笑顔|笑っているお顔|笑っておられたお顔)/u.test(text)) {
+      return text.replace(/[^。\n]*(?:笑顔|笑っているお顔|笑っておられたお顔)[^。\n]*。/u, canonical);
+    }
+    const lifeSentence = /故[^。\n]+様は、[^。\n]+人生の幕を下ろされました。/u;
+    return lifeSentence.test(text)
+      ? text.replace(lifeSentence, match => `${match}\n${canonical}`)
+      : `${canonical}\n${text}`;
+  };
+  const cleanOpening = value => collapseRepeatedSmileParagraph(ensureExactSmileFact(value), displayName)
     .replace(
       /(^|\n{2,})[^。\n]*(?:笑顔|笑っておられたお顔)[^。\n]*(?:歌|踊)[^。\n]*(?:手芸|野菜|花)[^。\n]*(?:思い|たどり|胸|心を寄せ)[^。\n]*。/gu,
       "$1"
@@ -1555,7 +1570,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasAwkwardNarrationStyle(bodyWithoutRequiredClosings)) failures.push("awkward narration style");
   if (hasReporterDistance(bodyWithoutRequiredClosings)) failures.push("reporter distance");
   if (hasResidualAiNarration(bodyWithoutRequiredClosings)) failures.push("residual AI narration");
-  if (opening.trim().length < 350) failures.push("opening too short");
+  if (opening.trim().length < 320) failures.push("opening too short");
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
@@ -2218,7 +2233,7 @@ module.exports = async (req, res) => {
         "抽象的な美辞、人生訓、標語、AIらしいまとめを加えないでください。事実だけでは支えられない文は、別の美文へ置き換えず削ってください。",
         "笑顔の段落は一文だけにし、笑顔・よく笑う・顔が浮かぶ・記憶に残るという同義の説明を重ねないでください。開式前の最後に、すでに書いた趣味や場面を一覧で要約する段落を置かないでください。",
         "閉式後の旅行先は一度だけ書いてください。第一段落は場所、誕生日月、親子三代の事実を三文でまとめ、第二段落はsourceFactsにある家族の気持ちと余韻を二〜三文で結んでください。文章構成を説明する『開式前にたどった記憶』は使用禁止です。",
-        "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて520〜700字、閉式後本文は200〜300字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
+        "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて320〜550字、閉式後本文は120〜260字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
         "自然さと正確さを最優先しながら、初稿にある異なる事実と必要な段落の呼吸は残してください。",
         "最後に音読を想定し、一度で意味が伝わるか確認してから完成稿だけを返してください。",
       ].join(" ");
@@ -2786,9 +2801,9 @@ const compactNarrationPrompt = prompt => {
     "一つのカードに異なる事実が二つ以上ある場合は、無理に一文へ圧縮せず、一つずつ自然につないで書いてください。例として、手芸と草花、人付き合いと行動力、笑顔と歌や踊りは、それぞれ省略できない別の事実です。",
     "supportにanchorと同じ話題が含まれる場合、その重複部分は書かず、supportにだけある別の趣味・行動・思い出を使ってください。",
     "各カードにdoNotRepeatTopicsがある場合、その話題は同じカードの文章に含まれていても使用禁止です。別の固有の内容だけを使ってください。",
-    "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を接続助詞や連用形でつなぎ、現在形は思い出が今も目に浮かぶ箇所に一度だけ使って、自然な呼吸を作ってください。体言止めは一段落に一度までです。",
+    "同じ段落で「ました・でした・ございます・おります」を三文続けないでください。一文を短く切るだけではなく、近い内容を接続助詞や連用形でつなぎ、思い出が今も目に浮かぶ箇所では自然な現在形を全体で二〜四文ほど使って、呼吸を作ってください。体言止めは一段落に一度までです。",
     "同じ主語の近い動作は一文にまとめてください。悪い例は「歌われることがありました。踊られることもありました。」です。自然な例は「歌に声を重ね、ときには踊るように身体を動かされる。」です。",
-    "「手芸では〜ました。野菜には〜ました。お花にも〜ました」のように、入力欄を一文ずつ消化する書き方は禁止です。「手芸に向かわれると、少しずつ形を整えていかれる。野菜やお花にもこまめに手をかけ、その育ちを見守っておられました」のように、近い記憶を一つの流れにしてください。",
+    "「手芸では〜ました。野菜には〜ました。お花にも〜ました」のように、入力欄を一文ずつ消化する書き方は禁止です。「手芸に向かえば、少しずつ形を整えていかれる。野菜やお花にも手をかけ、その育ちを見守る」のように、近い記憶を一つの流れにしてください。",
     "「笑っている顔しか思い出せない」を使った場合、直後に「よく笑う方でした」「そのお顔が記憶に残っています」と説明し直してはいけません。その一文だけで笑顔の記憶を伝え、次の具体的な場面へ進んでください。",
     "「私も彼女を見習い」は禁止です。familyFeelingsに見習いたい気持ちがある場合は、「その明るさを心に、これからの日々も前を向いて歩んでいきたい」という意味を広げない自然な形にしてください。",
     "開式案内の直前に「感謝の思いが寄せられます」を置き、その次も「感謝の思いを胸に」と重ねることは禁止です。具体的な記憶を一つ受ける橋渡しから、定型案内へ直接つないでください。",

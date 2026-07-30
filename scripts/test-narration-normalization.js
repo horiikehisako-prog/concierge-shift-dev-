@@ -368,6 +368,20 @@ assert.equal(repeatedMemoryDraft.openingNarration.includes("歌に声を重ね")
 assert.equal(repeatedMemoryDraft.openingNarration.includes("記憶の入口"), false);
 assert.equal(repeatedMemoryDraft.openingNarration.includes("歌や踊り、手芸、野菜や花"), false);
 assert.equal(repeatedMemoryDraft.closingNarration.includes("開式前にたどった記憶"), false);
+const exactSmilePrompt = JSON.stringify({
+  hearingSheet: {
+    fullName: "試験 花子",
+    narrationName: "花子",
+    age: "91",
+    familyMemories: "いつも笑っている顔しか思い出せないほど、よく笑う人だった。",
+  },
+});
+const restoredSmile = context.testHelpers.normalizeFamilyNearNarration({
+  openingNarration: "夏の季節です。\n故試験 花子様は、91年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。\nご家族の記憶に残る花子様は、いつも笑顔でいらっしゃいました。\n歌を楽しまれました。",
+  closingNarration: "旅行を楽しまれました。",
+}, exactSmilePrompt);
+assert.equal((restoredSmile.openingNarration.match(/いつも笑っている顔しか思い出せない/gu) || []).length, 1);
+assert.equal(restoredSmile.openingNarration.includes("歌を楽しまれました"), true);
 assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉園、白浜へ旅行されました。"), false);
 assert.equal(context.testHelpers.closingStartsWithSeasonalLanguage("青葉の美しい季節となりました。"), true);
 const repeatedTravel = context.testHelpers.normalizeFamilyNearNarration({
