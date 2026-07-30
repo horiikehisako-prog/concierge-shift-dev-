@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = `${fs.readFileSync("api/generate-narration.js", "utf8")}
-this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, qualityCheckNarration, narrationCandidateScore, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount, applyNameRule, closingStartsWithSeasonalLanguage };`;
+this.testHelpers = { normalizeQuotationContext, normalizeFamilyNearNarration, buildStableFamilyPortrait, qualityCheckNarration, narrationCandidateScore, pickMemoryCards, staffSelectedMemoryPlan, compactNarrationPrompt, extractStyleReferenceSection, narrationSentenceCount, applyNameRule, closingStartsWithSeasonalLanguage };`;
 const context = {
   module: { exports: {} },
   exports: {},
@@ -486,6 +486,37 @@ assert.equal(thirdProductionFull.includes("育ちを見守っておられまし�
 assert.equal(thirdProductionFull.includes("すぐに行動される"), false);
 assert.equal((thirdProductionSmokeDraft.closingNarration.match(/親子三代/gu) || []).length, 1);
 assert.equal((thirdProductionSmokeDraft.closingNarration.match(/十月/gu) || []).length, 1);
+
+const stablePortraitPrompt = JSON.stringify({
+  hearingSheet: {
+    fullName: "試験 花子",
+    narrationName: "花子",
+    age: "91",
+    familyMemories: "いつも笑っている顔しか思い出せないほど、よく笑う人だった。",
+    memorableEvents: "歌ったり踊ったりする姿を、家族はいつも可愛いと感じていた。",
+    hobbies: "手芸を楽しみ、野菜や花を育てていた。",
+    personality: "明るく前向きで、人と接することが大好きだった。思い立ったらすぐに行動した。",
+    favoritePhrases: "「人の悪口を言ってはいけない」とよく話していた。",
+    valuedThings: "家族を大切にしていた。",
+    travelAnniversaryEffort: "親子三代で青葉園、白浜、緑川、花里へ旅行した。いずれも誕生日月の十月だった。",
+    familyFeelings: "その明るさを見習い、前向きに歩んでいきたい。",
+  },
+  writingRules: { season: "夏" },
+});
+const stablePortraitBody = context.testHelpers.buildStableFamilyPortrait({
+  openingNarration: "不安定な初稿",
+  closingNarration: "不安定な初稿",
+}, stablePortraitPrompt);
+assert.notEqual(stablePortraitBody, null);
+const stablePortrait = context.testHelpers.applyNameRule(stablePortraitBody, stablePortraitPrompt);
+assert.equal(stablePortrait.openingNarration.startsWith("蝉の声が遠く近くに響き、木々の葉陰に涼を探すこの季節。"), true);
+assert.equal(stablePortrait.openingNarration.includes("その場を明るく"), false);
+assert.equal(stablePortrait.openingNarration.includes("ご家族が語られるほど"), false);
+assert.equal((stablePortrait.openingNarration.match(/人の悪口を言ってはいけない/gu) || []).length, 1);
+assert.equal((stablePortrait.closingNarration.match(/親子三代/gu) || []).length, 1);
+assert.equal((stablePortrait.closingNarration.match(/十月/gu) || []).length, 1);
+const stablePortraitCheck = context.testHelpers.qualityCheckNarration(stablePortrait, stablePortraitPrompt);
+assert.equal(stablePortraitCheck.failures.length, 0);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
