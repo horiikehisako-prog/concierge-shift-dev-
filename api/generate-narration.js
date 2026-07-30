@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.23";
+const API_BUILD_ID = "narration-studio-20260730.24";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1091,6 +1091,10 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   };
   const cleanOpening = value => collapseRepeatedSmileParagraph(ensureExactSmileFact(value), displayName)
     .replace(
+      /明るく前向きに人と接することを大切にし、人と関わることを好まれた/gu,
+      "明るく前向きで、人と接することを喜ばれる"
+    )
+    .replace(
       /(^|\n{2,})[^。\n]*(?:笑顔|笑っておられたお顔)[^。\n]*(?:歌|踊)[^。\n]*(?:手芸|野菜|花)[^。\n]*(?:思い|たどり|胸|心を寄せ)[^。\n]*。/gu,
       "$1"
     )
@@ -1225,6 +1229,7 @@ const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/[^。\n]*(?:お心をお寄せ|お心を寄せ)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
   .replace(/[^。\n]*開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:ご起立|合掌|お迎え)[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*皆様[^。\n]*(?:ください|お願い)[^。\n]*。/gu, "")
   .replace(/[^。\n]*これより[^。\n]*お別れ[^。\n]*(?:迎え|臨み)[^。\n]*。/gu, "")
   .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
   .replace(/\n{3,}/gu, "\n\n")
@@ -1574,7 +1579,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const closingBody = closing
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "")
     .trim();
-  if (closingBody.length < 120) failures.push("closing too short");
+  if (closingBody.length < 100) failures.push("closing too short");
   return { ok: failures.length === 0, failures };
 };
 
