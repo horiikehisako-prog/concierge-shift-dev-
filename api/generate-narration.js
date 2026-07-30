@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.14";
+const API_BUILD_ID = "narration-studio-20260730.15";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -512,7 +512,8 @@ const ensureOpeningFinalLine = value => {
     .replace(/皆様には、?開式まで[^。\n]*(?:お待ち|お過ごし)[^。\n]*。/gu, "")
     .replace(/これより、?[^。\n]*(?:葬儀|告別式|通夜)[^。\n]*(?:執り行|開式|開始)[^。\n]*。/gu, "")
     .replace(/(?:[^。\n]*、)?尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, fixed)
-    .replace(/\s*尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, "");
+    .replace(/\s*尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?\s*$/u, "")
+    .replace(/(?:^|\n{2,})[^。\n！？]*[、，]\s*$/u, "");
   return `${text.trim()}\n\n${fixed}`;
 };
 
@@ -1176,6 +1177,7 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
 const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/今日(?:ここ|この場)に集う皆様/gu, "皆様")
   .replace(/(?:ここ|この場)に集う皆様/gu, "皆様")
+  .replace(/[^。\n]*(?:ご多用|ご参列|ご会葬)[^。\n]*(?:ありがとう|御礼|感謝)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:葬儀にあたり|開式に先立ち)[^。\n]*。/gu, "")
   .replace(/[^。\n]*(?:ご参列|お心静かに)[^。\n]*(?:ください|お願い申し上げ|存じます)[^。\n]*。/gu, "")
   .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
@@ -2226,6 +2228,7 @@ module.exports = async (req, res) => {
       normalizeQuotationContext(limitDirectQuotes(parsed)),
       rawPrompt
     );
+    parsed = applyNameRule(parsed, rawPrompt);
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
     } catch (qualityError) {

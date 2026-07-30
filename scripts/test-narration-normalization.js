@@ -312,12 +312,14 @@ assert.equal(latestShortCheck.failures.includes("invented family feeling"), true
 const duplicatedIntroDraft = context.testHelpers.applyNameRule({
   openingNarration: [
     "夏の陽ざしが深まり、蝉の声に季節の盛りを感じるころでございます。",
+    "皆様にはご多用の中、ご参列を賜り、誠にありがとうございます。",
     "故・堀池故堀池 チエノ様は、九十一年のご生涯を歩まれ、このたび葬儀の日を迎えられました。",
     "去る二〇二六年七月四日、九十一歳にて生涯を閉じられました、堀池チエノ様の葬儀にあたり、開式に先立ち、ともに過ごされた日々を振り返らせていただきます。",
     "チエノ様を思うと、笑っておられたお顔が浮かびます。",
     "皆様には、どうぞお心静かにご参列くださいますよう、お願い申し上げます。",
     "笑っておられたお顔を偲び、まもなく開式のお時間でございます。",
     "皆様には、開式まで今しばらくお待ちくださいますようお願い申し上げます。",
+    "本日は、チエノ様とともに過ごされた日々を胸に、",
     "これより、故・堀池チエノ様の葬儀を執り行わせていただきます。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n"),
@@ -332,6 +334,8 @@ assert.equal((duplicatedIntroDraft.openingNarration.match(/まもなく開式の
 assert.equal(duplicatedIntroDraft.openingNarration.includes("開式まで今しばらくお待ち"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("葬儀を執り行わせていただきます"), false);
 assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列くださいますよう"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("ご参列を賜り"), false);
+assert.equal(duplicatedIntroDraft.openingNarration.includes("日々を胸に、"), false);
 
 const repeatedMemoryDraft = context.testHelpers.normalizeFamilyNearNarration({
   openingNarration: [
