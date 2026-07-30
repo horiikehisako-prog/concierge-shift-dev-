@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.12";
+const API_BUILD_ID = "narration-studio-20260730.13";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -19,6 +19,9 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
   "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、問いかけではない現在形を無理のない範囲で交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
   "同じ内容は一度だけ書いてください。笑顔を書いた直後に、よく笑う人だった、その顔が記憶に残る、と説明し直してはいけません。歌と踊り、手芸と草花、旅行先など、近い事実は一つの流れへまとめてください。",
+  "ご家族が『いつも笑っている顔しか思い出せない』と話している場合、笑顔の段落はその事実を伝える一文だけにしてください。笑顔、よく笑う人、顔が浮かぶ、記憶に残る、という同義の説明を重ねてはいけません。",
+  "開式前本文の最後に、笑顔・歌・踊り・手芸・野菜・花など、すでに書いた事実を読点で並べる総括段落を置かないでください。最後の具体的な段落から定型の開式案内へ直接つないでください。",
+  "閉式後では旅行先の地名を一度だけ書いてください。第一段落は旅行先、誕生日月、親子三代の三点を三文で描き、第二段落は入力にあるご家族の気持ちと短い余韻だけを二〜三文で結んでください。『開式前に述べた』『別の思い出』など文章構成を説明してはいけません。",
   "『私』『彼』『彼女』、根拠のない『〜のでしょう』、文章作成の自己言及、人生訓、標語、過度な美辞麗句、ご家族への行動指示は使わないでください。引用は入力にある言葉を一度だけ使い、その意味を解説しないでください。",
   "最後に全文を音読したつもりで、助詞、主語と述語、文末の重なり、事実の重複、開式前と閉式後の材料分担、文章量を確認し、完成稿だけを返してください。",
 ].join(" ");
@@ -463,7 +466,7 @@ const ensureOpeningFullNameIntro = (value, prompt) => {
   // canonical sentence. This also repairs duplicated forms such as
   // 「故・堀池故堀池 チエノ様」 and nonstandard funeral-day wording.
   const lifeIntroPattern = new RegExp(
-    `[^。\\n]{0,40}(?:${escapedFull}|${escapedGiven})様?[^。\\n]{0,100}(?:${escapedAge ? `${escapedAge}|` : ""}[〇零一二三四五六七八九十百]+年|ご生涯|人生の幕|葬儀の日|葬儀の時)[^。\\n]{0,100}。`,
+    `[^。\\n]{0,60}(?:${escapedFull}|${escapedGiven})様?[^。\\n]{0,140}(?:${escapedAge ? `${escapedAge}|` : ""}[〇零一二三四五六七八九十百]+(?:年|歳)|ご?生涯|人生の幕|葬儀の日|葬儀の時)[^。\\n]{0,160}。`,
     "gu"
   );
   text = text.replace(lifeIntroPattern, "").trim();
@@ -1044,6 +1047,14 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
   const displayName = givenName ? `${givenName}様` : "故人様";
   const cleanOpening = value => String(value || "")
     .replace(
+      /(^|\n{2,})[^\n]*いつも笑っている(?:お)?顔しか思い出せない[^\n]*/gu,
+      `$1「いつも笑っている顔しか思い出せない」とご家族が語られるほど、日々のそばには${displayName}の笑顔がありました。`
+    )
+    .replace(
+      /(^|\n{2,})[^。\n]*(?:笑顔|笑っておられたお顔)[^。\n]*(?:歌|踊)[^。\n]*(?:手芸|野菜|花)[^。\n]*(?:思い|たどり|胸|心を寄せ)[^。\n]*。/gu,
+      "$1"
+    )
+    .replace(
       /([一-龥々ぁ-んァ-ヶー]+様)を思うと、まず浮かぶのは、よく笑っておられたお顔です。いつも笑っているお顔しか思い出せないほど、その表情はご家族の記憶に残っています。/gu,
       "思い出の中の$1は、いつも笑顔です。"
     )
@@ -1116,6 +1127,7 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
       "$1"
     );
   const cleanClosing = value => String(value || "")
+    .replace(/(^|\n{2,})[^。\n]*(?:開式前に|開式前で)[^。\n]*(?:記憶|思い出|述べ|伝え)[^。\n]*。/gu, "$1")
     .replace(/ご旅行に行かれました。/gu, "旅へ出かけられました。")
     .replace(
       /親子三代で、?([^。\n]+?)へ(?:旅へ出かけられ|ご旅行に行かれ)ました。どのご旅行も、お誕生日月である([^に。\n]+)に行かれたものでした。\s*行き先の名をたどると、[^。\n]+?のご旅行が思い起こされます。/gu,
@@ -1162,7 +1174,12 @@ const normalizeFamilyNearNarration = (draft, prompt) => {
 
 const removeUnsupportedAudiencePhrasing = value => String(value || "")
   .replace(/今日(?:ここ|この場)に集う皆様/gu, "皆様")
-  .replace(/(?:ここ|この場)に集う皆様/gu, "皆様");
+  .replace(/(?:ここ|この場)に集う皆様/gu, "皆様")
+  .replace(/[^。\n]*(?:葬儀にあたり|開式に先立ち)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*(?:ご参列|お心静かに)[^。\n]*(?:ください|お願い申し上げ|存じます)[^。\n]*。/gu, "")
+  .replace(/[^。\n]*感謝の思いをお寄せいただき[^。\n]*。/gu, "")
+  .replace(/\n{3,}/gu, "\n\n")
+  .trim();
 
 const applyNameRule = (draft, prompt) => ({
   ...draft,
@@ -2162,6 +2179,8 @@ module.exports = async (req, res) => {
         "draftが選択済みカードの一部を落としている場合、sourceFactsに明記された未使用の事実だけを補ってください。新しい事実を足すこととは区別し、野菜と花、歌と踊り、複数の旅行先など、同じカード内の異なる事実を省略しないでください。",
         "開式案内の直前で「感謝の思い」を二文連続させないでください。前の一文が定型案内と重なる場合は削ってください。",
         "抽象的な美辞、人生訓、標語、AIらしいまとめを加えないでください。事実だけでは支えられない文は、別の美文へ置き換えず削ってください。",
+        "笑顔の段落は一文だけにし、笑顔・よく笑う・顔が浮かぶ・記憶に残るという同義の説明を重ねないでください。開式前の最後に、すでに書いた趣味や場面を一覧で要約する段落を置かないでください。",
+        "閉式後の旅行先は一度だけ書いてください。第一段落は場所、誕生日月、親子三代の事実を三文でまとめ、第二段落はsourceFactsにある家族の気持ちと余韻を二〜三文で結んでください。文章構成を説明する『開式前にたどった記憶』は使用禁止です。",
         "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて520〜700字、閉式後本文は200〜300字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
         "自然さと正確さを最優先しながら、初稿にある異なる事実と必要な段落の呼吸は残してください。",
         "最後に音読を想定し、一度で意味が伝わるか確認してから完成稿だけを返してください。",
