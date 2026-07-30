@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260730.17";
+const API_BUILD_ID = "narration-studio-20260730.18";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1064,9 +1064,12 @@ const collapseRepeatedSmileParagraph = (value, displayName) => {
       const prefix = sentences
         .slice(0, smileIndex)
         .filter(sentence => !/(?:笑|お顔|表情|思い浮か)/u.test(sentence))
-        .join("\n")
-        .trim();
-      return prefix ? `${prefix}\n${canonical}` : canonical;
+        .join("\n");
+      const suffix = sentences
+        .slice(smileIndex + 1)
+        .filter(sentence => !/(?:笑|お顔|表情|よく笑|記憶の入口)/u.test(sentence))
+        .join("\n");
+      return [prefix, canonical, suffix].filter(Boolean).join("\n").trim();
     })
     .join("");
 };
