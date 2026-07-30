@@ -81,6 +81,34 @@ for (const banned of [
 }
 assert.equal(chienoFamilyNear.closingNarration.includes("チエノ様のように"), true);
 
+const chienoLatest = context.testHelpers.normalizeFamilyNearNarration({
+  openingNarration: [
+    "チエノ様を思うと、いつも笑っておられたお顔が浮かびます。笑っているお顔しか思い出せないほど、よく笑っておられた方でございました。そのお顔は、ご家族の記憶に残っています。",
+    "歌われることがありました。踊られることもあり、そのご様子は、いつも可愛らしいものとして残されています。",
+    "手芸では、手を動かして形にしてこられました。野菜には手をかけて育てておられました。お花にも手をかけて育ててこられたチエノ様。手芸に向かう手元も、野菜やお花に手をかけるお姿も、今では懐かしい場面でございます。",
+    "ご家族を大切にしてこられました。折に触れて、「人の悪口を言ってはいけない」と話しておられました。",
+    "チエノ様とともに過ごしてこられたことへ、感謝の思いが寄せられます。",
+    "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
+  ].join("\n\n"),
+  closingNarration: [
+    "親子三代で、六甲へ出かけられました。小倉、下関、博多へも、ご一緒に旅行をされました。いずれも、お誕生日月である十月に行かれたものでございます。",
+    "六甲、小倉、下関、博多という行き先が、チエノ様とのご旅行を思い起こさせます。私も彼女を見習い、明るく前向きに歩んでいきたい、というお気持ちが残されています。",
+  ].join("\n\n"),
+}, chienoPrompt);
+const chienoLatestFull = `${chienoLatest.openingNarration}\n${chienoLatest.closingNarration}`;
+for (const banned of [
+  "よく笑っておられた方でございました",
+  "そのお顔は、ご家族の記憶に残っています",
+  "歌われることがありました。踊られることもあり",
+  "野菜には手をかけて育てておられました。お花にも",
+  "感謝の思いが寄せられます。\n\n尽きることのない感謝",
+  "私も彼女",
+  "ご一緒に旅行をされました",
+  "という行き先が",
+]) {
+  assert.equal(chienoLatestFull.includes(banned), false, `newest awkward phrase remained: ${banned}`);
+}
+
 const familyNear = context.testHelpers.normalizeQuotationContext({
   openingNarration: [
     "いつも笑顔が身近にありました。歌ったり、踊ったりされる澄子様のお姿を、ご家族は愛らしく感じておられました。",
@@ -190,21 +218,10 @@ const smilingPlan = context.testHelpers.pickMemoryCards({
   valuedThings: "家族を大切にしていた。",
   familyFeelings: "その朗らかさを忘れずにいたい。",
 });
-assert.equal(
-  smilingPlan.opening.supports.some(card => card.field === "personality"),
-  true,
-);
-assert.deepEqual(
-  Array.from(
-    smilingPlan.opening.supports.find(card => card.field === "personality")
-      .doNotRepeatTopics,
-  ),
-  ["smile"],
-);
-assert.equal(
-  smilingPlan.opening.supports.some(card => card.field === "valuedThings"),
-  true,
-);
+assert.equal(smilingPlan.opening.maximumFacts, 3);
+assert.equal(1 + smilingPlan.opening.supports.length <= 3, true);
+assert.equal(smilingPlan.opening.supports.some(card => card.field === "favoritePhrases"), true);
+assert.equal(smilingPlan.opening.supports.some(card => card.field === "hobbies"), true);
 
 const markdownReference = [
   "# 教科書",
