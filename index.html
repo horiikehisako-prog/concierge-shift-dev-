@@ -3617,6 +3617,7 @@ const compassEmptyStudio=()=>({
   closingFields:[],
   revisionInstruction:"",
   revisionCount:0,
+  forceAiGeneration:false,
   finalChecks:{nameAge:false,facts:false,religion:false,readAloud:false},
   status:"hearing",
 });
@@ -3679,6 +3680,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
   const payload={
     workflow:"Hearing Sheet -> Fact Cards -> Staff Composition -> AI Draft -> Staff Revision -> Final Check -> Save",
     workflowMode:studio?.workflowMode||"draft",
+    forceAiGeneration:studio?.forceAiGeneration===true,
     staffCompositionPlan:compassPlanPayload(hearingSheet,studio),
     revisionDraft:studio?.workflowMode==="revision"?clean(studio?.revisionDraft):"",
     revisionInstruction:studio?.workflowMode==="revision"?clean(studio?.revisionInstruction):"",
@@ -4402,6 +4404,10 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
         })}
       </div>
       {!planReady&&<div style={{marginTop:10,color:C.red,fontSize:13,fontWeight:800}}>開式前と閉式後に、それぞれ一枚以上を選んでください。</div>}
+      <label style={{display:"flex",alignItems:"flex-start",gap:9,marginTop:14,border:`1px solid ${studio.forceAiGeneration?C.amber:C.border}`,borderRadius:9,padding:"10px 12px",background:studio.forceAiGeneration?"#fff7ed":"#f8fafc",cursor:"pointer"}}>
+        <input type="checkbox" checked={!!studio.forceAiGeneration} onChange={e=>setStudio(s=>({...s,forceAiGeneration:e.target.checked}))} style={{marginTop:2}}/>
+        <span><b style={{display:"block",fontSize:13,color:studio.forceAiGeneration?"#92400e":C.navy}}>Compass安定作成を使わず、強制的にAI生成する</b><span style={{display:"block",fontSize:11,color:C.muted,lineHeight:1.55,marginTop:3}}>チェックすると、安定作成の対象でも必ずOpenAIへ送信します。OpenAIの利用枠不足や接続エラーがある場合、原稿は作成されません。</span></span>
+      </label>
       <button onClick={()=>makeDraft("draft")} disabled={!planReady||generating||aiControl.enabled===false} style={{...Btn(planReady&&!generating&&aiControl.enabled!==false?C.navy:C.muted),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>この構成でAI下書きを作る</button>
     </div>}
     {role==="admin"&&<div style={GC}>
@@ -4434,6 +4440,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
               ["使用モデル",draft.generationTrace.model||"-"],
               ["APIビルド",draft.generationTrace.apiBuildId||draft.generationDiagnostics?.buildId||"-"],
               ["管理者プロンプト",draft.generationTrace.managedPromptApplied?`適用（${Number(draft.generationTrace.managedPromptCharacters||0).toLocaleString("ja-JP")}文字）`:draft.generationTrace.stablePromptBypass?"安定作成のため対象外":"未適用"],
+              ["強制AI生成",draft.generationTrace.forceAiGeneration?"使用":"未使用"],
               ["品質検査",draft.generationTrace.qualityStatus==="passed"?"合格":draft.generationTrace.qualityStatus==="warning"?"警告あり":"-"],
               ["生成後の日本語調整",({edited_draft_selected:"調整版を採用",original_draft_selected:"初稿を採用",skipped:"調整を省略",not_run:"実施なし"})[draft.generationTrace.copyEditRoute]||draft.generationTrace.copyEditRoute||"-"],
             ].map(([label,value])=><div key={label} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",background:"#fff"}}><div style={{fontSize:10,color:C.muted,fontWeight:900}}>{label}</div><div style={{fontSize:12,color:C.text,fontWeight:800,marginTop:3,wordBreak:"break-word"}}>{value}</div></div>)}

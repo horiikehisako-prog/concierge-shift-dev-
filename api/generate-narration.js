@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.42";
+const API_BUILD_ID = "narration-studio-20260801.43";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -331,6 +331,7 @@ const buildGenerationTrace = (prompt, {
     ? payload.selectedLibraryStyleReferences[0]
     : null;
   const managedPrompt = String(payload.managedSystemPrompt || "").trim();
+  const forceAiGeneration = payload.forceAiGeneration === true;
   const stable = source === "stable_family_portrait";
   return {
     source: source || "unknown",
@@ -342,6 +343,7 @@ const buildGenerationTrace = (prompt, {
     model: stable ? "AI未使用" : model,
     managedPromptApplied: !stable && Boolean(managedPrompt),
     managedPromptCharacters: managedPrompt.length,
+    forceAiGeneration,
     stablePromptBypass: stable,
     selectedReference: selectedReference ? {
       id: String(selectedReference.id || ""),
@@ -358,7 +360,7 @@ const buildGenerationTrace = (prompt, {
     qualityFailures: Array.isArray(qualityFailures) ? qualityFailures : [],
     stages: stable
       ? ["ヒアリング", "事実カード分担", "安定作成判定", "固定構成で作成", "品質検査", "表示"]
-      : ["ヒアリング", "事実カード分担", "教科書1件を選択", "管理者プロンプト合流", "OpenAI生成", "日本語調整", "品質検査", "表示"],
+      : ["ヒアリング", "事実カード分担", ...(forceAiGeneration ? ["強制AI生成指定"] : []), "教科書1件を選択", "管理者プロンプト合流", "OpenAI生成", "日本語調整", "品質検査", "表示"],
   };
 };
 
@@ -2357,7 +2359,8 @@ module.exports = async (req, res) => {
       res.end(JSON.stringify({ error: "prompt is required" }));
       return;
     }
-    const stableDraft = buildStableFamilyPortrait({
+    const forceAiGeneration = extractPromptPayload(rawPrompt)?.forceAiGeneration === true;
+    const stableDraft = forceAiGeneration ? null : buildStableFamilyPortrait({
       detectedTheme: "家族愛",
       improvementNotes: "",
     }, rawPrompt);
