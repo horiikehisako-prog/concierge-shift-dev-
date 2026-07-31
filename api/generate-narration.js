@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.40";
+const API_BUILD_ID = "narration-studio-20260801.41";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -305,6 +305,17 @@ const extractPromptPayload = prompt => {
     }
   }
   return null;
+};
+
+const activeNarrationSystemPrompt = prompt => {
+  const payload = extractPromptPayload(prompt);
+  const managedPrompt = String(payload?.managedSystemPrompt || "").trim().slice(0, 12000);
+  if (!managedPrompt) return NARRATION_AUTHOR_SYSTEM_PROMPT;
+  return [
+    NARRATION_AUTHOR_SYSTEM_PROMPT,
+    "以下は管理者がCompass画面で保存した最優先の文章表現ルールです。上記のJSON形式、事実限定、氏名、式次第、安全上の固定条件と矛盾しない範囲では、以下を最優先してください。",
+    managedPrompt,
+  ].join("\n\n");
 };
 
 const buildVenueNames = prompt => {
@@ -2346,6 +2357,7 @@ module.exports = async (req, res) => {
       return;
     }
     const prompt = compactNarrationPrompt(rawPrompt);
+    const systemPrompt = activeNarrationSystemPrompt(rawPrompt);
     const debugQuality = body.debugQuality === true;
 
     const model = "gpt-5.5";
@@ -2359,7 +2371,7 @@ module.exports = async (req, res) => {
       temperature,
       maxTokens,
       prompt,
-      systemPromptOverride: NARRATION_AUTHOR_SYSTEM_PROMPT,
+      systemPromptOverride: systemPrompt,
       extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
     });
     const firstDraft = parsed;
@@ -2386,7 +2398,7 @@ module.exports = async (req, res) => {
           maxTokens,
           prompt,
           timeoutMs: 32000,
-          systemPromptOverride: NARRATION_AUTHOR_SYSTEM_PROMPT,
+          systemPromptOverride: systemPrompt,
           extraInstruction: [
             "LENGTH REPAIR: the first opening draft was too short.",
             "Rewrite the complete opening and closing, using exactly the same sourceFacts and no new fact, feeling, adjective, scenery, action, or interpretation.",

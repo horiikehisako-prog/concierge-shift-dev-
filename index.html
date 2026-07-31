@@ -898,6 +898,13 @@ const DEFAULT_COMPASS_FUTURE = {
   features:{proofreading:false,scoring:false,readingPractice:false,voiceAnalysis:false},
   storage:{proofreadingCollection:"compassProofreading",scoreCollection:"compassScores",practiceCollection:"readingPractice",voiceCollection:"voiceAnalysis"},
 };
+const DEFAULT_NARRATION_SYSTEM_PROMPT = `ご家族が聞いて、ご本人との日々を自然に重ねられる文章にしてください。
+司会者が外から人物を紹介・評価する書き方や、取材内容を報告する書き方は避けてください。
+同じ事実や同じ意味を言い直さず、一つの記憶は一度だけ書いてください。
+「ました・でした・ございます・おります」を同じ調子で三文続けず、接続助詞、連用形、自然な現在形を交えて読み上げの呼吸を整えてください。
+「一日一日」は使わず、文意に応じて「日々」「これからの日々」などへ整えてください。
+開式前と閉式後では異なる思い出を使い、閉式後で開式前の内容を要約し直さないでください。
+入力にない場面、感情、家族の反応、人物評価は加えず、完成した自然な日本語だけを返してください。`;
 const DEFAULT_THEMES = ["家族愛","働き者","優しさ","ご縁","地域への貢献","趣味を通じた人生","教育","挑戦"];
 const COMPASS_DICTIONARIES=[
   {id:"personality",label:"Personality Dictionary"},
@@ -1073,6 +1080,7 @@ function App(){
     compassNarrationLibrary:mergeCompassNarrationLibrarySeeds(raw.compassNarrationLibrary),
     compassFuture:{...DEFAULT_COMPASS_FUTURE,...(raw.compassFuture||{}),
       providers:{...DEFAULT_COMPASS_FUTURE.providers,...((raw.compassFuture||{}).providers||{})}},
+    narrationSystemPrompt:typeof raw.narrationSystemPrompt==="string"?raw.narrationSystemPrompt:DEFAULT_NARRATION_SYSTEM_PROMPT,
     aiSettings:normalizeAISettings(raw.aiSettings),
     compassThemes:ensureArray(raw.compassThemes).length?ensureArray(raw.compassThemes):DEFAULT_THEMES,
   };
@@ -1082,7 +1090,7 @@ function App(){
   useEffect(()=>{
     const s=D.settings;
     if(!s) return;
-    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.narrationSamples||!s.compassNarrationLibrary||!compassLibraryHasAllSeeds(s.compassNarrationLibrary)||!s.compassFuture||!s.aiSettings||!s.compassThemes;
+    const missingCompass=!s.seasonalIntros||!s.endingPhrases||!s.compassDictionary||!s.forbiddenWords||!s.narrationSamples||!s.compassNarrationLibrary||!compassLibraryHasAllSeeds(s.compassNarrationLibrary)||!s.compassFuture||!s.aiSettings||!s.compassThemes||typeof s.narrationSystemPrompt!=="string";
     const hasLegacyAIFlag=!!(s.aiSettings&&Object.prototype.hasOwnProperty.call(s.aiSettings,"callEnabled"));
     if(missingCompass||hasLegacyAIFlag) stSave("settings",sanitizeSettingsForSave({...s,
       seasonalIntros:cfg.seasonalIntros,
@@ -1094,6 +1102,7 @@ function App(){
       compassFuture:cfg.compassFuture,
       aiSettings:cfg.aiSettings,
       compassThemes:cfg.compassThemes,
+      narrationSystemPrompt:cfg.narrationSystemPrompt,
     }));
   },[D.settings]);
   useEffect(()=>{
@@ -3674,6 +3683,7 @@ const compassBuildNarrationPrompt=(sheet,cfg,theme,selectedLibraryReferences=[],
     revisionDraft:studio?.workflowMode==="revision"?clean(studio?.revisionDraft):"",
     revisionInstruction:studio?.workflowMode==="revision"?clean(studio?.revisionInstruction):"",
     provider:{selected:ai.provider||"openai",model:ai.model||DEFAULT_AI_SETTINGS.model,apiCallEnabled:true},
+    managedSystemPrompt:clean(cfg.narrationSystemPrompt||DEFAULT_NARRATION_SYSTEM_PROMPT).slice(0,12000),
     writingRules:{
       season,
       themeSelection:"書き始める前に人生のテーマを一つだけ決める。例: 家族愛、やさしさ、働き者、前向きに生きる、自然を愛する、人に教える、地域とのつながり。openingNarrationとclosingNarrationは同じテーマに沿わせる。",
@@ -3954,6 +3964,7 @@ function CompassMasterEditor({cfg,sv,flash,role}) {
   const [forbidden,setForbidden]=useState(()=>compassListText(cfg.forbiddenWords));
   const [dict,setDict]=useState(()=>JSON.stringify(cfg.compassDictionary,null,2));
   const [future,setFuture]=useState(()=>JSON.stringify(cfg.compassFuture,null,2));
+  const [systemPrompt,setSystemPrompt]=useState(()=>cfg.narrationSystemPrompt||DEFAULT_NARRATION_SYSTEM_PROMPT);
   const [samples,setSamples]=useState(()=>normalizeNarrationSamples(cfg.narrationSamples));
   const [saved,setSaved]=useState(false);
   const updateSample=(id,patch)=>setSamples(list=>normalizeNarrationSamples(list.map(s=>s.id===id?{...s,...patch}:s)));
@@ -3978,13 +3989,22 @@ function CompassMasterEditor({cfg,sv,flash,role}) {
     try{nextDict=JSON.parse(dict);}catch(e){flash?.("Compass Writing DictionaryはJSON形式で確認してください");return;}
     try{nextFuture=JSON.parse(future);}catch(e){flash?.("将来設計はJSON形式で確認してください");return;}
     const next={...cfg,seasonalIntros:nextSeasonal,endingPhrases:compassToList(endings),compassThemes:compassToList(themes),
-      forbiddenWords:compassToList(forbidden),compassDictionary:nextDict,compassFuture:nextFuture,narrationSamples:normalizeNarrationSamples(samples)};
+      forbiddenWords:compassToList(forbidden),compassDictionary:nextDict,compassFuture:nextFuture,narrationSystemPrompt:systemPrompt,narrationSamples:normalizeNarrationSamples(samples)};
     await sv.sets(next);
     setSaved(true);setTimeout(()=>setSaved(false),1800);
   };
   if(!["admin","support"].includes(role)) return null;
   return <div style={GC}>
     <h3 style={{margin:"0 0 12px",fontSize:16,color:C.navy}}>Compass AI 編集マスター</h3>
+    {role==="admin"&&<div style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:12,background:"#fffaf7"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap",marginBottom:6}}>
+        <label style={{fontSize:13,fontWeight:900,color:C.navy}}>最優先ナレーションプロンプト</label>
+        <button type="button" onClick={()=>setSystemPrompt(DEFAULT_NARRATION_SYSTEM_PROMPT)} style={{...Btn("#fff",C.navy),border:`1px solid ${C.border}`,padding:"6px 9px",fontSize:11}}>初期内容に戻す</button>
+      </div>
+      <div style={{fontSize:11,color:C.muted,lineHeight:1.6,marginBottom:7}}>ここで保存した文章表現のルールは、次回の通常AI生成から最優先で反映されます。JSON形式・事実の創作禁止・氏名・式次第の定型案内など、安全に必要な基本制御は固定です。Compass安定作成はAIを使わないため、この欄の対象外です。</div>
+      <textarea value={systemPrompt} onChange={e=>setSystemPrompt(e.target.value)} rows={12} maxLength={12000} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:13,lineHeight:1.7,resize:"vertical"}}/>
+      <div style={{textAlign:"right",fontSize:11,color:C.muted,marginTop:4}}>{systemPrompt.length.toLocaleString("ja-JP")} / 12,000文字</div>
+    </div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12}}>
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>季節の導入文（JSON）</label><textarea value={seasonal} onChange={e=>setSeasonal(e.target.value)} rows={10} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:13,fontFamily:"monospace"}}/></div>
       <div><label style={{fontSize:12,fontWeight:800,color:C.muted}}>結びの言葉（1行ずつ。並び順を反映）</label><textarea value={endings} onChange={e=>setEndings(e.target.value)} rows={10} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:13}}/></div>
