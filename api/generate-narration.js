@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.44";
+const API_BUILD_ID = "narration-studio-20260801.45";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -18,7 +18,7 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三〜四つの思い出の段落、開式案内の順です。定型文を含め350〜550字、七〜十一文、四〜六段落で書いてください。",
   "閉式後本文は、開式前で使わなかった具体的な思い出から始め、入力にある場合だけご家族の気持ちへ結びます。160〜260字、四〜六文、二〜三段落で書き、式次第の定型案内は書かないでください。",
   "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
-  "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、思い出が今も目に浮かぶ箇所の自然な現在形を二〜四文ほど交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
+  "定型文を除き、文末が『ました・でした・ございました・おりました』となる文は、開式前で最大二文、閉式後で最大一文にしてください。『ありました・おられました・こられました』もすべて同じ過去敬体として数えます。接続助詞、連用形、自然な現在形、必要最小限の体言止めを交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
   "同じ内容は一度だけ書いてください。笑顔を書いた直後に、よく笑う人だった、その顔が記憶に残る、と説明し直してはいけません。歌と踊り、手芸と草花、旅行先など、近い事実は一つの流れへまとめてください。",
   "『一日一日』は使わないでください。文法的には正しくても、読み上げでは定型的で機械的に聞こえます。文意に応じて『日々』『これからの日々』などの平明な表現へ整えてください。ただし、入力された具体的な場面を耳で伝えやすくする『ひと針ひと針』のような自然な反復まで一律に避ける必要はありません。",
   "ご家族が『いつも笑っている顔しか思い出せない』と話している場合、笑顔の段落はその事実を伝える一文だけにしてください。笑顔、よく笑う人、顔が浮かぶ、記憶に残る、という同義の説明を重ねてはいけません。",
@@ -1574,6 +1574,14 @@ const hasExcessiveConsecutivePoliteEndings = text => {
     .replace(/故[^。\n]+様は、[^。\n]+尊いご生涯を閉じ、静かに人生の幕を下ろされました。?/u, "")
     .replace(/尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。?/u, "")
     .replace(/(?:\d+|[〇零一二三四五六七八九十百]+)年のご生涯に心からの敬意を表し、過ごしてまいりました葬送のひととき。[\s\S]*?どうぞよろしくお願いいたします。?/u, "");
+  const allSentences = withoutFixed
+    .split(/[。！？]/u)
+    .map(value => value.trim())
+    .filter(Boolean);
+  const politeCount = allSentences.filter(sentence => POLITE_ENDING_RE.test(sentence)).length;
+  // A draft can avoid three adjacent polite endings while still sounding
+  // mechanical almost everywhere. Reject that overall density as well.
+  if (allSentences.length >= 6 && politeCount / allSentences.length > 0.72) return true;
   return withoutFixed.split(/\n{2,}/u).some(paragraph => {
     const sentences = paragraph.split(/[。！？]/u).map(value => value.trim()).filter(Boolean);
     for (let index = 2; index < sentences.length; index += 1) {
@@ -1598,6 +1606,10 @@ const hasConsecutivePastPoliteEndings = text => {
     .map(value => value.trim())
     .filter(Boolean);
   const pastEnding = /(?:ました|でした|ございました|おりました)$/u;
+  // Count variants such as ありました・おられました・こられました as
+  // the same audible ending. Outside the fixed guidance, more than three
+  // past-polite sentence endings makes the whole manuscript monotonous.
+  if (sentences.filter(sentence => pastEnding.test(sentence)).length > 3) return true;
   for (let index = 2; index < sentences.length; index += 1) {
     if (
       pastEnding.test(sentences[index - 2]) &&
@@ -2494,7 +2506,7 @@ module.exports = async (req, res) => {
         "同じ記憶を言い換えて説明し直している文は一つにまとめてください。引用の後に意味や人格を解説しないでください。",
         "司会者が外から人物を評価する文、ご家族の気持ちを推測する文、聞き取りを報告する文を削ってください。",
         "助詞、主語と述語、修飾関係を確認し、途中で切れた文を残さないでください。体言止めは原則使わないでください。",
-        "同じ「ました・でした・ございます」が三文続かないよう、文のつながり自体を整えてください。不自然な歴史的現在形へ機械的に変えないでください。",
+        "定型文を除き、文末が「ました・でした・ございました・おりました」となる文は、開式前で最大二文、閉式後で最大一文にしてください。「ありました・おられました・こられました」も同じ文末として数えます。単語だけを置換せず、近い動作を接続助詞や連用形でつなぎ、思い出の場面には自然な現在形を交えて、段落全体の組み立てを直してください。不自然な歴史的現在形へ機械的に変えないでください。",
         "「歌われることがありました。踊られることもありました」「野菜を育てておられました。お花も育てておられました」のような取材項目の羅列は、近い動作を一つの自然な流れへまとめてください。",
         "笑顔の記憶を書いた直後に、よく笑う人だった、その顔が記憶に残る、と同じ内容を説明し直さないでください。",
         "「私」「彼」「彼女」は使用禁止です。ご家族のお気持ちはsourceFactsの意味を変えず、司会者個人の一人称にしないでください。",
