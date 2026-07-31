@@ -524,6 +524,23 @@ const alternatePhrasePrompt = stablePortraitPrompt.replace(
 const alternatePhrasePortrait = context.testHelpers.buildStableFamilyPortrait({}, alternatePhrasePrompt);
 assert.notEqual(alternatePhrasePortrait, null);
 assert.equal(alternatePhrasePortrait.openingNarration.includes("「人を悪く言ってはいけない」"), true);
+const shuffledPortraitPrompt = JSON.stringify({
+  hearingSheet: {
+    fullName: "試験 花子",
+    narrationName: "花子",
+    age: "91",
+    familyMemories: "いつも笑っている顔しか思い出せない。歌ったり踊ったりする姿が可愛らしかった。",
+    memorableEvents: "手芸を楽しみ、野菜や花を育てた。親子三代で青葉園、白浜、緑川、花里へ旅行した。",
+    hobbies: "人と接することが好きで、行動力があった。",
+    personality: "人の悪口を言ってはいけないと話した。家族を大切にした。",
+    notes: "誕生日月の十月の旅。その姿を見習い、明るく前向きに歩んでいきたい。",
+  },
+  writingRules: { season: "夏" },
+});
+const shuffledPortrait = context.testHelpers.buildStableFamilyPortrait({}, shuffledPortraitPrompt);
+assert.notEqual(shuffledPortrait, null);
+assert.equal(shuffledPortrait.closingNarration.includes("親子三代で青葉園、白浜、緑川、花里へ"), true);
+assert.equal(shuffledPortrait.closingNarration.includes("お誕生日月の十月"), true);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",

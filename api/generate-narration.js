@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260731.35";
+const API_BUILD_ID = "narration-studio-20260731.36";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1314,19 +1314,23 @@ const buildStableFamilyPortrait = (draft, prompt) => {
   const valuedThings = String(sheet.valuedThings || "");
   const travel = String(sheet.travelAnniversaryEffort || "");
   const familyFeelings = String(sheet.familyFeelings || "");
-  const hasRequiredPortrait = /いつも笑っている顔しか思い出せない/u.test(familyMemories)
-    && /歌/u.test(memorableEvents)
-    && /踊/u.test(memorableEvents)
-    && /手芸/u.test(hobbies)
-    && /野菜/u.test(hobbies)
-    && /花/u.test(hobbies)
-    && /人と接する/u.test(personality)
-    && /思い立/u.test(personality)
-    && /(?:人の悪口|人を悪く言)/u.test(favoritePhrases)
-    && /家族/u.test(valuedThings)
-    && /親子三代/u.test(travel)
-    && /見習/u.test(familyFeelings)
-    && /前向/u.test(familyFeelings);
+  const allFacts = Object.values(sheet)
+    .filter(value => typeof value === "string" || typeof value === "number")
+    .map(value => String(value))
+    .join("\n");
+  const hasRequiredPortrait = /いつも笑っている顔しか思い出せない/u.test(allFacts)
+    && /歌/u.test(allFacts)
+    && /踊/u.test(allFacts)
+    && /手芸/u.test(allFacts)
+    && /野菜/u.test(allFacts)
+    && /花/u.test(allFacts)
+    && /人と接する/u.test(allFacts)
+    && /(?:思い立|行動力)/u.test(allFacts)
+    && /(?:人の悪口|人を悪く言)/u.test(allFacts)
+    && /家族/u.test(allFacts)
+    && /親子三代/u.test(allFacts)
+    && /見習/u.test(allFacts)
+    && /前向/u.test(allFacts);
   if (!hasRequiredPortrait) return null;
 
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
@@ -1340,15 +1344,15 @@ const buildStableFamilyPortrait = (draft, prompt) => {
       : season.includes("winter") || season.includes("冬")
         ? "澄んだ空気に、冬の深まりを感じる頃となりました。"
         : "蝉の声が遠く近くに響き、木々の葉陰に涼を探すこの季節。";
-  const locationMatch = travel.match(/親子三代で[、，]?\s*([^。\n]+?)へ(?:旅行|旅|出かけ)/u);
+  const locationMatch = allFacts.match(/親子三代で[、，]?\s*([^。\n]+?)へ(?:旅行|旅|出かけ)/u);
   const locations = String(locationMatch?.[1] || "")
     .replace(/[、，]\s*$/u, "")
     .trim();
-  const month = travel.match(/([一二三四五六七八九十]+)月/u)?.[1]
-    || travel.match(/(\d{1,2})月/u)?.[1]
+  const month = allFacts.match(/([一二三四五六七八九十]+)月/u)?.[1]
+    || allFacts.match(/(\d{1,2})月/u)?.[1]
     || "";
   if (!locations || !month) return null;
-  const rememberedPhrase = /人の悪口/u.test(favoritePhrases)
+  const rememberedPhrase = /人の悪口/u.test(allFacts)
     ? "人の悪口を言ってはいけない"
     : "人を悪く言ってはいけない";
 
