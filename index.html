@@ -3838,6 +3838,10 @@ const compassFormatDraft=response=>{
       closing||"（生成結果が空でした）",
     ].join("\n"),
     generationSource:response?.generationSource||response?.source||"openai",
+    generationDiagnostics:response?.generationDiagnostics||{},
+    generationTrace:response?.generationTrace||null,
+    qualityWarning:clean(response?.qualityWarning||""),
+    qualityFailures:ensureArray(response?.qualityFailures),
     fallbackReason:clean(response?.fallbackReason||response?.reason||""),
   };
 };
@@ -4419,6 +4423,30 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       <h3 style={{margin:"0 0 4px",fontSize:16,color:C.navy}}>スタッフ仕上げ</h3>
       <div style={{fontSize:13,color:C.text,lineHeight:1.6,marginBottom:10}}>ここからは完成稿ではなく共同編集です。AIへの修正依頼も、スタッフの直接修正もできます。</div>
       <textarea value={draft.full} onChange={e=>{setDraft(d=>({...d,full:e.target.value}));setStudio(s=>({...s,step:4,status:"editing",finalChecks:compassEmptyStudio().finalChecks}));}} rows={24} placeholder="AI下書きがここに表示されます。スタッフが直接書き直せます。" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"12px",fontSize:14,lineHeight:1.8,resize:"vertical"}}/>
+      {draft.full.trim()&&<details style={{marginTop:12,border:`1px solid ${C.border}`,borderRadius:10,padding:12,background:"#f8fafc"}}>
+        <summary style={{cursor:"pointer",fontSize:13,fontWeight:900,color:C.navy}}>生成経路を確認</summary>
+        {draft.generationTrace?<div style={{marginTop:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:8}}>
+            {[
+              ["生成方法",draft.generationTrace.sourceLabel||draft.generationSource||"-"],
+              ["作成区分",draft.generationTrace.workflowLabel||"-"],
+              ["生成日時",draft.generationTrace.generatedAt?new Date(draft.generationTrace.generatedAt).toLocaleString("ja-JP"):"-"],
+              ["使用モデル",draft.generationTrace.model||"-"],
+              ["APIビルド",draft.generationTrace.apiBuildId||draft.generationDiagnostics?.buildId||"-"],
+              ["管理者プロンプト",draft.generationTrace.managedPromptApplied?`適用（${Number(draft.generationTrace.managedPromptCharacters||0).toLocaleString("ja-JP")}文字）`:draft.generationTrace.stablePromptBypass?"安定作成のため対象外":"未適用"],
+              ["品質検査",draft.generationTrace.qualityStatus==="passed"?"合格":draft.generationTrace.qualityStatus==="warning"?"警告あり":"-"],
+              ["生成後の日本語調整",({edited_draft_selected:"調整版を採用",original_draft_selected:"初稿を採用",skipped:"調整を省略",not_run:"実施なし"})[draft.generationTrace.copyEditRoute]||draft.generationTrace.copyEditRoute||"-"],
+            ].map(([label,value])=><div key={label} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",background:"#fff"}}><div style={{fontSize:10,color:C.muted,fontWeight:900}}>{label}</div><div style={{fontSize:12,color:C.text,fontWeight:800,marginTop:3,wordBreak:"break-word"}}>{value}</div></div>)}
+          </div>
+          <div style={{marginTop:10,border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:11,color:C.muted,fontWeight:900,marginBottom:5}}>通過した経路</div><div style={{fontSize:12,lineHeight:1.7,fontWeight:800,color:C.navy}}>{ensureArray(draft.generationTrace.stages).join(" → ")||"-"}</div></div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:8,marginTop:10}}>
+            <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:11,color:C.muted,fontWeight:900,marginBottom:5}}>開式前に割り当てた事実</div><div style={{fontSize:12,lineHeight:1.7}}>{ensureArray(draft.generationTrace.openingFacts).map(v=>v.label).filter(Boolean).join("、")||"記録なし"}</div></div>
+            <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:11,color:C.muted,fontWeight:900,marginBottom:5}}>閉式後に割り当てた事実</div><div style={{fontSize:12,lineHeight:1.7}}>{ensureArray(draft.generationTrace.closingFacts).map(v=>v.label).filter(Boolean).join("、")||"記録なし"}</div></div>
+          </div>
+          <div style={{marginTop:10,border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:11,color:C.muted,fontWeight:900,marginBottom:5}}>参照した教科書</div><div style={{fontSize:12,lineHeight:1.7}}>{draft.generationTrace.selectedReference?.title||"参照なし"}</div></div>
+          {ensureArray(draft.generationTrace.qualityFailures).length>0&&<div style={{marginTop:10,border:`1px solid ${C.amber}`,borderRadius:8,padding:10,background:"#fff7ed",color:"#92400e",fontSize:12,lineHeight:1.7}}><b>品質検査の警告:</b> {draft.generationTrace.qualityFailures.join("、")}</div>}
+        </div>:<div style={{marginTop:9,fontSize:12,color:C.muted,lineHeight:1.6}}>この原稿は経路記録機能を追加する前に作成されたため、詳しい生成経路は保存されていません。次回の生成・AI校正から記録されます。</div>}
+      </details>}
       {draft.full.trim()&&<div style={{marginTop:12,border:`1px solid ${C.border}`,borderRadius:10,padding:12,background:"#f8fafc"}}>
         <div style={{fontSize:13,fontWeight:900,color:C.navy,marginBottom:7}}>AIに直してほしい点</div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>

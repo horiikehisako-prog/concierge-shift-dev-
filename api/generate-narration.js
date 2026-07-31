@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.41";
+const API_BUILD_ID = "narration-studio-20260801.42";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -316,6 +316,50 @@ const activeNarrationSystemPrompt = prompt => {
     "以下は管理者がCompass画面で保存した最優先の文章表現ルールです。上記のJSON形式、事実限定、氏名、式次第、安全上の固定条件と矛盾しない範囲では、以下を最優先してください。",
     managedPrompt,
   ].join("\n\n");
+};
+
+const buildGenerationTrace = (prompt, {
+  source,
+  model = "",
+  qualityStatus = "passed",
+  qualityFailures = [],
+  copyEditRoute = "not_run",
+} = {}) => {
+  const payload = extractPromptPayload(prompt) || {};
+  const plan = payload.staffCompositionPlan || {};
+  const selectedReference = Array.isArray(payload.selectedLibraryStyleReferences)
+    ? payload.selectedLibraryStyleReferences[0]
+    : null;
+  const managedPrompt = String(payload.managedSystemPrompt || "").trim();
+  const stable = source === "stable_family_portrait";
+  return {
+    source: source || "unknown",
+    sourceLabel: stable ? "Compass安定作成" : source === "openai" ? "通常AI生成（OpenAI）" : "不明",
+    apiBuildId: API_BUILD_ID,
+    generatedAt: new Date().toISOString(),
+    workflowMode: payload.workflowMode === "revision" ? "revision" : "draft",
+    workflowLabel: payload.workflowMode === "revision" ? "AI全文校正" : "新規AI下書き",
+    model: stable ? "AI未使用" : model,
+    managedPromptApplied: !stable && Boolean(managedPrompt),
+    managedPromptCharacters: managedPrompt.length,
+    stablePromptBypass: stable,
+    selectedReference: selectedReference ? {
+      id: String(selectedReference.id || ""),
+      title: String(selectedReference.title || ""),
+    } : null,
+    openingFacts: Array.isArray(plan.opening)
+      ? plan.opening.map(card => ({ field: String(card.field || ""), label: String(card.label || card.field || "") }))
+      : [],
+    closingFacts: Array.isArray(plan.closing)
+      ? plan.closing.map(card => ({ field: String(card.field || ""), label: String(card.label || card.field || "") }))
+      : [],
+    copyEditRoute,
+    qualityStatus,
+    qualityFailures: Array.isArray(qualityFailures) ? qualityFailures : [],
+    stages: stable
+      ? ["ヒアリング", "事実カード分担", "安定作成判定", "固定構成で作成", "品質検査", "表示"]
+      : ["ヒアリング", "事実カード分担", "教科書1件を選択", "管理者プロンプト合流", "OpenAI生成", "日本語調整", "品質検査", "表示"],
+  };
 };
 
 const buildVenueNames = prompt => {
@@ -2337,6 +2381,10 @@ module.exports = async (req, res) => {
             closingLength: stableResult.closingNarration.length,
             possibleTruncation: false,
           },
+          generationTrace: buildGenerationTrace(rawPrompt, {
+            source: "stable_family_portrait",
+            qualityStatus: "passed",
+          }),
         }));
         return;
       }
@@ -2365,6 +2413,7 @@ module.exports = async (req, res) => {
     const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 4600, 100, 5600));
     let parsed = null;
     let lastCheck = null;
+    let copyEditRoute = "not_run";
     parsed = await requestNarration({
       apiKey,
       model,
@@ -2476,6 +2525,7 @@ module.exports = async (req, res) => {
       const generatedScore = narrationCandidateScore(normalizedGenerated, rawPrompt);
       const editedScore = narrationCandidateScore(normalizedEdited, rawPrompt);
       parsed = editedScore.score <= generatedScore.score ? normalizedEdited : normalizedGenerated;
+      copyEditRoute = editedScore.score <= generatedScore.score ? "edited_draft_selected" : "original_draft_selected";
       console.log("[generate-narration] copy edit selection", {
         buildId: API_BUILD_ID,
         selected: editedScore.score <= generatedScore.score ? "edited" : "generated",
@@ -2488,6 +2538,7 @@ module.exports = async (req, res) => {
         message: copyEditError?.message || String(copyEditError),
       });
       parsed = generatedDraft;
+      copyEditRoute = "skipped";
     }
     parsed = normalizeFamilyNearNarration(
       normalizeQuotationContext(limitDirectQuotes(parsed)),
@@ -2657,6 +2708,13 @@ module.exports = async (req, res) => {
           generationSource: "openai",
           qualityWarning: QUALITY_CHECK_FAILED_MESSAGE,
           qualityFailures: lastCheck?.failures || [],
+          generationTrace: buildGenerationTrace(rawPrompt, {
+            source: "openai",
+            model,
+            qualityStatus: "warning",
+            qualityFailures: lastCheck?.failures || [],
+            copyEditRoute,
+          }),
           improvementNotes: "",
         }));
         return;
@@ -2680,6 +2738,18 @@ module.exports = async (req, res) => {
     res.end(JSON.stringify({
       ...parsed,
       ...applyNameRule(parsed, rawPrompt),
+      generationSource: "openai",
+      generationDiagnostics: {
+        ...(parsed?.generationDiagnostics || {}),
+        buildId: API_BUILD_ID,
+      },
+      generationTrace: buildGenerationTrace(rawPrompt, {
+        source: "openai",
+        model,
+        qualityStatus: "passed",
+        qualityFailures: [],
+        copyEditRoute,
+      }),
     }));
   } catch (error) {
     console.error("[generate-narration] failed", {
