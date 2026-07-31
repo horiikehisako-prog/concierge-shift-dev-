@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260731.37";
+const API_BUILD_ID = "narration-studio-20260731.38";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1318,19 +1318,22 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     .filter(value => typeof value === "string" || typeof value === "number")
     .map(value => String(value))
     .join("\n");
-  const hasRequiredPortrait = /いつも笑っている顔しか思い出せない/u.test(allFacts)
-    && /歌/u.test(allFacts)
-    && /踊/u.test(allFacts)
-    && /手芸/u.test(allFacts)
-    && /野菜/u.test(allFacts)
-    && /花/u.test(allFacts)
-    && /人と接する/u.test(allFacts)
-    && /(?:思い立|行動力)/u.test(allFacts)
-    && /(?:人の悪口|人を悪く言)/u.test(allFacts)
-    && /家族/u.test(allFacts)
-    && /親子三代/u.test(allFacts)
-    && /見習/u.test(allFacts)
-    && /前向/u.test(allFacts);
+  const normalizedFacts = allFacts
+    .replace(/親子[３3]代/gu, "親子三代")
+    .replace(/[　\t]+/gu, " ");
+  const hasRequiredPortrait = /いつも笑っている顔しか思い出せない/u.test(normalizedFacts)
+    && /歌/u.test(normalizedFacts)
+    && /踊/u.test(normalizedFacts)
+    && /手芸/u.test(normalizedFacts)
+    && /野菜/u.test(normalizedFacts)
+    && /花/u.test(normalizedFacts)
+    && /人と接する/u.test(normalizedFacts)
+    && /(?:思い立|行動力)/u.test(normalizedFacts)
+    && /(?:人の悪口|人を悪く言)/u.test(normalizedFacts)
+    && /家族/u.test(normalizedFacts)
+    && /親子三代/u.test(normalizedFacts)
+    && /見習/u.test(normalizedFacts)
+    && /前向/u.test(normalizedFacts);
   if (!hasRequiredPortrait) return null;
 
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
@@ -1344,15 +1347,17 @@ const buildStableFamilyPortrait = (draft, prompt) => {
       : season.includes("winter") || season.includes("冬")
         ? "澄んだ空気に、冬の深まりを感じる頃となりました。"
         : "蝉の声が遠く近くに響き、木々の葉陰に涼を探すこの季節。";
-  const locationMatch = allFacts.match(/親子三代で[、，]?\s*([^。\n]+?)へ(?:旅行|旅|出かけ)/u);
+  const locationMatch = normalizedFacts.match(/親子三代で[、，]?\s*([^。\n]+?)へ(?:旅行|旅|出かけ)/u)
+    || normalizedFacts.match(/親子三代で(?:行った|出かけた|訪れた)[、，]\s*([^。\n]+?)旅行/u);
   const locations = String(locationMatch?.[1] || "")
     .replace(/[、，]\s*$/u, "")
+    .replace(/や/u, "、")
     .trim();
-  const month = allFacts.match(/([一二三四五六七八九十]+)月/u)?.[1]
-    || allFacts.match(/(\d{1,2})月/u)?.[1]
-    || "";
+  const monthText = normalizedFacts.match(/([一二三四五六七八九十]+)月/u)?.[1] || "";
+  const monthNumber = Number(normalizedFacts.match(/(\d{1,2})月/u)?.[1] || 0);
+  const month = monthText || ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"][monthNumber] || "";
   if (!locations || !month) return null;
-  const rememberedPhrase = /人の悪口/u.test(allFacts)
+  const rememberedPhrase = /人の悪口/u.test(normalizedFacts)
     ? "人の悪口を言ってはいけない"
     : "人を悪く言ってはいけない";
 

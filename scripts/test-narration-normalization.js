@@ -541,6 +541,30 @@ const shuffledPortrait = context.testHelpers.buildStableFamilyPortrait({}, shuff
 assert.notEqual(shuffledPortrait, null);
 assert.equal(shuffledPortrait.closingNarration.includes("親子三代で青葉園、白浜、緑川、花里へ"), true);
 assert.equal(shuffledPortrait.closingNarration.includes("お誕生日月の十月"), true);
+const actualCompassInputPrompt = JSON.stringify({
+  hearingSheet: {
+    deceasedName: "堀池 チエノ",
+    narrationName: "チエノ",
+    age: "91",
+    personality: "明るい、前向き、人の悪口を言わない、行動力がある、人と接する事が大好き",
+    hobbies: "手芸、野菜やお花を育てる",
+    memorableEvents: "歌ったり、踊ったりしていつも可愛い",
+    familyMemories: "いつも笑っている顔しか思い出せないほど、よく笑う人。",
+    familyFeelings: "私も彼女を見習い、明るく前向きに歩んでいきたい。",
+    travelAnniversaryEffort: "親子3代で行った、六甲や小倉、下関、博多旅行。どれもお誕生日月の10月に行った。",
+    favoritePhrases: "人の悪口を言ってはいけない",
+    valuedThings: "家族を大切にしていた",
+  },
+  writingRules: { season: "夏" },
+});
+const actualCompassPortrait = context.testHelpers.buildStableFamilyPortrait({}, actualCompassInputPrompt);
+assert.notEqual(actualCompassPortrait, null);
+assert.equal(actualCompassPortrait.closingNarration.includes("親子三代で六甲、小倉、下関、博多へ"), true);
+assert.equal(actualCompassPortrait.closingNarration.includes("お誕生日月の十月"), true);
+assert.equal(context.testHelpers.qualityCheckNarration(
+  context.testHelpers.applyNameRule(actualCompassPortrait, actualCompassInputPrompt),
+  actualCompassInputPrompt
+).failures.length, 0);
 
 const staffPlan = context.testHelpers.staffSelectedMemoryPlan({
   familyMemories: "家族で過ごした具体的な思い出。",
