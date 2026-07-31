@@ -3871,7 +3871,7 @@ const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
       }
       return compassUnavailableNarration({theme,reason:`${data?.code||data?.error||"API_ERROR"} ${res.status} at ${apiPath}${openAiMsg}${failures}`});
     }
-    return compassFormatDraft({...data,generationSource:"openai"});
+    return compassFormatDraft({...data,generationSource:data?.generationSource||"openai"});
   }catch(e){
     return compassUnavailableNarration({theme,reason:e?.message||"network error"});
   }
@@ -4249,7 +4249,9 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       setStudio(s=>({...s,step:4,status:"editing",revisionCount:s.revisionCount+(mode==="revision"?1:0),finalChecks:compassEmptyStudio().finalChecks}));
       const actualOutputTokens=estimateAITokens(generated.full||"");
       const usedOpenAI=generated.generationSource==="openai";
-      if(!usedOpenAI){
+      const usedStableNarration=generated.generationSource==="stable_family_portrait";
+      const generationCompleted=usedOpenAI||usedStableNarration;
+      if(!generationCompleted){
         const reason=generated.fallbackReason||generated.improvementNotes||"理由を取得できませんでした";
         const fallbackMsg=`AI生成を完了できなかったため、原稿は表示していません。理由: ${reason}`;
         setAiError(fallbackMsg);
@@ -4258,9 +4260,9 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       await writeUsage("success",{
         estimatedOutputTokens:actualOutputTokens,
         estimatedCostJpy:usedOpenAI?estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens):0,
-        billingSource:usedOpenAI?"OpenAI":"生成なし",
+        billingSource:usedOpenAI?"OpenAI":(usedStableNarration?"Compass安定作成":"生成なし"),
       });
-      if(usedOpenAI) flash?.(mode==="revision"?"AI校正が完了しました。内容を読み上げて確認してください。":"AI下書きを作成しました。スタッフ仕上げへ進んでください。");
+      if(generationCompleted) flash?.(mode==="revision"?"原稿の調整が完了しました。内容を読み上げて確認してください。":"ナレーション原稿を作成しました。内容を読み上げて確認してください。");
     }catch(e){
       await writeUsage("failed",{error:String(e?.message||e)});
       const msg=e?.message==="AI_NOT_CONFIGURED"?AI_NOT_CONFIGURED_MESSAGE:(e?.message==="Generation quality check failed."?e.message:AI_FAILED_MESSAGE);
