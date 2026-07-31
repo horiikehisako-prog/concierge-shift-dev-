@@ -1714,6 +1714,9 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   if (hasVenueName(full, venueNames)) failures.push("venue name");
   if (hasForbiddenExpression(opening)) failures.push("attendee greeting");
   if (hasRepeatedExpressions(full)) failures.push("repeated expression");
+  // 「一日一日」は文法的には正しいが、葬儀ナレーションでは定型的で
+  // 機械的な強調に聞こえやすい。より自然な「日々」へ言い換える。
+  if (/一日一日/u.test(full)) failures.push("formulaic repeated wording");
   if (hasWeakGenericNarration(full)) failures.push("weak generic narration");
   if (!haveDifferentContent(opening, closing)) failures.push("opening closing overlap");
   // A single Japanese fact can naturally share several 2-3 character fragments.
@@ -1796,6 +1799,7 @@ const buildLegacySystemPrompt = extraInstruction => [
   "DIRECT-QUOTE LIMIT: use at most one 「...」 quotation across openingNarration and closingNarration together, and only when the exact spoken words are present in the Hearing Sheet.",
   "CEREMONY TIMELINE: closingNarration is read after the officiant has left and before flowers are offered. Never write お別れのあと, お別れを済ませた今, お別れのひとときを過ごした今, or お別れのひとときを終えた今.",
   "REPETITION AUDIT: do not restate the same family phrase in adjacent sentences. If the Hearing Sheet says 笑っている顔しか思い出せない, use that idea only once and do not immediately explain again that the person often laughed. A main trait such as 笑顔 or 明るさ should normally appear no more than twice in openingNarration and must not be repeated as a summary in closingNarration.",
+  "Do not use the formulaic repetition 一日一日. Although grammatically valid, it sounds mechanical in spoken funeral narration. Use 日々, これからの日々, or another plain expression that fits the sentence. Do not automatically ban concrete, natural repetitions such as ひと針ひと針 when they make an explicitly supplied scene easier to hear.",
   "Do not turn a supplied phrase into an abstract interpretation. After quoting 人の悪口を言ってはいけない, do not invent a gaze, philosophy, or claim about preserving relationships. Let the supplied words stand with only a restrained factual connection.",
   "Never use audience-observer wording such as 今日ここに集う皆様, この場に集う皆様, or the room became brighter. Use 皆様 only when needed.",
   "If the family says 明るさを見習いたい, keep close to that wording. Do not transform it into a motivational slogan such as 前向きに歩んでいきたい.",
