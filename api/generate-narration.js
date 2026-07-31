@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.47";
+const API_BUILD_ID = "narration-studio-20260801.48";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -25,6 +25,7 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "開式前本文の最後に、笑顔・歌・踊り・手芸・野菜・花など、すでに書いた事実を読点で並べる総括段落を置かないでください。最後の具体的な段落から定型の開式案内へ直接つないでください。",
   "閉式後では旅行先の地名を一度だけ書いてください。第一段落は旅行先、誕生日月、親子三代の三点を三文で描き、第二段落は入力にあるご家族の気持ちと短い余韻だけを二〜三文で結んでください。『開式前に述べた』『別の思い出』など文章構成を説明してはいけません。",
   "『私』『彼』『彼女』、根拠のない『〜のでしょう』、文章作成の自己言及、人生訓、標語、過度な美辞麗句、ご家族への行動指示は使わないでください。引用は入力にある言葉を一度だけ使い、その意味を解説しないでください。",
+  "AIが書く本文では『お見送りいたします』『お送りいたします』『お見送りください』と式の進行を宣言しないでください。閉式後本文の後には、サーバーが花を手向ける案内を追加します。『旅行に行く』『お気持ちがあります』『日常のひとこま』『ご家族の思い出にあるのは』のような重複的・報告的な表現も使わないでください。",
   "最後に全文を音読したつもりで、助詞、主語と述語、文末の重なり、事実の重複、開式前と閉式後の材料分担、文章量を確認し、完成稿だけを返してください。",
 ].join(" ");
 const redactSecrets = value => String(value || "")
@@ -1727,6 +1728,11 @@ const hasAwkwardNarrationStyle = text => {
   if (/感謝の思い[^。]{0,40}。\s*尽きることのない感謝の思い/u.test(value)) return true;
   if (/をたどるうえで欠かせない記憶/u.test(value)) return true;
   if (/ご旅行に行かれ/u.test(value)) return true;
+  if (/旅行に行かれ/u.test(value)) return true;
+  if (/(?:お見送り|お送り)(?:いたします|ください)/u.test(value)) return true;
+  if (/お気持ちが(?:ご家族に)?あります/u.test(value)) return true;
+  if (/日常のひとこま/u.test(value)) return true;
+  if (/ご家族の思い出にあるのは/u.test(value)) return true;
   if (/行き先の名をたどると[^。]{0,45}(?:旅行|旅)が思い起こされ/u.test(value)) return true;
   if (/(?:私も|彼女|彼を|彼女を)[^。]{0,80}(?:見習|歩んで)/u.test(value)) return true;
   if (/よく笑っておられたお顔から、歌や踊り、手芸/u.test(value)) return true;
@@ -2511,6 +2517,7 @@ module.exports = async (req, res) => {
         "笑顔の記憶を書いた直後に、よく笑う人だった、その顔が記憶に残る、と同じ内容を説明し直さないでください。",
         "「私」「彼」「彼女」は使用禁止です。ご家族のお気持ちはsourceFactsの意味を変えず、司会者個人の一人称にしないでください。",
         "「〜のでしょう」「飾らないひととき」「今日ここに至るまで」「開式前にたどった記憶」「心を整えてまいります」「これからの日々へと進まれます」は削除してください。取材者や司会者の説明、進行の自己言及、根拠のない意味づけを残してはいけません。",
+        "本文中の「お見送りいたします」「お送りいたします」「お見送りください」は削除してください。花を手向ける式次第の案内はサーバーが後から追加します。「旅行に行く」は「旅に出る」「訪れる」「出かける」のうち事実に沿う自然な表現へ整え、「お気持ちがあります」「日常のひとこま」「ご家族の思い出にあるのは」という報告調も残さないでください。",
         "draftが選択済みカードの一部を落としている場合、sourceFactsに明記された未使用の事実だけを補ってください。新しい事実を足すこととは区別し、野菜と花、歌と踊り、複数の旅行先など、同じカード内の異なる事実を省略しないでください。",
         "開式案内の直前で「感謝の思い」を二文連続させないでください。前の一文が定型案内と重なる場合は削ってください。",
         "抽象的な美辞、人生訓、標語、AIらしいまとめを加えないでください。事実だけでは支えられない文は、別の美文へ置き換えず削ってください。",
