@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260731.36";
+const API_BUILD_ID = "narration-studio-20260731.37";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2284,23 +2284,55 @@ module.exports = async (req, res) => {
 
   console.log("[generate-narration] request", diagnostics);
 
-  if (!apiKey) {
-    console.error("[generate-narration] OPENAI_API_KEY missing", diagnostics);
-    res.statusCode = 503;
-    res.end(JSON.stringify({
-      code: "OPENAI_API_KEY_MISSING",
-      error: "AI connection is not configured.",
-      diagnostics,
-    }));
-    return;
-  }
-
   try {
     const body = await readJsonBody(req);
     const rawPrompt = String(body.prompt || "").trim();
     if (!rawPrompt) {
       res.statusCode = 400;
       res.end(JSON.stringify({ error: "prompt is required" }));
+      return;
+    }
+    const stableDraft = buildStableFamilyPortrait({
+      detectedTheme: "家族愛",
+      improvementNotes: "",
+    }, rawPrompt);
+    if (stableDraft) {
+      const stableResult = applyNameRule(stableDraft, rawPrompt);
+      const stableCheck = qualityCheckNarration(stableResult, rawPrompt);
+      if (stableCheck.ok) {
+        console.log("[generate-narration] stable family portrait", {
+          buildId: API_BUILD_ID,
+          openingLength: stableResult.openingNarration.length,
+          closingLength: stableResult.closingNarration.length,
+        });
+        res.statusCode = 200;
+        res.end(JSON.stringify({
+          ...stableResult,
+          generationSource: "stable_family_portrait",
+          generationDiagnostics: {
+            source: "stable_family_portrait",
+            buildId: API_BUILD_ID,
+            openingLength: stableResult.openingNarration.length,
+            closingLength: stableResult.closingNarration.length,
+            possibleTruncation: false,
+          },
+        }));
+        return;
+      }
+      console.warn("[generate-narration] stable portrait quality fallback", {
+        buildId: API_BUILD_ID,
+        failures: stableCheck.failures,
+      });
+    }
+
+    if (!apiKey) {
+      console.error("[generate-narration] OPENAI_API_KEY missing", diagnostics);
+      res.statusCode = 503;
+      res.end(JSON.stringify({
+        code: "OPENAI_API_KEY_MISSING",
+        error: "AI connection is not configured.",
+        diagnostics,
+      }));
       return;
     }
     const prompt = compactNarrationPrompt(rawPrompt);
