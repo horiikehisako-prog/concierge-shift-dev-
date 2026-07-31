@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.45";
+const API_BUILD_ID = "narration-studio-20260801.46";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2529,14 +2529,18 @@ module.exports = async (req, res) => {
         timeoutMs: 18000,
         systemPromptOverride: copyEditSystemPrompt,
       });
-      const normalizedGenerated = normalizeFamilyNearNarration(
-        normalizeQuotationContext(limitDirectQuotes(generatedDraft)),
-        rawPrompt
-      );
-      const normalizedEdited = normalizeFamilyNearNarration(
-        normalizeQuotationContext(limitDirectQuotes(editedDraft)),
-        rawPrompt
-      );
+      const normalizedGenerated = forceAiGeneration
+        ? normalizeQuotationContext(limitDirectQuotes(generatedDraft))
+        : normalizeFamilyNearNarration(
+            normalizeQuotationContext(limitDirectQuotes(generatedDraft)),
+            rawPrompt
+          );
+      const normalizedEdited = forceAiGeneration
+        ? normalizeQuotationContext(limitDirectQuotes(editedDraft))
+        : normalizeFamilyNearNarration(
+            normalizeQuotationContext(limitDirectQuotes(editedDraft)),
+            rawPrompt
+          );
       const generatedScore = narrationCandidateScore(normalizedGenerated, rawPrompt);
       const editedScore = narrationCandidateScore(normalizedEdited, rawPrompt);
       parsed = editedScore.score <= generatedScore.score ? normalizedEdited : normalizedGenerated;
@@ -2555,10 +2559,12 @@ module.exports = async (req, res) => {
       parsed = generatedDraft;
       copyEditRoute = "skipped";
     }
-    parsed = normalizeFamilyNearNarration(
-      normalizeQuotationContext(limitDirectQuotes(parsed)),
-      rawPrompt
-    );
+    parsed = forceAiGeneration
+      ? normalizeQuotationContext(limitDirectQuotes(parsed))
+      : normalizeFamilyNearNarration(
+          normalizeQuotationContext(limitDirectQuotes(parsed)),
+          rawPrompt
+        );
     // Forced AI generation must preserve the model's result. The stable
     // portrait builder is only a fallback for the normal guarded route.
     if (!forceAiGeneration) {
@@ -2717,6 +2723,9 @@ module.exports = async (req, res) => {
         "closing timeline",
         "too many direct quotes",
         "response incomplete",
+        "excessive polite endings",
+        "repetitive past endings",
+        "repeated expression",
       ]);
       const hasCriticalFailure = (lastCheck?.failures || []).some(failure => criticalFailures.has(failure));
       if (!hasCriticalFailure && (parsed?.openingNarration || parsed?.closingNarration)) {
