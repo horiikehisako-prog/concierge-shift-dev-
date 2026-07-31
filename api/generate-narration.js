@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.43";
+const API_BUILD_ID = "narration-studio-20260801.44";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2547,7 +2547,11 @@ module.exports = async (req, res) => {
       normalizeQuotationContext(limitDirectQuotes(parsed)),
       rawPrompt
     );
-    parsed = buildStableFamilyPortrait(parsed, rawPrompt) || parsed;
+    // Forced AI generation must preserve the model's result. The stable
+    // portrait builder is only a fallback for the normal guarded route.
+    if (!forceAiGeneration) {
+      parsed = buildStableFamilyPortrait(parsed, rawPrompt) || parsed;
+    }
     parsed = applyNameRule(parsed, rawPrompt);
     try {
       lastCheck = qualityCheckNarration(parsed, rawPrompt);
