@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.39";
+const API_BUILD_ID = "narration-studio-20260801.40";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -20,6 +20,7 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
   "『ました・でした・ございます・おります』を同じ調子で三文続けず、接続助詞、連用形、思い出が今も目に浮かぶ箇所の自然な現在形を二〜四文ほど交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
   "同じ内容は一度だけ書いてください。笑顔を書いた直後に、よく笑う人だった、その顔が記憶に残る、と説明し直してはいけません。歌と踊り、手芸と草花、旅行先など、近い事実は一つの流れへまとめてください。",
+  "『一日一日』は使わないでください。文法的には正しくても、読み上げでは定型的で機械的に聞こえます。文意に応じて『日々』『これからの日々』などの平明な表現へ整えてください。ただし、入力された具体的な場面を耳で伝えやすくする『ひと針ひと針』のような自然な反復まで一律に避ける必要はありません。",
   "ご家族が『いつも笑っている顔しか思い出せない』と話している場合、笑顔の段落はその事実を伝える一文だけにしてください。笑顔、よく笑う人、顔が浮かぶ、記憶に残る、という同義の説明を重ねてはいけません。",
   "開式前本文の最後に、笑顔・歌・踊り・手芸・野菜・花など、すでに書いた事実を読点で並べる総括段落を置かないでください。最後の具体的な段落から定型の開式案内へ直接つないでください。",
   "閉式後では旅行先の地名を一度だけ書いてください。第一段落は旅行先、誕生日月、親子三代の三点を三文で描き、第二段落は入力にあるご家族の気持ちと短い余韻だけを二〜三文で結んでください。『開式前に述べた』『別の思い出』など文章構成を説明してはいけません。",
