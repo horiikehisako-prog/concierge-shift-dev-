@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.51";
+const API_BUILD_ID = "narration-studio-20260801.52";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -18,8 +18,9 @@ const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "sourceFactsだけを使い、入力にない人物、場面、感情、評価、家族の反応を創作しないでください。openingとclosingの材料は混ぜません。",
   "これは人物紹介ではありません。記憶の中の表情、手元、動作、場所を中心に描き、司会者による性格の評価や、ご家族の気持ちの推測・報告を避けてください。",
   "取材項目を一文ずつ処理せず、一段落に一つの記憶を置いて、関係する動作を自然につないでください。同じ事実の言い換え、引用の解説、段落末の抽象的なまとめは不要です。",
+  "趣味から典型的な道具や場所を推測しないでください。手芸とだけある場合に針・布・糸を、野菜や花とだけある場合に庭・土・芽・葉を、旅行とだけある場合に景色や食事を足してはいけません。",
   "文末の単語だけを機械的に変えず、段落の構造から整えてください。同じです・ます調が三文続かないようにしつつ、無理な体言止めや不自然な現在形も避けます。",
-  "『私』『彼』『彼女』『〜と伺っております』『お気持ちがあります』『お見送りいたします』は使わないでください。浄土真宗の場合は『旅立ち』も使いません。",
+  "『私』『彼』『彼女』『〜と伺っております』『お気持ちがあります』『お見送りいたします』『本日の葬儀は閉式』『道しるべ』は使わないでください。浄土真宗の場合は『旅立ち』も使いません。",
   "styleReferenceは語句をコピーせず、構成、段落の呼吸、描写の距離だけを参考にしてください。",
   "完成後に一度音読し、助詞と主述、同義反復、事実の重複、文章量を確認してから完成稿だけを返してください。",
 ].join(" ");
@@ -1681,6 +1682,10 @@ const hasOutsiderAtmosphereClaim = text =>
 
 const hasUnsafeInterpretiveLanguage = (text, prompt) => {
   const value = String(text || "");
+  if (/(?:本日の|これをもちまして)[^。]{0,24}(?:葬儀|ご葬儀)[^。]{0,24}(?:閉式|終了)/u.test(value)) return true;
+  if (/道しるべ/u.test(value)) return true;
+  if (/(?:庭先|庭|土|芽|葉|布|糸)[^。]{0,30}/u.test(value) && !/(?:庭先|庭|土|芽|葉|布|糸)/u.test(String(prompt || ""))) return true;
+  if (/そばにいる人の目に[^。]{0,30}映/u.test(value)) return true;
   if (/その場にある時間/u.test(value)) return true;
   if (/前を向いて(?:動か|歩|進)/u.test(value)) return true;
   if (/(?:知る方々|周りの方々?)にとって/u.test(value)) return true;
@@ -2112,7 +2117,9 @@ const requestNarration = async ({
         // not a long chain of internal reasoning. "medium" intermittently
         // exceeded Vercel's 60-second function limit. "low" also reduces the
         // model's tendency to over-explain one supplied memory.
-        reasoning: { effort: "low" },
+        // One carefully reasoned call is both cheaper and more coherent than
+        // the former low-effort draft followed by a second AI copy-edit call.
+        reasoning: { effort: "medium" },
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
@@ -3148,10 +3155,12 @@ const compactNarrationPrompt = prompt => {
     taskInstruction,
     "事実：JSONのsourceFactsだけを使う。openingとclosingは混ぜず、入力にない場面・感情・評価・家族の反応を足さない。",
     "書き方：取材項目を順番に紹介しない。一段落に一つの記憶を置き、関係する動作を自然につなぐ。同じ事実や引用の意味を別の言葉で説明し直さない。",
+    "推測禁止：入力にない道具、材料、場所、周囲の人、景色、家族の反応を、趣味や行動から補わない。『人の悪口を言ってはいけない』という引用を使う場合、『人の悪口を言わなかった』という同じ事実は別に書かない。",
     "視点：司会者が人物を外から評価せず、記憶の中の表情、手元、動作、場所を文の中心にする。『ご家族は〜と思っています』という報告調を避ける。",
     "構成：開式前は季節、生涯紹介、三〜四段落の具体的な記憶、固定の開式案内。350〜550字。閉式後本文は開式前で使わない一つの思い出から始め、家族の気持ちが入力にある場合だけ自然に結び、160〜260字。",
     "固定文：季節文の直後は『故{氏名}様は、{年齢}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。』、開式前の最後は『尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。』とする。",
     "閉式後：年齢、会葬御礼、献花、式場準備、手荷物案内は書かない。式次第案内はサーバーが一度だけ追加する。",
+    "閉式後では閉式を宣言せず、家族へ生き方を説かず、道しるべ・教え・人生訓へ広げない。入力された思いと具体的な記憶だけで結ぶ。",
     "リズム：同じです・ます調を三文続けない。ただし語尾だけを現在形や体言止めへ置換しない。近い動作を接続助詞や連用形でつなぎ、段落全体を音読して整える。",
     "教科書：styleReferenceは文章をコピーせず、記憶の始め方、段落の運び、描写と余韻の配分だけを手本にする。",
     "完成条件：自然な日本語、同義反復なし、事実の重複なし、途中で切れた文なし、開式前と閉式後の内容重複なし。返答は指定されたJSON一個だけ。",
