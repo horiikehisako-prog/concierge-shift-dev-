@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.52";
+const API_BUILD_ID = "narration-studio-20260801.53";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -11,7 +11,8 @@ const ALLOW_HARD_RETRY = false;
 const ENABLE_LENGTH_REPAIR = false;
 const ENABLE_GUARDED_COPY_EDIT = false;
 const ENABLE_LEGACY_NARRATION_REWRITES = false;
-const ENABLE_STABLE_FAMILY_PORTRAIT = false;
+const ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT = true;
+const ENABLE_STABLE_FAMILY_PORTRAIT_POSTPROCESS = false;
 const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族の記憶のすぐそばに立ち、耳で聞いて自然な完成稿を書いてください。",
   "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
@@ -1420,15 +1421,15 @@ const buildStableFamilyPortrait = (draft, prompt) => {
   const openingNarration = [
     seasonSentence,
     lifeSentence,
-    `思い出の中の${givenName}様は、いつも笑顔です。歌が始まれば声を重ね、ときには踊るように身体を動かされる。そんな愛らしいお姿も、ご家族にとって大切な思い出です。`,
-    "手芸に向かわれると、ひと針ひと針、少しずつ形を整えていかれる。野菜やお花にもこまめに手をかけ、日々の育ちを楽しみに見守っておられました。",
-    `人と接することがお好きで、思い立てばすぐに動かれる。その軽やかさも、${givenName}様らしい一面でした。折に触れて口にされた、「${rememberedPhrase}」という言葉も、いまなお耳に残ります。`,
-    "そして何より大切にされていたのは、ご家族でした。ともに重ねた何気ない毎日は、いま振り返れば、どれもかけがえのない思い出です。",
+    `「いつも笑っている顔しか思い出せない」。ご家族のその言葉どおり、${givenName}様をたどる思い出には、いつも明るい表情が重なります。歌に声を合わせ、ときには踊るように身体を動かされる、その愛らしいご様子も、今なお胸に浮かびます。`,
+    "手芸に向かえば、手を動かしながら少しずつ形にしていかれる。野菜やお花にも日々手をかけ、その育ちを見守る時間を大切にされていました。",
+    `人と接することがお好きで、思い立ったことにはすぐに取りかかられる${givenName}様。明るく前向きな日々の中で、折に触れて「${rememberedPhrase}」と話しておられました。`,
+    "ご家族を大切にし、ともに過ごす何気ない時間を喜ばれた日々。その一つひとつを胸に、今はただ、ありがとうの思いが寄せられています。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n");
   const closingNarration = [
-    `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。訪れた土地の名に触れるたび、ともに過ごした旅の日々が懐かしくよみがえります。`,
-    `その明るさを見習い、前向きに歩んでいきたい――その思いも、ご家族の胸に大切に残されています。${givenName}様とともに重ねた時間は、これからも折に触れて思い起こされることでしょう。`,
+    `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。訪れた土地の数だけ、ご家族で分かち合った時間があります。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
+    `その明るさを見習い、これからも前向きに歩んでいきたい。ご家族のその思いとともに、${givenName}様の笑顔は、これからも皆様の中に生き続けてまいります。`,
   ].join("\n\n");
   return {
     ...draft,
@@ -2117,9 +2118,7 @@ const requestNarration = async ({
         // not a long chain of internal reasoning. "medium" intermittently
         // exceeded Vercel's 60-second function limit. "low" also reduces the
         // model's tendency to over-explain one supplied memory.
-        // One carefully reasoned call is both cheaper and more coherent than
-        // the former low-effort draft followed by a second AI copy-edit call.
-        reasoning: { effort: "medium" },
+        reasoning: { effort: "low" },
         input: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt },
@@ -2385,7 +2384,7 @@ module.exports = async (req, res) => {
       return;
     }
     const forceAiGeneration = extractPromptPayload(rawPrompt)?.forceAiGeneration === true;
-    const stableDraft = (!ENABLE_STABLE_FAMILY_PORTRAIT || forceAiGeneration) ? null : buildStableFamilyPortrait({
+    const stableDraft = (!ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT || forceAiGeneration) ? null : buildStableFamilyPortrait({
       detectedTheme: "家族愛",
       improvementNotes: "",
     }, rawPrompt);
@@ -2588,7 +2587,7 @@ module.exports = async (req, res) => {
         );
     // Forced AI generation must preserve the model's result. The stable
     // portrait builder is only a fallback for the normal guarded route.
-    if (ENABLE_STABLE_FAMILY_PORTRAIT && !forceAiGeneration) {
+    if (ENABLE_STABLE_FAMILY_PORTRAIT_POSTPROCESS && !forceAiGeneration) {
       parsed = buildStableFamilyPortrait(parsed, rawPrompt) || parsed;
     }
     parsed = applyNameRule(parsed, rawPrompt);
