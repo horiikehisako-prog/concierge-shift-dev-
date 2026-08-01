@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.50";
+const API_BUILD_ID = "narration-studio-20260801.51";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -10,6 +10,8 @@ const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ALLOW_HARD_RETRY = false;
 const ENABLE_LENGTH_REPAIR = false;
 const ENABLE_GUARDED_COPY_EDIT = false;
+const ENABLE_LEGACY_NARRATION_REWRITES = false;
+const ENABLE_STABLE_FAMILY_PORTRAIT = false;
 const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族の記憶のすぐそばに立ち、耳で聞いて自然な完成稿を書いてください。",
   "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
@@ -2376,7 +2378,7 @@ module.exports = async (req, res) => {
       return;
     }
     const forceAiGeneration = extractPromptPayload(rawPrompt)?.forceAiGeneration === true;
-    const stableDraft = forceAiGeneration ? null : buildStableFamilyPortrait({
+    const stableDraft = (!ENABLE_STABLE_FAMILY_PORTRAIT || forceAiGeneration) ? null : buildStableFamilyPortrait({
       detectedTheme: "家族愛",
       improvementNotes: "",
     }, rawPrompt);
@@ -2541,13 +2543,13 @@ module.exports = async (req, res) => {
         timeoutMs: 18000,
         systemPromptOverride: copyEditSystemPrompt,
       });
-      const normalizedGenerated = forceAiGeneration
+      const normalizedGenerated = (forceAiGeneration || !ENABLE_LEGACY_NARRATION_REWRITES)
         ? normalizeQuotationContext(limitDirectQuotes(generatedDraft))
         : normalizeFamilyNearNarration(
             normalizeQuotationContext(limitDirectQuotes(generatedDraft)),
             rawPrompt
           );
-      const normalizedEdited = forceAiGeneration
+      const normalizedEdited = (forceAiGeneration || !ENABLE_LEGACY_NARRATION_REWRITES)
         ? normalizeQuotationContext(limitDirectQuotes(editedDraft))
         : normalizeFamilyNearNarration(
             normalizeQuotationContext(limitDirectQuotes(editedDraft)),
@@ -2571,7 +2573,7 @@ module.exports = async (req, res) => {
       parsed = generatedDraft;
       copyEditRoute = "skipped";
     }
-    parsed = forceAiGeneration
+    parsed = (forceAiGeneration || !ENABLE_LEGACY_NARRATION_REWRITES)
       ? normalizeQuotationContext(limitDirectQuotes(parsed))
       : normalizeFamilyNearNarration(
           normalizeQuotationContext(limitDirectQuotes(parsed)),
@@ -2579,7 +2581,7 @@ module.exports = async (req, res) => {
         );
     // Forced AI generation must preserve the model's result. The stable
     // portrait builder is only a fallback for the normal guarded route.
-    if (!forceAiGeneration) {
+    if (ENABLE_STABLE_FAMILY_PORTRAIT && !forceAiGeneration) {
       parsed = buildStableFamilyPortrait(parsed, rawPrompt) || parsed;
     }
     parsed = applyNameRule(parsed, rawPrompt);
