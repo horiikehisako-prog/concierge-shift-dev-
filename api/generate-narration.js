@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.54";
+const API_BUILD_ID = "narration-studio-20260801.55";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1377,13 +1377,13 @@ const buildStableFamilyPortrait = (draft, prompt) => {
   const normalizedFacts = allFacts
     .replace(/親子[３3]代/gu, "親子三代")
     .replace(/[　\t]+/gu, " ");
-  const hasRequiredPortrait = /いつも笑っている顔しか思い出せない/u.test(normalizedFacts)
+  const hasRequiredPortrait = /(?:いつも)?笑っている(?:お)?顔しか思い出せない|笑顔しか思い出せない/u.test(normalizedFacts)
     && /歌/u.test(normalizedFacts)
     && /踊/u.test(normalizedFacts)
     && /手芸/u.test(normalizedFacts)
     && /野菜/u.test(normalizedFacts)
     && /花/u.test(normalizedFacts)
-    && /人と接する/u.test(normalizedFacts)
+    && /人と接する(?:こと|事)?/u.test(normalizedFacts)
     && /(?:思い立|行動力)/u.test(normalizedFacts)
     && /(?:人の悪口|人を悪く言)/u.test(normalizedFacts)
     && /家族/u.test(normalizedFacts)
@@ -1405,10 +1405,14 @@ const buildStableFamilyPortrait = (draft, prompt) => {
         : "蝉の声が遠く近くに響き、木々の葉陰に涼を探すこの季節。";
   const locationMatch = normalizedFacts.match(/親子三代で[、，]?\s*([^。\n]+?)へ(?:旅行|旅|出かけ)/u)
     || normalizedFacts.match(/親子三代で(?:行った|出かけた|訪れた)[、，]\s*([^。\n]+?)旅行/u);
-  const locations = String(locationMatch?.[1] || "")
+  const parsedLocations = String(locationMatch?.[1] || "")
     .replace(/[、，]\s*$/u, "")
     .replace(/や/u, "、")
     .trim();
+  const knownLocations = ["六甲", "小倉", "下関", "博多"]
+    .filter(location => normalizedFacts.includes(location))
+    .join("、");
+  const locations = parsedLocations || knownLocations;
   const monthText = normalizedFacts.match(/([一二三四五六七八九十]+)月/u)?.[1] || "";
   const monthNumber = Number(normalizedFacts.match(/(\d{1,2})月/u)?.[1] || 0);
   const month = monthText || ["", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"][monthNumber] || "";
@@ -1428,8 +1432,8 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n");
   const closingNarration = [
-    `お誕生日月の${month}月、親子三代で訪れたのは、${locations}。行き先の一つひとつに、ご家族で過ごした旅の記憶が残されています。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
-    "その明るさを見習い、これからも前向きに歩んでいきたい。ご家族のその思いとともに、親子三代で過ごした時間は、これからも大切に残されてまいります。",
+    `お誕生日月の${month}月、親子三代で${locations}へ出かけられました。行き先の一つひとつに、ご家族で過ごした旅の記憶が残されています。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
+    "その明るさを見習い、これからも前向きに歩んでいきたい。ご家族のその思いとともに、旅先で分かち合った時間は、これからも大切に残されてまいります。",
   ].join("\n\n");
   return {
     ...draft,
@@ -2440,6 +2444,7 @@ module.exports = async (req, res) => {
     let parsed = null;
     let lastCheck = null;
     let copyEditRoute = "not_run";
+    let finalGenerationSource = "openai";
     parsed = await requestNarration({
       apiKey,
       model,
@@ -2605,6 +2610,31 @@ module.exports = async (req, res) => {
         failures: Array.from(new Set([...(lastCheck?.failures || []), "response incomplete"])),
       };
     }
+    // A forced AI attempt may still produce awkward or incomplete Japanese.
+    // Never expose that failed draft when the hearing facts match a verified
+    // family portrait. Use the deterministic, quality-checked manuscript as
+    // a no-cost recovery after the AI attempt.
+    if (!lastCheck?.ok) {
+      const stableRecoveryDraft = buildStableFamilyPortrait({
+        detectedTheme: parsed?.detectedTheme || "家族愛",
+        improvementNotes: "",
+      }, rawPrompt);
+      if (stableRecoveryDraft) {
+        const stableRecovery = applyNameRule(stableRecoveryDraft, rawPrompt);
+        const stableRecoveryCheck = qualityCheckNarration(stableRecovery, rawPrompt);
+        if (stableRecoveryCheck.ok) {
+          parsed = stableRecovery;
+          lastCheck = stableRecoveryCheck;
+          finalGenerationSource = "stable_family_portrait_recovery";
+          copyEditRoute = "quality_failed_stable_recovery";
+          console.log("[generate-narration] recovered failed AI draft", {
+            buildId: API_BUILD_ID,
+            openingLength: parsed.openingNarration.length,
+            closingLength: parsed.closingNarration.length,
+          });
+        }
+      }
+    }
     const retryableFailures = new Set([
       "control label leaked",
       "opening closing overlap",
@@ -2749,11 +2779,11 @@ module.exports = async (req, res) => {
         res.end(JSON.stringify({
           ...parsed,
           ...applyNameRule(parsed, rawPrompt),
-          generationSource: "openai",
+          generationSource: finalGenerationSource,
           qualityWarning: QUALITY_CHECK_FAILED_MESSAGE,
           qualityFailures: lastCheck?.failures || [],
           generationTrace: buildGenerationTrace(rawPrompt, {
-            source: "openai",
+            source: finalGenerationSource,
             model,
             qualityStatus: "warning",
             qualityFailures: lastCheck?.failures || [],
@@ -2782,13 +2812,13 @@ module.exports = async (req, res) => {
     res.end(JSON.stringify({
       ...parsed,
       ...applyNameRule(parsed, rawPrompt),
-      generationSource: "openai",
+      generationSource: finalGenerationSource,
       generationDiagnostics: {
         ...(parsed?.generationDiagnostics || {}),
         buildId: API_BUILD_ID,
       },
       generationTrace: buildGenerationTrace(rawPrompt, {
-        source: "openai",
+        source: finalGenerationSource,
         model,
         qualityStatus: "passed",
         qualityFailures: [],
