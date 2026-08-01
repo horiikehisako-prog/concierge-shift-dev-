@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.53";
+const API_BUILD_ID = "narration-studio-20260801.54";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1421,15 +1421,15 @@ const buildStableFamilyPortrait = (draft, prompt) => {
   const openingNarration = [
     seasonSentence,
     lifeSentence,
-    `いつも笑っている顔しか思い出せないというご家族の言葉どおり、${givenName}様との日々をたどれば、そこにはいつも明るい表情がございます。歌に声を合わせ、ときには踊るように身体を動かされる、その愛らしいご様子も、今なお胸に浮かびます。`,
-    "手芸に向かえば、手を動かしながら少しずつ形にしていかれる。野菜やお花にも日々手をかけ、育っていく様子を見守っておられました。",
-    `人との時間を楽しみ、思い立ったことにはすぐに取りかかられる。そんな日々の中で、折に触れて「${rememberedPhrase}」と話しておられました。`,
-    "ご家族を大切にし、ともに過ごす何気ない時間を喜ばれた日々。今、それぞれの胸に、その一つひとつがよみがえります。",
+    `ご家族の胸に浮かぶのは、いつも笑っておられた${givenName}様のお顔です。歌に声を合わせ、ときには踊るように身体を動かされる。その愛らしいご様子も、忘れられない思い出の一つです。`,
+    "手芸に向かうと、手を動かしながら少しずつ形を整えていかれる。野菜やお花にもこまめに手をかけ、その育ちを見守っておられました。",
+    `人と接することがお好きで、思い立てばすぐに動かれる。折に触れて聞いた「${rememberedPhrase}」という言葉も、今なお耳に残ります。`,
+    "何より大切にされたのは、ご家族とともに過ごす時間でした。何気ない日々の一つひとつが、今、懐かしくよみがえります。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n");
   const closingNarration = [
-    `お誕生日月の${month}月には、親子三代で${locations}へ出かけられ、訪れた土地の数だけ、ご家族で分かち合った時間がございます。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
-    `その明るさを見習い、これからも前向きに歩んでいきたい。ご家族のその思いもまた、${givenName}様と分かち合った旅の記憶に結ばれています。`,
+    `お誕生日月の${month}月、親子三代で訪れたのは、${locations}。行き先の一つひとつに、ご家族で過ごした旅の記憶が残されています。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
+    "その明るさを見習い、これからも前向きに歩んでいきたい。ご家族のその思いとともに、親子三代で過ごした時間は、これからも大切に残されてまいります。",
   ].join("\n\n");
   return {
     ...draft,
