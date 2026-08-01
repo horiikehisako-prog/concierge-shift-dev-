@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.49";
+const API_BUILD_ID = "narration-studio-20260801.50";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -9,24 +9,17 @@ const API_BUILD_ID = "narration-studio-20260801.49";
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ALLOW_HARD_RETRY = false;
 const ENABLE_LENGTH_REPAIR = false;
-const ENABLE_GUARDED_COPY_EDIT = true;
+const ENABLE_GUARDED_COPY_EDIT = false;
 const NARRATION_AUTHOR_SYSTEM_PROMPT = [
-  "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族が聞いて「本当にその人らしい」と感じられる、落ち着いた読み上げ原稿を書いてください。",
+  "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族の記憶のすぐそばに立ち、耳で聞いて自然な完成稿を書いてください。",
   "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
-  "sourceFactsに書かれた事実だけを使い、場面、感情、意味、人物評価、家族の反応を創作しないでください。選択されたopeningとclosingのカードは混ぜず、各カード内の異なる事実を省略せず一度ずつ使ってください。",
-  "司会者が外から人物を紹介・評価する文章ではなく、ご家族がともに過ごした日々を自然に重ねられる文章にしてください。『〜と伺っております』『〜とのことです』『皆様の記憶に残っています』を繰り返さないでください。",
-  "開式前は、季節の一文、故人の氏名と年齢を含む生涯紹介、三〜四つの思い出の段落、開式案内の順です。定型文を含め350〜550字、七〜十一文、四〜六段落で書いてください。",
-  "閉式後本文は、開式前で使わなかった具体的な思い出から始め、入力にある場合だけご家族の気持ちへ結びます。160〜260字、四〜六文、二〜三段落で書き、式次第の定型案内は書かないでください。",
-  "一段落では一つの記憶を中心に、近い動作を自然につないでください。取材項目を一文ずつ並べたり、段落末で同じ内容を抽象的に言い換えたり、本文の最後に思い出を一覧で要約したりしないでください。",
-  "定型文を除き、文末が『ました・でした・ございました・おりました』となる文は、開式前で最大二文、閉式後で最大一文にしてください。『ありました・おられました・こられました』もすべて同じ過去敬体として数えます。接続助詞、連用形、自然な現在形、必要最小限の体言止めを交え、耳で聞いて自然な呼吸を作ってください。体言止めは一段落に一度までです。",
-  "同じ内容は一度だけ書いてください。笑顔を書いた直後に、よく笑う人だった、その顔が記憶に残る、と説明し直してはいけません。歌と踊り、手芸と草花、旅行先など、近い事実は一つの流れへまとめてください。",
-  "『一日一日』は使わないでください。文法的には正しくても、読み上げでは定型的で機械的に聞こえます。文意に応じて『日々』『これからの日々』などの平明な表現へ整えてください。ただし、入力された具体的な場面を耳で伝えやすくする『ひと針ひと針』のような自然な反復まで一律に避ける必要はありません。",
-  "ご家族が『いつも笑っている顔しか思い出せない』と話している場合、笑顔の段落はその事実を伝える一文だけにしてください。笑顔、よく笑う人、顔が浮かぶ、記憶に残る、という同義の説明を重ねてはいけません。",
-  "開式前本文の最後に、笑顔・歌・踊り・手芸・野菜・花など、すでに書いた事実を読点で並べる総括段落を置かないでください。最後の具体的な段落から定型の開式案内へ直接つないでください。",
-  "閉式後では旅行先の地名を一度だけ書いてください。第一段落は旅行先、誕生日月、親子三代の三点を三文で描き、第二段落は入力にあるご家族の気持ちと短い余韻だけを二〜三文で結んでください。『開式前に述べた』『別の思い出』など文章構成を説明してはいけません。",
-  "『私』『彼』『彼女』、根拠のない『〜のでしょう』、文章作成の自己言及、人生訓、標語、過度な美辞麗句、ご家族への行動指示は使わないでください。引用は入力にある言葉を一度だけ使い、その意味を解説しないでください。",
-  "AIが書く本文では『お見送りいたします』『お送りいたします』『お見送りください』と式の進行を宣言しないでください。閉式後本文の後には、サーバーが花を手向ける案内を追加します。『旅行に行く』『お気持ちがあります』『日常のひとこま』『ご家族の思い出にあるのは』のような重複的・報告的な表現も使わないでください。",
-  "最後に全文を音読したつもりで、助詞、主語と述語、文末の重なり、事実の重複、開式前と閉式後の材料分担、文章量を確認し、完成稿だけを返してください。",
+  "sourceFactsだけを使い、入力にない人物、場面、感情、評価、家族の反応を創作しないでください。openingとclosingの材料は混ぜません。",
+  "これは人物紹介ではありません。記憶の中の表情、手元、動作、場所を中心に描き、司会者による性格の評価や、ご家族の気持ちの推測・報告を避けてください。",
+  "取材項目を一文ずつ処理せず、一段落に一つの記憶を置いて、関係する動作を自然につないでください。同じ事実の言い換え、引用の解説、段落末の抽象的なまとめは不要です。",
+  "文末の単語だけを機械的に変えず、段落の構造から整えてください。同じです・ます調が三文続かないようにしつつ、無理な体言止めや不自然な現在形も避けます。",
+  "『私』『彼』『彼女』『〜と伺っております』『お気持ちがあります』『お見送りいたします』は使わないでください。浄土真宗の場合は『旅立ち』も使いません。",
+  "styleReferenceは語句をコピーせず、構成、段落の呼吸、描写の距離だけを参考にしてください。",
+  "完成後に一度音読し、助詞と主述、同義反復、事実の重複、文章量を確認してから完成稿だけを返してください。",
 ].join(" ");
 const redactSecrets = value => String(value || "")
   .replace(/sk-(?:proj-)?[A-Za-z0-9_-]+/g, "[REDACTED_API_KEY]");
@@ -3131,6 +3124,37 @@ const compactNarrationPrompt = prompt => {
         revisionSpecificRules,
       ].join("\n")
     : "スタッフが選んだ事実カードの構成どおりに、新しい下書きを作成してください。";
+
+  // Keep the task prompt deliberately lean. The former prompt repeated the
+  // same rules in dozens of slightly different forms; that made the model
+  // satisfy each interview item mechanically instead of writing one coherent
+  // narration. Stable safety and output rules already live in the system
+  // prompt, so this layer only supplies the task, facts, shape, and reference.
+  const generationPayload = {
+    season: writingRules.season || "",
+    theme: writingRules.theme || payload.writingRules?.theme || "",
+    forbiddenWords: asArray(writingRules.forbiddenWords).slice(0, 20),
+    sourceFacts,
+    revision: revisionMode ? {
+      instruction: revisionInstruction,
+      draft: compactText(payload.revisionDraft, 7000),
+    } : null,
+    styleReference: selectedStyleReference,
+  };
+  return [
+    "目的：ご家族が聞いたとき、説明を受けているのではなく、その方との日常が自然に浮かぶ葬儀ナレーションの完成稿を書く。",
+    taskInstruction,
+    "事実：JSONのsourceFactsだけを使う。openingとclosingは混ぜず、入力にない場面・感情・評価・家族の反応を足さない。",
+    "書き方：取材項目を順番に紹介しない。一段落に一つの記憶を置き、関係する動作を自然につなぐ。同じ事実や引用の意味を別の言葉で説明し直さない。",
+    "視点：司会者が人物を外から評価せず、記憶の中の表情、手元、動作、場所を文の中心にする。『ご家族は〜と思っています』という報告調を避ける。",
+    "構成：開式前は季節、生涯紹介、三〜四段落の具体的な記憶、固定の開式案内。350〜550字。閉式後本文は開式前で使わない一つの思い出から始め、家族の気持ちが入力にある場合だけ自然に結び、160〜260字。",
+    "固定文：季節文の直後は『故{氏名}様は、{年齢}年という尊いご生涯を閉じ、静かに人生の幕を下ろされました。』、開式前の最後は『尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。』とする。",
+    "閉式後：年齢、会葬御礼、献花、式場準備、手荷物案内は書かない。式次第案内はサーバーが一度だけ追加する。",
+    "リズム：同じです・ます調を三文続けない。ただし語尾だけを現在形や体言止めへ置換しない。近い動作を接続助詞や連用形でつなぎ、段落全体を音読して整える。",
+    "教科書：styleReferenceは文章をコピーせず、記憶の始め方、段落の運び、描写と余韻の配分だけを手本にする。",
+    "完成条件：自然な日本語、同義反復なし、事実の重複なし、途中で切れた文なし、開式前と閉式後の内容重複なし。返答は指定されたJSON一個だけ。",
+    JSON.stringify(generationPayload, null, 2),
+  ].join("\n");
 
   return [
     "以下のJSONを材料に、葬儀ナレーションの完成稿を書いてください。",
