@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260801.48";
+const API_BUILD_ID = "narration-studio-20260801.49";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1707,6 +1707,11 @@ const hasUnsafeInterpretiveLanguage = (text, prompt) => {
 
 const hasAwkwardNarrationStyle = text => {
   const value = String(text || "");
+  if (/笑っている顔しか思い出せない[^。]{0,28}よく笑(?:う|って|われ)[^。]{0,16}(?:顔|お顔)/u.test(value)) return true;
+  if (/人の悪口を言わず[^。]{0,45}人の悪口を言ってはいけない/u.test(value)) return true;
+  if (/ご家族(?:は|が)[^。]{0,35}(?:思い|気持ち)を抱いています/u.test(value)) return true;
+  if (/(?:旅行|旅)は[^。]{0,45}(?:出かけられた|出かけた)もの/u.test(value)) return true;
+  if (/親子三代[^。]{0,45}(?:旅先|旅行|旅)[^。]{0,20}(?:記憶|思い出)[^。]{0,20}残ります/u.test(value)) return true;
   if (/明るさを重ね/u.test(value)) return true;
   if (/ではないでしょうか/u.test(value)) return true;
   if (/ご家族には[^。]{0,40}映っておりました/u.test(value)) return true;
@@ -2442,7 +2447,7 @@ module.exports = async (req, res) => {
       maxTokens,
       prompt,
       systemPromptOverride: systemPrompt,
-      extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return only the closing narrative body because the server appends the fixed guidance.",
+      extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return the complete openingNarration. In closingNarration, return only the narrative body because the server appends the fixed guidance.",
     });
     const firstDraft = parsed;
     if (
@@ -2501,8 +2506,12 @@ module.exports = async (req, res) => {
       const copyEditPrompt = JSON.stringify({
         sourceFacts: compactPayload.sourceFacts || {},
         composition: compactPayload.composition || {},
+        revision: compactPayload.revision || null,
         draft: draftForEdit,
       });
+      const isEndingRhythmRevision = /ました・です・ます|文末|語尾|連続/u.test(
+        String(compactPayload?.revision?.instruction || "")
+      );
       const copyEditSystemPrompt = [
         "あなたは、日本語の葬儀司会原稿を最終確認する熟練校正者です。新しい原稿を創作せず、draftを読み上げに適した自然な日本語へ整えてください。",
         "返答はopeningNarration、closingNarration、detectedTheme、improvementNotesを持つJSON一個だけです。improvementNotesは空文字にしてください。",
@@ -2525,6 +2534,9 @@ module.exports = async (req, res) => {
         "閉式後の旅行先は一度だけ書いてください。第一段落は場所、誕生日月、親子三代の事実を三文でまとめ、第二段落はsourceFactsにある家族の気持ちと余韻を二〜三文で結んでください。文章構成を説明する『開式前にたどった記憶』は使用禁止です。",
         "校正では新しい内容を増やさないでください。ただし削りすぎず、開式前本文は定型文を含めて320〜550字、閉式後本文は120〜260字を保ってください。同じ内容が二度あれば一つにまとめ、空いた箇所へ新しい抽象表現を足さないでください。",
         "自然さと正確さを最優先しながら、初稿にある異なる事実と必要な段落の呼吸は残してください。",
+        isEndingRhythmRevision
+          ? "今回の指定は文末リズムの全文校正です。語尾だけを『でした』から『です』へ置き換える修正は失敗です。段落の文構造を組み直し、同義反復を先に削り、近い動作を接続助詞・連用形・条件形で自然につないでください。引用とその言い換えを併記せず、『人の悪口を言わず、人の悪口を言ってはいけない』のような同一事実の二重表現も一つにしてください。『ご家族は抱いています』『お気持ちがあります』という取材報告へ変えることは禁止です。"
+          : "",
         "最後に音読を想定し、一度で意味が伝わるか確認してから完成稿だけを返してください。",
       ].join(" ");
       const editedDraft = await requestNarration({
@@ -3097,6 +3109,18 @@ const compactNarrationPrompt = prompt => {
 
   const revisionMode = payload.workflowMode === "revision" && String(payload.revisionDraft || "").trim();
   const revisionInstruction = compactText(payload.revisionInstruction || "不自然な日本語、事実の重複、機械的な文末だけを整える", 500);
+  const endingRhythmRevision = /ました・です・ます|文末|語尾|連続/u.test(revisionInstruction);
+  const revisionSpecificRules = endingRhythmRevision
+    ? [
+        "この修正は語尾の単純置換ではありません。「でした」を「です」、「ありました」を「あります」へ変えるだけの修正は禁止です。",
+        "まず段落ごとに同じ意味の文を一つへまとめ、その後で主語と動作の関係を組み直してください。近い動作は接続助詞、連用形、条件形を使って一つの流れにします。",
+        "引用に笑顔の記憶が含まれるなら、同じ文中や直後に『よく笑うお顔』『笑顔が浮かぶ』『記憶に残る』を重ねません。引用だけでその事実を伝え、次の場面へ進んでください。",
+        "『人の悪口を言わず、人の悪口を言ってはいけないと話した』のように、同じ事実を否定形と引用で二度書いてはいけません。引用を残し、前半の重複を削ってください。",
+        "『ご家族は抱いています』『お気持ちがあります』のような取材報告へ変えてはいけません。入力にある家族の思いは、主語を説明せず、記憶から自然につながる形で一度だけ置いてください。",
+        "『旅は〜もの』『記憶が残ります』のような説明だけで終えず、場所・時期・親子三代という三つの事実を自然な二〜三文へ組み直してください。",
+        "校正後は各段落を音読し、敬体の同型文末が三つ続かず、同じ事実が二度現れず、一文だけを現在形へ機械的に置き換えていないことを確認してください。",
+      ].join("\n")
+    : "";
   const taskInstruction = revisionMode
     ? [
         "これは新規作成ではなく、スタッフが選んだ構成を守る校正です。",
@@ -3104,6 +3128,7 @@ const compactNarrationPrompt = prompt => {
         "事実の追加、場面の創作、人物評価の追加、開式前と閉式後の材料交換は禁止です。",
         "字数を増やすために文を足してはいけません。同じ笑顔、動作、思い出を説明し直した文は削り、残した文の助詞と流れだけを整えてください。",
         `スタッフの修正指示: ${revisionInstruction}`,
+        revisionSpecificRules,
       ].join("\n")
     : "スタッフが選んだ事実カードの構成どおりに、新しい下書きを作成してください。";
 
