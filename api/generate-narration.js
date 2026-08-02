@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.65";
+const API_BUILD_ID = "narration-studio-20260802.66";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2467,14 +2467,11 @@ module.exports = async (req, res) => {
     const systemPrompt = activeNarrationSystemPrompt(rawPrompt);
     const debugQuality = body.debugQuality === true;
     let verifiedEditorialBase = null;
-    if (forceAiGeneration && stableCandidate) {
-      const checkedBase = applyNameRule(stableCandidate, rawPrompt);
-      if (qualityCheckNarration(checkedBase, rawPrompt).ok) {
-        verifiedEditorialBase = {
-          openingNarration: stableCandidate.openingNarration,
-          closingNarration: stableCandidate.closingNarration,
-        };
-      }
+    if (stableCandidate) {
+      verifiedEditorialBase = {
+        openingNarration: stableCandidate.openingNarration,
+        closingNarration: stableCandidate.closingNarration,
+      };
     }
 
     const model = "gpt-5.5";
@@ -2663,7 +2660,7 @@ module.exports = async (req, res) => {
         failures: Array.from(new Set([...(lastCheck?.failures || []), "response incomplete"])),
       };
     }
-    if (forceAiGeneration && verifiedEditorialBase) {
+    if (verifiedEditorialBase) {
       const verifiedBaseResult = applyNameRule(verifiedEditorialBase, rawPrompt);
       const verifiedBaseScore = narrationCandidateScore(verifiedBaseResult, rawPrompt);
       const aiCandidateScore = narrationCandidateScore(parsed, rawPrompt);
