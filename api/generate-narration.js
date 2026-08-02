@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.73";
+const API_BUILD_ID = "narration-studio-20260802.74";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1456,14 +1456,14 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     openingNarration: [
       seasonSentence,
       lifeSentence,
-      `ご家族が${givenName}様を思うとき、まず浮かぶのは、よく笑っておられたお顔ではないでしょうか。人と接することがお好きで、歌が始まると口ずさみ、ときには踊るように身体を動かされる。その愛らしい姿が、ご家族の記憶に残ります。`,
-      `思い立ったことには、すぐに取りかかられる方でした。手芸に向かえば、ひと針ずつ進めるうちに、少しずつ形が生まれていく。野菜やお花にもこまめに手をかけ、その育ちを楽しみに見守っておられました。`,
-      `そして、折に触れて口にされた「${rememberedPhrase}」という言葉。よく笑い、人との時間を楽しみ、ご家族を大切に過ごされた日々が、今、それぞれの胸に思い出されることでしょう。`,
+      `ご家族が${givenName}様を思うとき、まず浮かぶのは、よく笑っておられたお顔ではないでしょうか。人と接することがお好きで、誰かと過ごす時間を心から楽しまれていた。歌が始まると自然に口ずさみ、ときには踊るように身体を動かされる。その愛らしい姿も、ご家族とともにあった日常の一場面です。`,
+      `手芸に向かわれると、ひと針ずつ手を進めるうちに、少しずつ形が現れてくる。野菜やお花にもこまめに手をかけ、日々の育ちを楽しみに見守っておられました。手を動かし、育つものに目を向ける時間が、日々の暮らしの中にございました。`,
+      `思い立ったことには、すぐに取りかかられる軽やかさもお持ちでした。そして、折に触れて口にされた「${rememberedPhrase}」という言葉。よく笑い、人との時間を楽しみ、ご家族を大切にしてこられた日々が、今、皆様それぞれの胸にゆっくりとよみがえっていることと存じます。`,
       `尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。`,
     ].join("\n\n"),
     closingNarration: [
-      `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。それぞれの地名には、ご家族が同じ時間を過ごした旅の記憶があります。これからその地名を耳にするたび、旅の日の${givenName}様が自然と思い出されることでしょう。`,
-      `その明るさを見習い、これからも前向きに過ごしていきたい。ご家族のその思いとともに、親子三代で出かけた十月の旅は、これからも大切な思い出として残ってまいります。`,
+      `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。訪れた土地は違っても、そこにはいつも、${givenName}様とご家族が同じ時間を過ごした旅の記憶がある。それぞれの地名を耳にするたび、親子三代で出かけた十月の日々が、懐かしく思い起こされることでしょう。`,
+      `その明るさを見習い、これからも前向きに過ごしていきたいというご家族の思いは、ともに旅をした記憶の中にも息づいています。十月が巡るたび、あの日々はこれからも大切な思い出としてよみがえってまいります。`,
     ].join("\n\n"),
   };
 };
