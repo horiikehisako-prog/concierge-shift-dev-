@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.59";
+const API_BUILD_ID = "narration-studio-20260802.60";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2111,8 +2111,9 @@ const requestNarration = async ({
     // reasoning plus both narration sections.
     const outputTokenLimit = Math.min(Math.max(maxTokens, 3200), 4000);
     const callResponses = async forcePlainJson => {
-      const systemPrompt = systemPromptOverride || [
-        buildSystemPrompt(extraInstruction),
+      const systemPrompt = [
+        systemPromptOverride || buildSystemPrompt(),
+        extraInstruction,
         forcePlainJson ? "JSON Schemaを使わず、生のJSONオブジェクト一個だけを返してください。" : "",
       ].filter(Boolean).join(" ");
       const body = {
@@ -2387,10 +2388,11 @@ module.exports = async (req, res) => {
       return;
     }
     const forceAiGeneration = extractPromptPayload(rawPrompt)?.forceAiGeneration === true;
-    const stableDraft = (!ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT || forceAiGeneration) ? null : buildStableFamilyPortrait({
+    const stableCandidate = !ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT ? null : buildStableFamilyPortrait({
       detectedTheme: "家族愛",
       improvementNotes: "",
     }, rawPrompt);
+    const stableDraft = forceAiGeneration ? null : stableCandidate;
     if (stableDraft) {
       const stableResult = applyNameRule(stableDraft, rawPrompt);
       const stableCheck = qualityCheckNarration(stableResult, rawPrompt);
@@ -2437,6 +2439,16 @@ module.exports = async (req, res) => {
     const prompt = compactNarrationPrompt(rawPrompt);
     const systemPrompt = activeNarrationSystemPrompt(rawPrompt);
     const debugQuality = body.debugQuality === true;
+    let verifiedEditorialBase = null;
+    if (forceAiGeneration && stableCandidate) {
+      const checkedBase = applyNameRule(stableCandidate, rawPrompt);
+      if (qualityCheckNarration(checkedBase, rawPrompt).ok) {
+        verifiedEditorialBase = {
+          openingNarration: stableCandidate.openingNarration,
+          closingNarration: stableCandidate.closingNarration,
+        };
+      }
+    }
 
     const model = "gpt-5.5";
     const temperature = clampNumber(body.temperature, 0.2, 0, 2);
@@ -2445,6 +2457,17 @@ module.exports = async (req, res) => {
     let lastCheck = null;
     let copyEditRoute = "not_run";
     let finalGenerationSource = "openai";
+    const onePassInstruction = verifiedEditorialBase
+      ? [
+          "You are the final Japanese funeral-MC copy editor, not a fresh-draft generator.",
+          "Polish the VERIFIED DRAFT below in one pass while preserving every supplied fact, section allocation, and the family's point of view.",
+          "Do not add scenes, interpretations, lessons, future effects, atmosphere claims, or family emotions that are absent from the Hearing Sheet.",
+          "Never repeat a phrase such as 折に触れて, never write その月ごとに when the facts say each trip occurred in October, and never use abstractions such as 言葉や動きに添えられていく.",
+          "Remove mechanical ました・でした repetition by restructuring clauses and paragraphs, not by changing only the final word or stacking noun fragments.",
+          "Return a complete openingNarration and only the closing narrative body. The server appends the fixed closing guidance.",
+          `VERIFIED DRAFT TO POLISH: ${JSON.stringify(verifiedEditorialBase)}`,
+        ].join(" ")
+      : "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return the complete openingNarration. In closingNarration, return only the narrative body because the server appends the fixed guidance.";
     parsed = await requestNarration({
       apiKey,
       model,
@@ -2452,7 +2475,7 @@ module.exports = async (req, res) => {
       maxTokens,
       prompt,
       systemPromptOverride: systemPrompt,
-      extraInstruction: "Finish in a single pass. Internally revise once before answering, but do not make another external call. Prioritize natural Japanese, the required opening life-introduction, disjoint facts between opening and closing, and removal of AI-like phrasing. Return the complete openingNarration. In closingNarration, return only the narrative body because the server appends the fixed guidance.",
+      extraInstruction: onePassInstruction,
     });
     const firstDraft = parsed;
     if (
