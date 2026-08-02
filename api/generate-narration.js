@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.57";
+const API_BUILD_ID = "narration-studio-20260802.58";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1432,7 +1432,7 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n");
   const closingNarration = [
-    `お誕生日月の${month}月に重ねた、親子三代での旅。${locations}という行き先の一つひとつに、ともに過ごした日の記憶が重なります。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
+    `お誕生日月の${month}月には、親子三代で${locations}へ出かけられ、その行き先の一つひとつに、ともに過ごした日の記憶が結ばれています。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
     "その明るさを胸に、これからも前向きに歩んでいきたい。その思いとともに、旅先で分かち合った時間は、これからも大切に残されてまいります。",
   ].join("\n\n");
   return {
