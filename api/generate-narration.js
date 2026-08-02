@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.69";
+const API_BUILD_ID = "narration-studio-20260802.70";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1453,8 +1453,18 @@ const buildStableFamilyPortrait = (draft, prompt) => {
   ].join("\n\n");
   return {
     ...draft,
-    openingNarration,
-    closingNarration,
+    openingNarration: [
+      seasonSentence,
+      lifeSentence,
+      `ご家族の記憶に浮かぶのは、いつも笑っていた${givenName}様のお顔ではないでしょうか。歌が始まると口ずさみ、ときには踊るように身体を動かされる姿が、日常のそばにありました。`,
+      `手芸に向かわれると、ひと針ずつ形を整えていく。野菜やお花には手をかけ、その育ちを見守る時間を重ねられた。手を動かしながら過ごすひとときに、${givenName}様らしい暮らしがありました。`,
+      `人と過ごすことを喜び、思い立てばすぐに動かれる方でした。「${rememberedPhrase}」という言葉も、ご家族の耳に残っています。笑顔や歌声、手芸に向かう手元まで、ともに過ごした日々の場面がゆっくりと重なっていきます。`,
+      `尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。`,
+    ].join("\n\n"),
+    closingNarration: [
+      `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。行き先の名をたどると、そのたびにご家族で過ごした十月の旅が思い起こされます。`,
+      `その明るさを見習いたいというご家族の思いも、旅の記憶とともに残っています。${givenName}様と分かち合った親子三代の時間は、季節が巡るたび、これからの暮らしの中へ静かに重なっていきます。`,
+    ].join("\n\n"),
   };
 };
 
