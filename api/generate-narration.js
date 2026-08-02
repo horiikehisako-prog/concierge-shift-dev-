@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.68";
+const API_BUILD_ID = "narration-studio-20260802.69";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1441,7 +1441,7 @@ const buildStableFamilyPortrait = (draft, prompt) => {
   openingNarration = [
     seasonSentence,
     lifeSentence,
-    `ご家族の記憶に浮かぶのは、いつも笑っていた${givenName}様のお顔です。歌が始まれば声を合わせ、ときには踊るように身体を動かされる姿が、日常の中にありました。`,
+    `ご家族の記憶に浮かぶのは、いつも笑っていた${givenName}様のお顔です。歌が始まると口ずさみ、ときには踊るように身体を動かされる姿が、日常の中にありました。`,
     `手芸に向かわれると、ひと針ずつ形を整え、野菜やお花には手をかけ、その育ちを見守っておられました。`,
     `人と過ごすことを喜び、思い立てばすぐに動かれる方でした。「${rememberedPhrase}」という言葉も、ご家族の耳に残っています。`,
     `笑顔や歌声、手芸に向かう手元まで、ともに過ごした日々を静かに振り返ります。`,
