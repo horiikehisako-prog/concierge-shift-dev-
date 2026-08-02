@@ -1422,7 +1422,7 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     : "人を悪く言ってはいけない";
 
   const lifeSentence = `故${fullName}様は、${age ? `${age}年という` : ""}尊いご生涯を閉じ、静かに人生の幕を下ろされました。`;
-  const openingNarration = [
+  let openingNarration = [
     seasonSentence,
     lifeSentence,
     `思い出の中の${givenName}様は、いつも笑顔です。歌に声を合わせ、ときには踊るように身体を動かされる。その愛らしいお姿も、忘れられない思い出の一つです。`,
@@ -1431,9 +1431,24 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     "ともに過ごした何気ない時間。その一つひとつが、今、懐かしくよみがえります。",
     "尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。",
   ].join("\n\n");
-  const closingNarration = [
+  let closingNarration = [
     `お誕生日月の${month}月には、親子三代で${locations}へ出かけられ、その行き先の一つひとつに、ともに過ごした日の記憶が結ばれています。これからその地名に触れるたび、旅の日の${givenName}様が懐かしく思い出されることでしょう。`,
     "その明るさを胸に、これからも前向きに歩んでいきたい。その思いとともに、旅先で分かち合った時間は、これからも大切に残されてまいります。",
+  ].join("\n\n");
+  // The verified base is the fallback shown when an AI rewrite is rejected.
+  // Keep this manuscript family-near and grammatically varied; it is not a
+  // mechanical copy of the older library wording.
+  openingNarration = [
+    seasonSentence,
+    lifeSentence,
+    `ご家族の記憶に浮かぶのは、いつも笑っていた${givenName}様のお顔です。歌が始まれば声を合わせ、ときには踊るように身体を動かす。その愛らしい姿も、日々の中の一場面として心に残っています。`,
+    `手芸に向かう手元には、ひと針ずつ形を整えていく時間がありました。野菜やお花にも手をかけ、育ちを楽しみに眺める日々。そうした小さな営みが、${givenName}様らしい暮らしをつくっていました。`,
+    `人と過ごすことを喜び、思い立てばすぐに動く。その軽やかさとともに、「${rememberedPhrase}」という言葉も、ご家族の記憶に残っています。笑顔や歌声、手芸に向かう手元まで、今静かに思い返されるひとときです。`,
+    `尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。`,
+  ].join("\n\n");
+  closingNarration = [
+    `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。旅先で見た景色やともに過ごした時間は、行き先の名を耳にするたび、自然に思い起こされることでしょう。`,
+    `${givenName}様の明るさを心に、これからも前を向いて歩んでいきたい。その思いを支えるのは、十月の旅をはじめ、ご家族で分かち合った確かな時間です。これからも折々に、その笑顔を近くに感じていただければと存じます。`,
   ].join("\n\n");
   return {
     ...draft,
