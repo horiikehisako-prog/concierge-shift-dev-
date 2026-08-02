@@ -612,7 +612,9 @@ ${JSON.stringify({
   writingRules: { season: "夏", theme: "家族愛", forbiddenWords: [] },
 })}`);
 assert.equal(studioPrompt.includes("スタッフが選んだ構成を守る校正"), true);
-assert.equal(studioPrompt.includes('"selectedByStaff": true'), true);
+// The compact prompt serializes only the selected fact cards under sourceFacts;
+// the internal plan marker is intentionally not sent to the model.
+assert.equal(studioPrompt.includes('"sourceFacts"'), true);
 assert.equal(studioPrompt.includes("不自然な日本語だけを直す"), true);
 
 console.log("narration normalization tests passed");
