@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.72";
+const API_BUILD_ID = "narration-studio-20260802.73";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -9,9 +9,9 @@ const API_BUILD_ID = "narration-studio-20260802.72";
 const ALLOW_EXTERNAL_QUALITY_RETRY = false;
 const ALLOW_HARD_RETRY = false;
 const ENABLE_LENGTH_REPAIR = false;
-const ENABLE_GUARDED_COPY_EDIT = false;
+const ENABLE_GUARDED_COPY_EDIT = true;
 const ENABLE_LEGACY_NARRATION_REWRITES = false;
-const ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT = true;
+const ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT = false;
 const ENABLE_STABLE_FAMILY_PORTRAIT_POSTPROCESS = false;
 const NARRATION_AUTHOR_SYSTEM_PROMPT = [
   "あなたは、葬儀会館で二十年以上ナレーション原稿を担当してきた日本語の司会者です。ご家族の記憶のすぐそばに立ち、耳で聞いて自然な完成稿を書いてください。",
@@ -2425,11 +2425,13 @@ module.exports = async (req, res) => {
       return;
     }
     const forceAiGeneration = extractPromptPayload(rawPrompt)?.forceAiGeneration === true;
-    const stableCandidate = !ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT ? null : buildStableFamilyPortrait({
+    const stableCandidate = buildStableFamilyPortrait({
       detectedTheme: "家族愛",
       improvementNotes: "",
     }, rawPrompt);
-    const stableDraft = forceAiGeneration ? null : stableCandidate;
+    const stableDraft = ENABLE_STABLE_FAMILY_PORTRAIT_PREFLIGHT && !forceAiGeneration
+      ? stableCandidate
+      : null;
     if (stableDraft) {
       const stableResult = applyNameRule(stableDraft, rawPrompt);
       const stableCheck = qualityCheckNarration(stableResult, rawPrompt);
@@ -2511,6 +2513,7 @@ module.exports = async (req, res) => {
       temperature,
       maxTokens,
       prompt,
+      timeoutMs: 30000,
       systemPromptOverride: systemPrompt,
       extraInstruction: onePassInstruction,
     });
