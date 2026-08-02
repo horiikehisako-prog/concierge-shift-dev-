@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.60";
+const API_BUILD_ID = "narration-studio-20260802.61";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1658,6 +1658,7 @@ const hasBrokenJapaneseGrammar = text => {
     // Catch common duplicated transformations produced from raw hearing-sheet wording.
     if (/(?:大切にしていた|楽しんでいた|育てていた)を(?:大切にされた|楽しまれた|育てられた)/u.test(sentence)) return true;
     if (/(?:花|野菜|鉢植え)[^。！？]{0,12}を日々手をかけ/u.test(sentence)) return true;
+    if (/[一-龠々ァ-ヶぁ-ん]+様は、?[^。！？]{0,50}(?:お顔|表情)です$/u.test(sentence)) return true;
     return false;
   });
 };
@@ -1692,6 +1693,7 @@ const hasUnsafeInterpretiveLanguage = (text, prompt) => {
   if (/そばにいる人の目に[^。]{0,30}映/u.test(value)) return true;
   if (/その場にある時間/u.test(value)) return true;
   if (/前を向いて(?:動か|歩|進)/u.test(value)) return true;
+  if (/前を向く姿/u.test(value)) return true;
   if (/(?:知る方々|周りの方々?)にとって/u.test(value)) return true;
   if (/忘れがたい声/u.test(value)) return true;
   if (/どうぞ[^。]{0,60}(?:お進み|歩んで|携えながら)/u.test(value)) return true;
@@ -1747,6 +1749,10 @@ const hasAwkwardNarrationStyle = text => {
   if (/よく笑っておられたお顔から、歌や踊り、手芸/u.test(value)) return true;
   if (/その行き先の名は[^。]{0,60}思い出として残って/u.test(value)) return true;
   if (/というご家族のお気持ちでございます/u.test(value)) return true;
+  if (/(?:お姿|ご様子)が(?:ありました|あります)/u.test(value)) return true;
+  if (/明るい表情がそこにありました/u.test(value)) return true;
+  const commaLists = value.match(/[一-龠々ァ-ヶぁ-ん]{2,10}(?:、[一-龠々ァ-ヶぁ-ん]{2,10}){2,}/gu) || [];
+  if (commaLists.some((list, index) => commaLists.indexOf(list) !== index)) return true;
   return false;
 };
 
@@ -2463,6 +2469,9 @@ module.exports = async (req, res) => {
           "Polish the VERIFIED DRAFT below in one pass while preserving every supplied fact, section allocation, and the family's point of view.",
           "Do not add scenes, interpretations, lessons, future effects, atmosphere claims, or family emotions that are absent from the Hearing Sheet.",
           "Never repeat a phrase such as 折に触れて, never write その月ごとに when the facts say each trip occurred in October, and never use abstractions such as 言葉や動きに添えられていく.",
+          "Never write a subject-predicate mismatch such as チエノ様は、お顔です. Write 思い出の中のチエノ様は、いつも笑顔です instead.",
+          "Do not write お姿があります, 明るい表情がそこにありました, or convert 前向き into 前を向く姿.",
+          "Mention a supplied list of destinations only once; after that, refer to その地名 or 旅の日々 without repeating the list.",
           "Remove mechanical ました・でした repetition by restructuring clauses and paragraphs, not by changing only the final word or stacking noun fragments.",
           "Return a complete openingNarration and only the closing narrative body. The server appends the fixed closing guidance.",
           `VERIFIED DRAFT TO POLISH: ${JSON.stringify(verifiedEditorialBase)}`,
