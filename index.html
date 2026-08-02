@@ -4278,9 +4278,9 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       }
       setStudio(s=>({...s,step:4,status:"editing",revisionCount:s.revisionCount+(mode==="revision"?1:0),finalChecks:compassEmptyStudio().finalChecks}));
       const actualOutputTokens=estimateAITokens(generated.full||"");
-      const usedOpenAI=generated.generationSource==="openai";
-      const usedStableNarration=generated.generationSource==="stable_family_portrait";
-      const generationCompleted=usedOpenAI||usedStableNarration;
+      const usedStableNarration=String(generated.generationSource||"").startsWith("stable_family_portrait");
+      const usedOpenAI=generated.generationSource==="openai"||generated.generationSource==="stable_family_portrait_recovery";
+      const generationCompleted=(usedOpenAI||usedStableNarration)&&!!generated.openingNarration&&!!generated.closingNarration;
       if(!generationCompleted){
         const reason=generated.fallbackReason||generated.improvementNotes||"理由を取得できませんでした";
         const fallbackMsg=`AI生成を完了できなかったため、原稿は表示していません。理由: ${reason}`;
@@ -4290,7 +4290,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       await writeUsage("success",{
         estimatedOutputTokens:actualOutputTokens,
         estimatedCostJpy:usedOpenAI?estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens):0,
-        billingSource:usedOpenAI?"OpenAI":(usedStableNarration?"Compass安定作成":"生成なし"),
+        billingSource:generated.generationSource==="stable_family_portrait_recovery"?"OpenAI→Compass救済":(usedOpenAI?"OpenAI":(usedStableNarration?"Compass安定作成":"生成なし")),
       });
       if(generationCompleted) flash?.(mode==="revision"?"原稿の調整が完了しました。内容を読み上げて確認してください。":"ナレーション原稿を作成しました。内容を読み上げて確認してください。");
     }catch(e){

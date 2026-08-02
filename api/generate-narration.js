@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.58";
+const API_BUILD_ID = "narration-studio-20260802.59";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -2610,11 +2610,25 @@ module.exports = async (req, res) => {
         failures: Array.from(new Set([...(lastCheck?.failures || []), "response incomplete"])),
       };
     }
-    // A forced AI attempt may still produce awkward or incomplete Japanese.
-    // Never expose that failed draft when the hearing facts match a verified
-    // family portrait. Use the deterministic, quality-checked manuscript as
-    // a no-cost recovery after the AI attempt.
-    if (!lastCheck?.ok) {
+    // In normal mode, any failed draft may fall back to the verified portrait.
+    // In forced-AI mode, preserve and display a complete AI draft when the
+    // remaining findings are editorial warnings only. Recover only structural
+    // failures that would make the manuscript unsafe or unusable.
+    const recoveryBlockingFailures = new Set([
+      "missing narration",
+      "control label leaked",
+      "opening order",
+      "seasonal grammar",
+      "broken Japanese grammar",
+      "response incomplete",
+      "closing timeline",
+      "too many direct quotes",
+    ]);
+    const shouldRecoverWithStablePortrait = !lastCheck?.ok && (
+      !forceAiGeneration ||
+      (lastCheck?.failures || []).some(failure => recoveryBlockingFailures.has(failure))
+    );
+    if (shouldRecoverWithStablePortrait) {
       const stableRecoveryDraft = buildStableFamilyPortrait({
         detectedTheme: parsed?.detectedTheme || "家族愛",
         improvementNotes: "",
