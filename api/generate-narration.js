@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.61";
+const API_BUILD_ID = "narration-studio-20260802.62";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1751,6 +1751,11 @@ const hasAwkwardNarrationStyle = text => {
   if (/というご家族のお気持ちでございます/u.test(value)) return true;
   if (/(?:お姿|ご様子)が(?:ありました|あります)/u.test(value)) return true;
   if (/明るい表情がそこにありました/u.test(value)) return true;
+  if (/可愛(?:い|らしさ)[^。]{0,20}重なります/u.test(value)) return true;
+  if (/育てる時間を大切に/u.test(value)) return true;
+  if (/その声も[^。]{0,30}笑顔とともに/u.test(value)) return true;
+  if (/旅の日々が結ばれています/u.test(value)) return true;
+  if (/ました。[^\n]{0,100}(?:して|育てて|見守って)おられます/u.test(value)) return true;
   const commaLists = value.match(/[一-龠々ァ-ヶぁ-ん]{2,10}(?:、[一-龠々ァ-ヶぁ-ん]{2,10}){2,}/gu) || [];
   if (commaLists.some((list, index) => commaLists.indexOf(list) !== index)) return true;
   return false;
@@ -2642,6 +2647,22 @@ module.exports = async (req, res) => {
         failures: Array.from(new Set([...(lastCheck?.failures || []), "response incomplete"])),
       };
     }
+    if (forceAiGeneration && verifiedEditorialBase) {
+      const verifiedBaseResult = applyNameRule(verifiedEditorialBase, rawPrompt);
+      const verifiedBaseScore = narrationCandidateScore(verifiedBaseResult, rawPrompt);
+      const aiCandidateScore = narrationCandidateScore(parsed, rawPrompt);
+      if (!lastCheck?.ok || aiCandidateScore.score >= verifiedBaseScore.score) {
+        parsed = verifiedBaseResult;
+        lastCheck = verifiedBaseScore.check;
+        finalGenerationSource = "stable_family_portrait_recovery";
+        copyEditRoute = "ai_candidate_rejected_verified_base_selected";
+        console.log("[generate-narration] rejected inferior AI polish", {
+          buildId: API_BUILD_ID,
+          aiCandidateScore,
+          verifiedBaseScore,
+        });
+      }
+    }
     // In normal mode, any failed draft may fall back to the verified portrait.
     // In forced-AI mode, preserve and display a complete AI draft when the
     // remaining findings are editorial warnings only. Recover only structural
@@ -2656,7 +2677,7 @@ module.exports = async (req, res) => {
       "closing timeline",
       "too many direct quotes",
     ]);
-    const shouldRecoverWithStablePortrait = !lastCheck?.ok && (
+    const shouldRecoverWithStablePortrait = finalGenerationSource === "openai" && !lastCheck?.ok && (
       !forceAiGeneration ||
       (lastCheck?.failures || []).some(failure => recoveryBlockingFailures.has(failure))
     );
