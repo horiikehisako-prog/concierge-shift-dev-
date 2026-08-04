@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260802.75";
+const API_BUILD_ID = "narration-studio-20260804.76";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1456,15 +1456,15 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     openingNarration: [
       seasonSentence,
       lifeSentence,
-      `ご家族が${givenName}様を思うとき、最初に浮かぶのは、よく笑っておられたお顔です。人と接することがお好きで、誰かと向き合えば、話は自然と続いていく。歌を口ずさみ、ときには踊るように身体を動かす、その愛らしい姿も、いつもの暮らしの中にありました。`,
-      `思い立ったことには、すぐに取りかかられる軽やかさをお持ちだった${givenName}様。手芸に向かえば、ひと針ずつ丁寧に手を進め、少しずつ形にしていく。野菜やお花にもこまめに手をかけ、小さな芽や花の変化へ目を向ける。そうして手を動かし、育つものを見つめることが、日々の楽しみの一つでした。`,
-      `そして、「${rememberedPhrase}」と、折に触れて話されていたことも忘れられません。そのひと言には、人とのつながりを大事にしながら、ご家族と歩んでこられた${givenName}様らしさが表れています。人との時間を楽しみ、身近な方々を大切にしてこられた日々。その一つひとつを胸に、皆様は今、在りし日のお姿を静かにたどっておられることと存じます。`,
+      `人と接することがお好きだった${givenName}様。誰かと顔を合わせれば言葉が弾み、楽しそうに笑われる。歌を口ずさみ、ときには踊るように身体を動かす。その愛らしい姿は、ご家族と過ごす日々の中に、いつも自然にありました。`,
+      `思い立てば、すぐに動き出す。手芸に向かえば、ひと針ずつ丁寧に手を進め、少しずつ形にしていく。野菜やお花にもこまめに手をかけ、芽の伸びや花の変化へ目を向ける。そうして手を動かし、育つものを見守る時間も、毎日の暮らしの中にございました。`,
+      `「${rememberedPhrase}」と、折に触れて話されていた${givenName}様。その言葉も、今なおご家族の耳に残ります。人との時間を楽しみ、ご家族を大切にしながら重ねてこられた日々を、皆様は今、静かに振り返っておられることと存じます。`,
       `尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。`,
     ].join("\n\n"),
     closingNarration: [
-      `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。行き先は違っても、そばにはいつもご家族がいて、同じ道を進み、同じ時間を分かち合う。それぞれの土地で過ごしたひとときを、ご家族は今も覚えておられます。`,
-      `これから先、その地名を耳にしたときには、旅の日の表情や、皆様で並んだひとときが自然と心に浮かぶことでしょう。訪れた土地の一つひとつが、${givenName}様との時間へつながる、忘れがたい場所として残っていくことと存じます。`,
-      `その明るさを見習い、これからも前向きに過ごしていきたい。ご家族の胸にあるその思いとともに、旅先で分かち合った時間は、これからの日々にも静かに寄り添い続けることでしょう。`,
+      `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。訪れた土地の数だけ、${givenName}様とご家族がともに過ごした時間がございます。`,
+      `これから先、それぞれの地名を耳にするたび、旅の折の表情や、皆様で過ごしたひとときが、ふと心に浮かぶこともあるでしょう。行き先は違っても、ご家族と一緒に出かけることの喜びは、どの旅にも変わらず流れていたのかもしれません。`,
+      `その明るさを見習い、これからも前向きに過ごしていきたい。ご家族から寄せられたその思いとともに、旅先で分かち合った時間は、これからも大切な思い出であり続けることと存じます。`,
     ].join("\n\n"),
   };
 };
@@ -1740,6 +1740,7 @@ const hasUnsafeInterpretiveLanguage = (text, prompt) => {
 
 const hasAwkwardNarrationStyle = text => {
   const value = String(text || "");
+  if (/(?:まず|最初に)浮かぶのは[^。]{0,45}(?:顔|お顔|笑顔)/u.test(value)) return true;
   if (/笑っている顔しか思い出せない[^。]{0,28}よく笑(?:う|って|われ)[^。]{0,16}(?:顔|お顔)/u.test(value)) return true;
   if (/人の悪口を言わず[^。]{0,45}人の悪口を言ってはいけない/u.test(value)) return true;
   if (/ご家族(?:は|が)[^。]{0,35}(?:思い|気持ち)を抱いています/u.test(value)) return true;
@@ -1918,6 +1919,7 @@ const buildLegacySystemPrompt = extraInstruction => [
   "SENTENCE-END AUDIT: do not mechanically alternate endings. Two natural polite sentences may stand together, but never allow three in a row with the same です/ます rhythm outside fixed guidance. Do not escape into stacked noun fragments such as 手芸に向かわれる時間。野菜を育てる時間。 Use at most one deliberate noun-ending sentence in a paragraph, and only when it sounds complete aloud. Prefer connecting closely related facts into one grammatical sentence.",
   "NATURAL-JAPANESE POLISH: state one idea once. Never repeat お姿 twice in one sentence, never write 明るさを重ねる, and never leave a sentence as 家族を大切にしておられたこと。 Avoid flat reporting such as 歌ったり踊ったりすることもありました or いつも可愛いとのこと. Describe the supplied scene directly and finish every sentence with a natural predicate.",
   "FAMILY-NEAR VOICE: never expose the interview process. Do not write お顔とのことです, お方でいらっしゃいました, 皆様がよくご存じです, or ご家族が語ってくださった. Do not explain a supplied quotation as a philosophy, 教え, 人との向き合い方, 生き方, or 考え方. Let the exact words remain close to the family's memory without an outsider's interpretation.",
+  "Do not begin the portrait by explaining what first comes to mind, such as まず浮かぶのは or 最初に浮かぶのは. Enter directly into a true remembered action or scene, while staying strictly within the Hearing Sheet facts.",
   "NO AI COMMENTARY: do not write とうかがっております, ご本人らしいまめやかさ, 言葉にしすぎなくても, 敬意をもって向き合います, or 耳にそっと戻ってくる. Do not narrate the writing process or add a polished interpretation. Stay with the supplied action, expression, place, or words.",
   "DIRECT-QUOTE LIMIT: use at most one 「...」 quotation across openingNarration and closingNarration together, and only when the exact spoken words are present in the Hearing Sheet.",
   "CEREMONY TIMELINE: closingNarration is read after the officiant has left and before flowers are offered. Never write お別れのあと, お別れを済ませた今, お別れのひとときを過ごした今, or お別れのひとときを終えた今.",
