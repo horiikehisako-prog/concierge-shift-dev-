@@ -1,7 +1,7 @@
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
-const API_BUILD_ID = "narration-studio-20260804.76";
+const API_BUILD_ID = "narration-studio-20260804.77";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -1456,15 +1456,15 @@ const buildStableFamilyPortrait = (draft, prompt) => {
     openingNarration: [
       seasonSentence,
       lifeSentence,
-      `人と接することがお好きだった${givenName}様。誰かと顔を合わせれば言葉が弾み、楽しそうに笑われる。歌を口ずさみ、ときには踊るように身体を動かす。その愛らしい姿は、ご家族と過ごす日々の中に、いつも自然にありました。`,
-      `思い立てば、すぐに動き出す。手芸に向かえば、ひと針ずつ丁寧に手を進め、少しずつ形にしていく。野菜やお花にもこまめに手をかけ、芽の伸びや花の変化へ目を向ける。そうして手を動かし、育つものを見守る時間も、毎日の暮らしの中にございました。`,
-      `「${rememberedPhrase}」と、折に触れて話されていた${givenName}様。その言葉も、今なおご家族の耳に残ります。人との時間を楽しみ、ご家族を大切にしながら重ねてこられた日々を、皆様は今、静かに振り返っておられることと存じます。`,
+      `人と接することがお好きだった${givenName}様。誰かと顔を合わせれば、会話を楽しみながらよく笑われる。歌が始まると自然に口ずさみ、ときには踊るように身体を動かされる。その仕草を、ご家族はいつも可愛らしく感じておられました。`,
+      `思い立ったことには、すぐに取りかかる。手芸では、ひと針ずつ丁寧に手を進め、少しずつ形にしていく。野菜やお花にもこまめに手をかけ、芽が伸び、花が咲いていく様子を見守る。何かを形にし、育てていく時間も、${givenName}様の日常の一部でした。`,
+      `「${rememberedPhrase}」と、折に触れて話されていた言葉も忘れられません。その言葉も、歌い踊る姿も、手芸に向かう手元も、今ではどれも懐かしく思い出されることと存じます。人との時間を楽しみ、ご家族を大切にしながら重ねてこられた日々へ、今、皆様の感謝が寄せられています。`,
       `尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。`,
     ].join("\n\n"),
     closingNarration: [
-      `お誕生日月の${month}月には、親子三代で${locations}へ出かけられました。訪れた土地の数だけ、${givenName}様とご家族がともに過ごした時間がございます。`,
-      `これから先、それぞれの地名を耳にするたび、旅の折の表情や、皆様で過ごしたひとときが、ふと心に浮かぶこともあるでしょう。行き先は違っても、ご家族と一緒に出かけることの喜びは、どの旅にも変わらず流れていたのかもしれません。`,
-      `その明るさを見習い、これからも前向きに過ごしていきたい。ご家族から寄せられたその思いとともに、旅先で分かち合った時間は、これからも大切な思い出であり続けることと存じます。`,
+      `お誕生日月の${month}月には、親子三代で${locations}へ旅を重ねられました。訪れた土地の一つひとつに、${givenName}様とご家族がともに過ごした時間が残っています。`,
+      `これから先、それぞれの地名を耳にしたとき、旅の日の表情や、皆様で過ごしたひとときが、ふと心に浮かぶこともあるでしょう。`,
+      `その明るさを見習い、これからも前向きに過ごしていきたい。その思いとともに、旅の日々は、${givenName}様と過ごした大切な時間として、これからも心に残り続けることでしょう。`,
     ].join("\n\n"),
   };
 };
@@ -1783,6 +1783,9 @@ const hasAwkwardNarrationStyle = text => {
   if (/育てる時間を大切に/u.test(value)) return true;
   if (/その声も[^。]{0,30}笑顔とともに/u.test(value)) return true;
   if (/旅の日々が結ばれています/u.test(value)) return true;
+  if (/喜びは[^。]{0,35}どの旅にも[^。]{0,20}流れて/u.test(value)) return true;
+  if (/ご家族から寄せられたその思い/u.test(value)) return true;
+  if (/毎日の暮らしの中にございました/u.test(value)) return true;
   if (/ました。[^\n]{0,100}(?:して|育てて|見守って)おられます/u.test(value)) return true;
   const commaLists = value.match(/[一-龠々ァ-ヶぁ-ん]{2,10}(?:、[一-龠々ァ-ヶぁ-ん]{2,10}){2,}/gu) || [];
   if (commaLists.some((list, index) => commaLists.indexOf(list) !== index)) return true;
