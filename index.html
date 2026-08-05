@@ -1048,6 +1048,7 @@ function App(){
   const [month,setMonth]=useState(savedYmMatch?Number(savedYmMatch[2]):now.getMonth()+1);
   const [role,setRole]  =useState(null);
   const [uname,setUname]=useState("");
+  const [accessProfile,setAccessProfile]=useState(null);
   const [authReady,setAuthReady]=useState(false);
   const [authMessage,setAuthMessage]=useState("");
   const [D,setD]=useState({settings:null,shifts:{},prefs:{},att:{},vconf:{},mcStaff:null,assistStaff:null,compassKb:[]});
@@ -1095,6 +1096,7 @@ function App(){
     if(!user){
       setRole(null);
       setUname("");
+      setAccessProfile(null);
       setAuthReady(true);
       return;
     }
@@ -1103,8 +1105,9 @@ function App(){
       const snap=await firebase.database().ref(`/access/${user.uid}`).get();
       const access=snap.exists()?snap.val():null;
       if(!access||access.enabled!==true||!access.role) throw new Error("このアカウントには利用権限が設定されていません。");
+      setAccessProfile(access);
       setRole(access.role);
-      setUname(access.name||user.email||"");
+      setUname(access.name||"");
       setAuthMessage("");
       setAuthReady(true);
     }catch(e){
@@ -1229,6 +1232,10 @@ function App(){
   };
   if(!authReady) return <CompassLoadingScreen/>;
   if(!role) return <FirebaseLogin message={authMessage} onMessage={setAuthMessage}/>;
+  if(accessProfile?.selectName===true&&!uname){
+    if(busy||!D.settings) return <CompassLoadingScreen/>;
+    return <ProductionNameSelect role={role} cfg={cfg} onSelect={setUname} onSignOut={()=>firebase.auth().signOut()}/>;
+  }
 
   const P={year,month,setYear,setMonth,shifts:D.shifts,prefs:D.prefs,att:D.att,vconf:D.vconf,
     cfg,sv,generate,uname,role,busy,flash,compassKb:D.compassKb};
@@ -1251,6 +1258,25 @@ function App(){
       </div>
     </div>
   );
+}
+
+function ProductionNameSelect({role,cfg,onSelect,onSignOut}){
+  const roleNames={staff:"コンシェルジュ",venue:"ディレクター",mc:"司会",assist:"アシスタント"};
+  const names=role==="staff"?cfg.staff:
+    role==="venue"?cfg.venues.map(v=>v.name):
+    role==="mc"?cfg.mcStaff:
+    role==="assist"?cfg.assistStaff:[];
+  return <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#fde8d4 0%,#fbd4b4 50%,#f9c4a0 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+    <div style={{width:"100%",maxWidth:380,background:"rgba(255,255,255,.95)",borderRadius:18,padding:28,boxShadow:"0 10px 36px rgba(124,45,10,.16)",border:"1px solid rgba(124,45,10,.12)"}}>
+      <h2 style={{margin:"0 0 6px",color:"#7c2d0a",fontSize:21}}>お名前を選んでください</h2>
+      <p style={{margin:"0 0 18px",color:"#9a694c",fontSize:13}}>{roleNames[role]||"スタッフ"}として使用します。</p>
+      <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:"55vh",overflowY:"auto"}}>
+        {names.map(name=><button key={name} onClick={()=>onSelect(name)} style={{background:"#fff8f3",border:"1px solid #e5c3ad",borderRadius:9,padding:"12px 14px",fontSize:14,fontWeight:700,textAlign:"left",cursor:"pointer"}}>{name}</button>)}
+        {role==="venue"&&<button onClick={()=>onSelect("全会場")} style={{background:"#7c2d0a",color:"#fff",border:0,borderRadius:9,padding:"12px 14px",fontSize:14,fontWeight:700,textAlign:"left",cursor:"pointer"}}>全会場まとめて確認</button>}
+      </div>
+      <button onClick={onSignOut} style={{marginTop:18,background:"none",border:0,color:"#9a694c",fontSize:13,cursor:"pointer"}}>ログイン画面へ戻る</button>
+    </div>
+  </div>;
 }
 
 function CompassLoadingScreen(){
