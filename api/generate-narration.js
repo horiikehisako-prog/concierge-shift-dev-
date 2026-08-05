@@ -2,6 +2,8 @@ const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
 const API_BUILD_ID = "narration-studio-20260804.77";
+const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY || "AIzaSyBpKNiDwL06_SI1z-oT2xB979A5gLIoM70";
+const FIREBASE_DATABASE_URL = process.env.FIREBASE_DATABASE_URL || "https://concierge-shift-prod-default-rtdb.asia-southeast1.firebasedatabase.app";
 // Vercel functions have a firm execution limit. A second or third model call
 // regularly exhausts that limit and hides an otherwise usable first draft.
 // Keep generation to one model call; deterministic normalization and the
@@ -72,6 +74,25 @@ const readJsonBody = async req => {
   for await (const chunk of req) chunks.push(Buffer.from(chunk));
   const raw = Buffer.concat(chunks).toString("utf8");
   return raw ? JSON.parse(raw) : {};
+};
+
+const verifyFirebaseRequest = async req => {
+  const authorization = String(req.headers?.authorization || "");
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) throw Object.assign(new Error("Authentication required."), { status: 401 });
+  const idToken = match[1].trim();
+  const identityResponse = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(FIREBASE_WEB_API_KEY)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken }),
+  });
+  const identity = await identityResponse.json().catch(() => ({}));
+  const uid = identity?.users?.[0]?.localId;
+  if (!identityResponse.ok || !uid) throw Object.assign(new Error("Invalid authentication."), { status: 401 });
+  const accessResponse = await fetch(`${FIREBASE_DATABASE_URL}/access/${encodeURIComponent(uid)}.json?auth=${encodeURIComponent(idToken)}`);
+  const access = await accessResponse.json().catch(() => null);
+  if (!accessResponse.ok || !access?.enabled) throw Object.assign(new Error("Account is not enabled."), { status: 403 });
+  return { uid, role: access.role || "" };
 };
 
 const extractJson = text => {
@@ -2344,7 +2365,7 @@ module.exports = async (req, res) => {
   res.setHeader("Content-Type", "application/json; charset=utf-8");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   // Some deployment dashboards can accidentally store the same key more than
   // once on separate lines. Use only the first non-empty token and never place
@@ -2417,6 +2438,19 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.end(JSON.stringify({ error: "Method not allowed" }));
+    return;
+  }
+
+  try {
+    const auth = await verifyFirebaseRequest(req);
+    diagnostics.authenticated = true;
+    diagnostics.authRole = auth.role;
+  } catch (error) {
+    res.statusCode = error.status || 401;
+    res.end(JSON.stringify({
+      code: res.statusCode === 403 ? "ACCOUNT_NOT_ENABLED" : "AUTHENTICATION_REQUIRED",
+      error: "Authentication required.",
+    }));
     return;
   }
 
