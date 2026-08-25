@@ -43,7 +43,7 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "業務委託確認版 Build 20260825.1";
+const DEV_BUILD_LABEL = "業務委託お試し版 Build 20260825.2";
 const APP_ENV_LABEL = "確認版・本番未反映";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
@@ -400,9 +400,41 @@ const buildShortageAlerts = ({year,month,prefs,shifts,cfg}) => {
 
 // ─── STORAGE ──────────────────────────────────────────────────
 const stParseStored=val=>{if(typeof val==="string"){try{return JSON.parse(val);}catch{return val;}}return val;};
-const stLoad=async k=>{try{const snap=await firebase.database().ref('/data/'+k).get();if(!snap.exists())return null;return stParseStored(snap.val());}catch(e){console.warn("Firebase load failed:",k,e);return null;}};
-const stSave=async(k,v)=>{await firebase.database().ref('/data/'+k).set(JSON.stringify(v));};
+const DEMO_MODE_KEY="compass-contractor-demo-mode";
+const DEMO_STORAGE_PREFIX="compass-contractor-demo-v1:";
+const isDemoMode=()=>{try{return sessionStorage.getItem(DEMO_MODE_KEY)==="1";}catch{return false;}};
+const demoSeed=k=>{
+  if(k==="settings")return {
+    staff:["お試し 花子","お試し 太郎"],
+    venues:[{name:"お試し会館A",options:[]},{name:"お試し会館B",options:[]}],
+    staffRates:{"お試し 花子":1200,"お試し 太郎":1200}
+  };
+  if(/^shift-\d{4}-\d{2}$/.test(String(k)))return {1:{"お試し会館A":"お試し 花子","お試し会館B":"お試し 太郎"},2:{"お試し会館A":"お試し 花子","お試し会館B":"お試し 太郎"}};
+  if(/^att-\d{4}-\d{2}$/.test(String(k)))return {
+    "1-お試し会館A":{staff:"お試し 花子",start:"09:00",end:"16:00",breakMin:60,verified:true,verifiedAt:new Date().toISOString()},
+    "1-お試し会館B":{staff:"お試し 太郎",start:"09:00",end:"16:00",breakMin:60,verified:true,verifiedAt:new Date().toISOString()},
+    "2-お試し会館A":{staff:"お試し 花子",start:"09:00",end:"16:00",breakMin:60,verified:true,verifiedAt:new Date().toISOString()},
+    "2-お試し会館B":{staff:"お試し 太郎",start:"09:00",end:"16:00",breakMin:60,verified:true,verifiedAt:new Date().toISOString()}
+  };
+  return null;
+};
+const stLoad=async k=>{try{
+  if(isDemoMode()){
+    const raw=localStorage.getItem(DEMO_STORAGE_PREFIX+k);
+    return raw?stParseStored(raw):demoSeed(k);
+  }
+  const snap=await firebase.database().ref('/data/'+k).get();if(!snap.exists())return null;return stParseStored(snap.val());
+}catch(e){console.warn("Storage load failed:",k,e);return null;}};
+const stSave=async(k,v)=>{
+  if(isDemoMode()){localStorage.setItem(DEMO_STORAGE_PREFIX+k,JSON.stringify(v));return v;}
+  await firebase.database().ref('/data/'+k).set(JSON.stringify(v));
+};
 const stUpdate=async(k,updater)=>{
+  if(isDemoMode()){
+    const current=await stLoad(k),next=updater(current);
+    await stSave(k,next);
+    return next;
+  }
   const ref=firebase.database().ref('/data/'+k);
   const res=await ref.transaction(current=>{
     const next=updater(stParseStored(current));
@@ -1093,6 +1125,15 @@ function App(){
   const flash=msg=>{setToast(msg);setTimeout(()=>setToast(""),2500);};
 
   useEffect(()=>firebase.auth().onAuthStateChanged(async user=>{
+    if(isDemoMode()){
+      const demoRole=sessionStorage.getItem("compass-contractor-demo-role")||"admin";
+      const demoName=demoRole==="staff"?"お試し 花子":"お試し管理者";
+      setAccessProfile({enabled:true,role:demoRole,name:demoName,demo:true});
+      setRole(demoRole);
+      setUname(demoName);
+      setAuthReady(true);
+      return;
+    }
     if(!user){
       setRole(null);
       setUname("");
@@ -1230,8 +1271,26 @@ function App(){
     }
     sv.shifts(ns);
   };
+  const enterDemo=demoRole=>{
+    sessionStorage.setItem(DEMO_MODE_KEY,"1");
+    sessionStorage.setItem("compass-contractor-demo-role",demoRole);
+    const demoName=demoRole==="staff"?"お試し 花子":"お試し管理者";
+    setAccessProfile({enabled:true,role:demoRole,name:demoName,demo:true});
+    setRole(demoRole);
+    setUname(demoName);
+    setAuthMessage("");
+  };
+  const exitApp=async()=>{
+    if(isDemoMode()){
+      sessionStorage.removeItem(DEMO_MODE_KEY);
+      sessionStorage.removeItem("compass-contractor-demo-role");
+      setRole(null);setUname("");setAccessProfile(null);
+      return;
+    }
+    await firebase.auth().signOut();
+  };
   if(!authReady) return <CompassLoadingScreen/>;
-  if(!role) return <FirebaseLogin message={authMessage} onMessage={setAuthMessage}/>;
+  if(!role) return <FirebaseLogin message={authMessage} onMessage={setAuthMessage} onDemo={enterDemo}/>;
   if(accessProfile?.selectName===true&&!uname){
     if(busy||!D.settings) return <CompassLoadingScreen/>;
     return <ProductionNameSelect role={role} cfg={cfg} onSelect={setUname} onSignOut={()=>firebase.auth().signOut()}/>;
@@ -1246,7 +1305,7 @@ function App(){
       {toast&&<div style={{position:"fixed",top:16,right:16,zIndex:9999,background:C.navy,
         color:"#fff",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:600,
         boxShadow:"0 4px 20px rgba(0,0,0,.2)"}}>{toast}</div>}
-      <TopBar role={role} uname={uname} onBack={()=>firebase.auth().signOut()} year={year} month={month}/>
+      <TopBar role={role} uname={uname} onBack={exitApp} year={year} month={month}/>
       <div style={{maxWidth:960,margin:"0 auto",padding:"16px 14px"}}>
         {busy&&<div style={{textAlign:"center",padding:60,color:C.muted}}><div style={{fontWeight:800,color:C.text,marginBottom:6}}>{APP_NAME}</div><div>{APP_SUBTITLE}</div><div style={{marginTop:10}}>読み込み中…</div></div>}
         {!busy&&role==="admin"  &&<AdminView  {...P}/>}
@@ -1288,7 +1347,7 @@ function CompassLoadingScreen(){
   </div>;
 }
 
-function FirebaseLogin({message,onMessage}){
+function FirebaseLogin({message,onMessage,onDemo}){
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [submitting,setSubmitting]=useState(false);
@@ -1320,6 +1379,10 @@ function FirebaseLogin({message,onMessage}){
       <input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} style={{width:"100%",border:"1px solid #e5c3ad",borderRadius:9,padding:"11px 12px",fontSize:15}}/>
       {message&&<div role="alert" style={{marginTop:12,padding:"9px 10px",borderRadius:8,background:"#fff1f2",color:"#b42318",fontSize:12}}>{message}</div>}
       <button type="submit" disabled={submitting} style={{width:"100%",marginTop:18,border:0,borderRadius:9,padding:"12px 14px",background:submitting?"#c7a18c":"#7c2d0a",color:"#fff",fontSize:14,fontWeight:800,cursor:submitting?"default":"pointer"}}>{submitting?"確認中…":"ログイン"}</button>
+      <div style={{margin:"20px 0 12px",borderTop:"1px solid #ead5c7",position:"relative"}}><span style={{position:"absolute",left:"50%",top:-9,transform:"translateX(-50%)",background:"#fff",padding:"0 10px",fontSize:12,color:"#9a694c",whiteSpace:"nowrap"}}>メール・パスワード不要</span></div>
+      <button type="button" onClick={()=>onDemo("admin")} style={{width:"100%",border:0,borderRadius:9,padding:"12px 14px",background:"#0f766e",color:"#fff",fontSize:14,fontWeight:800,cursor:"pointer"}}>🧪 お試しモードで入る（管理者）</button>
+      <button type="button" onClick={()=>onDemo("staff")} style={{width:"100%",marginTop:9,border:"1px solid #0f766e",borderRadius:9,padding:"11px 14px",background:"#f0fdfa",color:"#0f766e",fontSize:14,fontWeight:800,cursor:"pointer"}}>🧪 スタッフ画面も試す</button>
+      <p style={{margin:"12px 0 0",fontSize:11,lineHeight:1.6,color:"#9a694c",textAlign:"center"}}>架空のスタッフ・勤務データを使用します。本番データには保存されません。</p>
     </form>
   </div>;
 }
@@ -1567,8 +1630,9 @@ const contractorInvoiceNo=(name,y,m)=>`INV-${y}${p2(m)}-${contractorKey(name).sl
 const contractorApprovedRows=P=>calcConciergePayroll({...P,approvedOnly:true});
 // 確認版専用。業務委託データはFirebase本番へ一切書き込まず、このブラウザ内だけに保存する。
 const CONTRACTOR_PREVIEW_PREFIX="compass-contractor-preview-v1:";
-const contractorPreviewLoad=async key=>{try{const raw=localStorage.getItem(CONTRACTOR_PREVIEW_PREFIX+key);return raw?JSON.parse(raw):null;}catch(e){console.warn("Preview load failed",e);return null;}};
-const contractorPreviewSave=async(key,value)=>{localStorage.setItem(CONTRACTOR_PREVIEW_PREFIX+key,JSON.stringify(value));return value;};
+const contractorPreviewStorageKey=key=>(isDemoMode()?DEMO_STORAGE_PREFIX:CONTRACTOR_PREVIEW_PREFIX)+"contractor:"+key;
+const contractorPreviewLoad=async key=>{try{const raw=localStorage.getItem(contractorPreviewStorageKey(key));return raw?JSON.parse(raw):null;}catch(e){console.warn("Preview load failed",e);return null;}};
+const contractorPreviewSave=async(key,value)=>{localStorage.setItem(contractorPreviewStorageKey(key),JSON.stringify(value));return value;};
 
 function ContractorStatus({children,color=C.blue}){return <span style={{background:`${color}18`,color,borderRadius:999,padding:"3px 9px",fontSize:11,fontWeight:800}}>{children}</span>}
 
@@ -1588,7 +1652,7 @@ function ContractorAdminView(P){
     const next={...orders};
     contractorApprovedRows(P).forEach(r=>{
       const id=`${contractorDate(year,month,r.d)}-${r.venue}-${contractorKey(r.staff)}`;
-      if(!next[id])next[id]={id,staff:r.staff,orderDate:contractorDate(year,month,r.d),serviceDate:contractorDate(year,month,r.d),place:r.venue,work:"葬儀関連業務・接客案内",hours:r.h,unitRate:Math.round(r.amount/r.h)||0,amount:r.amount,paymentDue:settings.paymentDay,status:"提示済み",createdAt:contractorNow()};
+      if(!next[id])next[id]={id,staff:r.staff,orderDate:contractorDate(year,month,r.d),serviceDate:contractorDate(year,month,r.d),place:r.venue,work:"葬儀関連業務・接客案内",hours:r.hours,unitRate:Math.round(r.amount/r.hours)||0,amount:r.amount,paymentDue:settings.paymentDay,status:"提示済み",createdAt:contractorNow()};
     });
     await contractorPreviewSave(`contractor-orders-${ym}`,next);setOrders(next);setMessage("承認済み勤務から発注条件を作成しました");
   };
