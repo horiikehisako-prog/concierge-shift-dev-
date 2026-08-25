@@ -43,8 +43,8 @@ const STUDY_RATE = 3000;  // 勉強会費用（1時間）
 const DEFAULT_SUPPORT_PASS = "1234";
 const APP_NAME = "Compass";
 const APP_SUBTITLE = "仕事・成長・チームをつなぐ";
-const DEV_BUILD_LABEL = "Sprint 27 Build 20260730.82";
-const APP_ENV_LABEL = "本番";
+const DEV_BUILD_LABEL = "業務委託確認版 Build 20260825.1";
+const APP_ENV_LABEL = "確認版・本番未反映";
 const SUPPORT_SKILL_GROUPS = [
   {id:"concierge", title:"コンシェルジュ業務", items:[
     "事前相談のご案内","電話対応","出勤後清掃","出棺後清掃","完全清掃","在庫確認",
@@ -1313,7 +1313,7 @@ function FirebaseLogin({message,onMessage}){
     <form onSubmit={login} style={{width:"100%",maxWidth:390,background:"rgba(255,255,255,.94)",borderRadius:18,padding:28,boxShadow:"0 10px 36px rgba(124,45,10,.16)",border:"1px solid rgba(124,45,10,.12)"}}>
       <img src={LOGO_SRC} alt="Compass" style={{width:92,display:"block",margin:"0 auto 10px"}}/>
       <h1 style={{margin:0,textAlign:"center",fontSize:23,color:"#7c2d0a"}}>{APP_NAME}</h1>
-      <p style={{margin:"6px 0 22px",textAlign:"center",fontSize:13,color:"#9a694c"}}>本番環境・ログイン</p>
+      <p style={{margin:"6px 0 22px",textAlign:"center",fontSize:13,color:"#9a694c"}}>確認版環境・ログイン（本番未反映）</p>
       <label style={{display:"block",fontSize:12,fontWeight:800,color:"#6b3c25",marginBottom:6}}>メールアドレス</label>
       <input type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)} style={{width:"100%",border:"1px solid #e5c3ad",borderRadius:9,padding:"11px 12px",fontSize:15,marginBottom:14}}/>
       <label style={{display:"block",fontSize:12,fontWeight:800,color:"#6b3c25",marginBottom:6}}>パスワード</label>
@@ -1552,6 +1552,77 @@ function Tabs({tabs,active,onChange}){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// CONTRACTOR / INVOICE PREVIEW (DEV APP ONLY)
+// ═══════════════════════════════════════════════════════════════
+const CONTRACTOR_DEFAULTS={
+  clientName:"株式会社SAKI LAB",paymentDay:"翌月末日",taxRate:10,withholdingRate:0,
+  contractVersion:"業務委託契約書 2026年確認版 Ver.1",
+  contractBody:`業務委託契約書（確認版）\n\n委託者と受託者は、葬儀関連業務、接客・案内、司会、アシスタント、パントリーその他個別発注書に記載する業務について、業務委託契約を締結します。\n\n1. 業務内容、実施日、場所、報酬額および支払期日は、案件ごとの発注条件に定めます。\n2. 受託者は、自らの責任と裁量により業務を遂行します。\n3. 報酬は、承認済みの実績と発行された請求書に基づき支払います。\n4. 個人情報および業務上知り得た秘密を第三者に漏らしてはなりません。\n5. 本画面は確認版です。正式運用前に専門家の確認を行います。`
+};
+const contractorKey=name=>encodeURIComponent(staffNameKey(name));
+const contractorYm=(y,m)=>`${y}-${p2(m)}`;
+const contractorDate=(y,m,d)=>`${y}-${p2(m)}-${p2(d)}`;
+const contractorNow=()=>new Date().toISOString();
+const contractorInvoiceNo=(name,y,m)=>`INV-${y}${p2(m)}-${contractorKey(name).slice(0,10).toUpperCase()}`;
+const contractorApprovedRows=P=>calcConciergePayroll({...P,approvedOnly:true});
+
+function ContractorStatus({children,color=C.blue}){return <span style={{background:`${color}18`,color,borderRadius:999,padding:"3px 9px",fontSize:11,fontWeight:800}}>{children}</span>}
+
+function ContractorAdminView(P){
+  const {year,month,cfg}=P,ym=contractorYm(year,month);
+  const [sub,setSub]=useState("overview"),[settings,setSettings]=useState(CONTRACTOR_DEFAULTS);
+  const [agreements,setAgreements]=useState({}),[orders,setOrders]=useState({}),[invoices,setInvoices]=useState({});
+  const [message,setMessage]=useState(""),[loading,setLoading]=useState(true);
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const [s,a,o,i]=await Promise.all([stLoad("contractor-settings"),stLoad("contractor-agreements"),stLoad(`contractor-orders-${ym}`),stLoad(`contractor-invoices-${ym}`)]);
+    setSettings({...CONTRACTOR_DEFAULTS,...(s||{})});setAgreements(a||{});setOrders(o||{});setInvoices(i||{});setLoading(false);
+  },[ym]);
+  useEffect(()=>{load();},[load]);
+  const saveSettings=async()=>{await stSave("contractor-settings",settings);setMessage("設定と契約書を保存しました");};
+  const createOrders=async()=>{
+    const next={...orders};
+    contractorApprovedRows(P).forEach(r=>{
+      const id=`${contractorDate(year,month,r.d)}-${r.venue}-${contractorKey(r.staff)}`;
+      if(!next[id])next[id]={id,staff:r.staff,orderDate:contractorDate(year,month,r.d),serviceDate:contractorDate(year,month,r.d),place:r.venue,work:"葬儀関連業務・接客案内",hours:r.h,unitRate:Math.round(r.amount/r.h)||0,amount:r.amount,paymentDue:settings.paymentDay,status:"提示済み",createdAt:contractorNow()};
+    });
+    await stSave(`contractor-orders-${ym}`,next);setOrders(next);setMessage("承認済み勤務から発注条件を作成しました");
+  };
+  const setPaid=async(inv)=>{const next={...invoices,[inv.staff]:{...inv,status:"支払済み",paidAt:contractorNow()}};await stSave(`contractor-invoices-${ym}`,next);setInvoices(next);};
+  const tabs=[{id:"overview",label:"進捗一覧"},{id:"contract",label:"契約書設定"},{id:"orders",label:"発注条件"},{id:"payments",label:"請求・支払い"}];
+  if(loading)return <div style={GC}>業務委託データを読み込んでいます…</div>;
+  return <div>
+    <div style={{...GC,background:"#fff7ed",border:"2px solid #fb923c"}}><b>🧪 確認版のみ</b><div style={{fontSize:12,color:C.muted,marginTop:4}}>本番アプリには反映されていません。契約文言・税・源泉徴収は正式運用前に専門家の確認が必要です。</div></div>
+    <Tabs tabs={tabs} active={sub} onChange={setSub}/>{message&&<div style={{...GC,background:C.greenL,color:C.green,fontWeight:800}}>{message}</div>}
+    {sub==="overview"&&<div style={GC}><h3 style={{marginTop:0}}>業務委託切替の進捗</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:700}}><thead><tr><th style={TH}>氏名</th><th style={TH}>契約</th><th style={TH}>今月の発注</th><th style={TH}>請求書</th><th style={TH}>支払い</th></tr></thead><tbody>{cfg.staff.map(name=>{const a=agreements[contractorKey(name)],os=Object.values(orders).filter(o=>staffNameKey(o.staff)===staffNameKey(name)),inv=invoices[name];return <tr key={name}><td style={{...TD,fontWeight:800}}>{name}</td><td style={TD}>{a?<ContractorStatus color={C.green}>同意済み</ContractorStatus>:<ContractorStatus color={C.red}>未同意</ContractorStatus>}</td><td style={TD}>{os.filter(o=>o.status==="承認済み").length}/{os.length}件 承認</td><td style={TD}>{inv?<ContractorStatus color={C.green}>発行済み</ContractorStatus>:<ContractorStatus color={C.amber}>未発行</ContractorStatus>}</td><td style={TD}>{inv?.status||"—"}</td></tr>})}</tbody></table></div></div>}
+    {sub==="contract"&&<div style={GC}><h3 style={{marginTop:0}}>契約書・請求設定</h3><label style={{display:"block",fontWeight:800,marginBottom:5}}>請求先名</label><input value={settings.clientName} onChange={e=>setSettings({...settings,clientName:e.target.value})} style={{width:"100%",padding:10,boxSizing:"border-box",marginBottom:12}}/><label style={{display:"block",fontWeight:800,marginBottom:5}}>支払期日</label><input value={settings.paymentDay} onChange={e=>setSettings({...settings,paymentDay:e.target.value})} style={{width:"100%",padding:10,boxSizing:"border-box",marginBottom:12}}/><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}><label>消費税率（%）<input type="number" value={settings.taxRate} onChange={e=>setSettings({...settings,taxRate:Number(e.target.value)})} style={{width:"100%",padding:10,boxSizing:"border-box"}}/></label><label>源泉徴収率（%）<input type="number" value={settings.withholdingRate} onChange={e=>setSettings({...settings,withholdingRate:Number(e.target.value)})} style={{width:"100%",padding:10,boxSizing:"border-box"}}/></label></div><label style={{display:"block",fontWeight:800,margin:"14px 0 5px"}}>契約バージョン</label><input value={settings.contractVersion} onChange={e=>setSettings({...settings,contractVersion:e.target.value})} style={{width:"100%",padding:10,boxSizing:"border-box"}}/><label style={{display:"block",fontWeight:800,margin:"14px 0 5px"}}>業務委託契約書本文</label><textarea rows={18} value={settings.contractBody} onChange={e=>setSettings({...settings,contractBody:e.target.value})} style={{width:"100%",padding:12,boxSizing:"border-box",lineHeight:1.8}}/><button onClick={saveSettings} style={{...Btn(C.green),marginTop:12}}>設定と契約書を保存</button></div>}
+    {sub==="orders"&&<div style={GC}><div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap"}}><div><h3 style={{margin:0}}>案件ごとの発注条件</h3><p style={{fontSize:12,color:C.muted}}>承認済みの勤務記録から、業務日・場所・報酬・支払期日を作ります。</p></div><button onClick={createOrders} style={Btn(C.blue)}>承認済み勤務から作成</button></div><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}><thead><tr><th style={TH}>業務日</th><th style={TH}>スタッフ</th><th style={TH}>場所</th><th style={TH}>業務</th><th style={TH}>報酬</th><th style={TH}>状態</th></tr></thead><tbody>{Object.values(orders).sort((a,b)=>a.serviceDate.localeCompare(b.serviceDate)).map(o=><tr key={o.id}><td style={TD}>{o.serviceDate}</td><td style={TD}>{o.staff}</td><td style={TD}>{o.place}</td><td style={TD}>{o.work}</td><td style={{...TD,textAlign:"right"}}>{yen(o.amount)}</td><td style={TD}>{o.status}</td></tr>)}</tbody></table></div></div>}
+    {sub==="payments"&&<div style={GC}><h3 style={{marginTop:0}}>請求書・支払い管理 {year}年{month}月</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:850}}><thead><tr><th style={TH}>請求書番号</th><th style={TH}>発行者</th><th style={TH}>小計</th><th style={TH}>消費税</th><th style={TH}>源泉</th><th style={TH}>振込額</th><th style={TH}>状態</th><th style={TH}>操作</th></tr></thead><tbody>{Object.values(invoices).map(inv=><tr key={inv.invoiceNo}><td style={TD}>{inv.invoiceNo}</td><td style={TD}>{inv.staff}</td><td style={TD}>{yen(inv.subtotal)}</td><td style={TD}>{yen(inv.tax)}</td><td style={TD}>{yen(inv.withholding)}</td><td style={{...TD,fontWeight:900}}>{yen(inv.transferAmount)}</td><td style={TD}>{inv.status}</td><td style={TD}>{inv.status!=="支払済み"&&<button onClick={()=>setPaid(inv)} style={Btn(C.green)}>支払済みにする</button>}</td></tr>)}</tbody></table></div></div>}
+  </div>;
+}
+
+function ContractorStaffView(P){
+  const {year,month,uname}=P,ym=contractorYm(year,month),staffKey=contractorKey(uname);
+  const [settings,setSettings]=useState(CONTRACTOR_DEFAULTS),[agreements,setAgreements]=useState({}),[orders,setOrders]=useState({}),[invoices,setInvoices]=useState({});
+  const [profile,setProfile]=useState({name:uname,businessName:"",address:"",invoiceRegistrationNo:"",bank:""});
+  const [checked,setChecked]=useState(false),[typedName,setTypedName]=useState(""),[message,setMessage]=useState(""),[loading,setLoading]=useState(true);
+  const load=useCallback(async()=>{setLoading(true);const [s,a,o,i,p]=await Promise.all([stLoad("contractor-settings"),stLoad("contractor-agreements"),stLoad(`contractor-orders-${ym}`),stLoad(`contractor-invoices-${ym}`),stLoad(`contractor-profile-${staffKey}`)]);setSettings({...CONTRACTOR_DEFAULTS,...(s||{})});setAgreements(a||{});setOrders(o||{});setInvoices(i||{});if(p)setProfile(p);setLoading(false);},[ym,staffKey]);
+  useEffect(()=>{load();},[load]);
+  const agreement=agreements[staffKey],myOrders=Object.values(orders).filter(o=>staffNameKey(o.staff)===staffNameKey(uname)),invoice=invoices[uname];
+  const saveProfile=async()=>{await stSave(`contractor-profile-${staffKey}`,profile);setMessage("請求書情報を保存しました");};
+  const agree=async()=>{if(!checked||staffNameKey(typedName)!==staffNameKey(uname)){setMessage("確認欄にチェックし、本人氏名を入力してください");return;}const next={...agreements,[staffKey]:{staff:uname,version:settings.contractVersion,agreedAt:contractorNow(),typedName:uname}};await stSave("contractor-agreements",next);setAgreements(next);setMessage("業務委託契約への同意を保存しました");};
+  const approveOrders=async()=>{const next={...orders};myOrders.forEach(o=>{next[o.id]={...o,status:"承認済み",approvedAt:contractorNow()}});await stSave(`contractor-orders-${ym}`,next);setOrders(next);setMessage("今月の発注条件を承認しました");};
+  const issueInvoice=async()=>{const approved=myOrders.filter(o=>o.status==="承認済み");if(!agreement){setMessage("先に業務委託契約へ同意してください");return;}if(!approved.length){setMessage("承認済みの発注条件がありません");return;}const subtotal=approved.reduce((a,o)=>a+Number(o.amount||0),0),tax=Math.round(subtotal*Number(settings.taxRate||0)/100),withholding=Math.round(subtotal*Number(settings.withholdingRate||0)/100);const inv={invoiceNo:contractorInvoiceNo(uname,year,month),staff:uname,profile,clientName:settings.clientName,year,month,lines:approved,subtotal,tax,withholding,total:subtotal+tax,transferAmount:subtotal+tax-withholding,paymentDue:settings.paymentDay,status:"発行済み",issuedAt:contractorNow()};const next={...invoices,[uname]:inv};await stSave(`contractor-invoices-${ym}`,next);setInvoices(next);setMessage("請求書を発行しました");};
+  if(loading)return <div style={GC}>業務委託情報を読み込んでいます…</div>;
+  return <div><div style={{...GC,background:"#fff7ed",border:"2px solid #fb923c"}}><b>🧪 確認版</b><div style={{fontSize:12,color:C.muted}}>ここでの操作は本番アプリには影響しません。</div></div>{message&&<div style={{...GC,background:C.blueL,color:C.blue,fontWeight:800}}>{message}</div>}
+    <div style={GC}><h3 style={{marginTop:0}}>1. 請求書情報</h3><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(230px,1fr))",gap:10}}><label>氏名・名称<input value={profile.name} onChange={e=>setProfile({...profile,name:e.target.value})} style={{width:"100%",padding:9,boxSizing:"border-box"}}/></label><label>屋号<input value={profile.businessName} onChange={e=>setProfile({...profile,businessName:e.target.value})} style={{width:"100%",padding:9,boxSizing:"border-box"}}/></label><label>住所<input value={profile.address} onChange={e=>setProfile({...profile,address:e.target.value})} style={{width:"100%",padding:9,boxSizing:"border-box"}}/></label><label>インボイス登録番号<input value={profile.invoiceRegistrationNo} onChange={e=>setProfile({...profile,invoiceRegistrationNo:e.target.value})} placeholder="未登録の場合は空欄" style={{width:"100%",padding:9,boxSizing:"border-box"}}/></label><label>振込先<input value={profile.bank} onChange={e=>setProfile({...profile,bank:e.target.value})} style={{width:"100%",padding:9,boxSizing:"border-box"}}/></label></div><button onClick={saveProfile} style={{...Btn(C.blue),marginTop:12}}>請求書情報を保存</button></div>
+    <div style={GC}><h3 style={{marginTop:0}}>2. 業務委託契約</h3><ContractorStatus color={agreement?C.green:C.red}>{agreement?`同意済み ${new Date(agreement.agreedAt).toLocaleString("ja-JP")}`:"未同意"}</ContractorStatus><pre style={{whiteSpace:"pre-wrap",fontFamily:"inherit",lineHeight:1.8,background:"#f8fafc",padding:14,borderRadius:8}}>{settings.contractBody}</pre>{!agreement&&<><label style={{display:"block",marginBottom:10}}><input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)}/> 契約内容を確認し、同意します</label><input value={typedName} onChange={e=>setTypedName(e.target.value)} placeholder={uname} style={{width:"100%",maxWidth:420,padding:10,boxSizing:"border-box"}}/><button onClick={agree} style={{...Btn(C.green),display:"block",marginTop:10}}>契約に同意する</button></>}</div>
+    <div style={GC}><h3 style={{marginTop:0}}>3. {year}年{month}月の発注条件</h3>{myOrders.length===0?<p style={{color:C.muted}}>管理者から提示された発注条件はありません。</p>:<><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",minWidth:680}}><thead><tr><th style={TH}>業務日</th><th style={TH}>場所</th><th style={TH}>業務内容</th><th style={TH}>時間</th><th style={TH}>報酬</th><th style={TH}>状態</th></tr></thead><tbody>{myOrders.map(o=><tr key={o.id}><td style={TD}>{o.serviceDate}</td><td style={TD}>{o.place}</td><td style={TD}>{o.work}</td><td style={TD}>{o.hours}h</td><td style={TD}>{yen(o.amount)}</td><td style={TD}>{o.status}</td></tr>)}</tbody></table></div>{myOrders.some(o=>o.status!=="承認済み")&&<button onClick={approveOrders} style={{...Btn(C.blue),marginTop:12}}>今月の発注条件をすべて承認</button>}</>}</div>
+    <div style={GC}><h3 style={{marginTop:0}}>4. 月末の請求書</h3>{!invoice?<button onClick={issueInvoice} style={Btn(C.purple)}>請求書を作成・発行</button>:<div className="print-card"><div style={{display:"flex",justifyContent:"space-between",gap:10}}><div><h2 style={{margin:"0 0 8px"}}>請求書</h2><b>{invoice.invoiceNo}</b></div><div style={{textAlign:"right"}}>発行日 {new Date(invoice.issuedAt).toLocaleDateString("ja-JP")}<br/>{invoice.profile.name}<br/>{invoice.profile.invoiceRegistrationNo||"インボイス登録なし"}</div></div><h3>{invoice.clientName} 御中</h3><table style={{width:"100%",borderCollapse:"collapse"}}><thead><tr><th style={TH}>日付</th><th style={TH}>業務内容・場所</th><th style={TH}>金額</th></tr></thead><tbody>{invoice.lines.map(o=><tr key={o.id}><td style={TD}>{o.serviceDate}</td><td style={TD}>{o.work}（{o.place}）</td><td style={{...TD,textAlign:"right"}}>{yen(o.amount)}</td></tr>)}</tbody></table><div style={{marginTop:14,textAlign:"right",lineHeight:1.8}}>小計 {yen(invoice.subtotal)}<br/>消費税 {yen(invoice.tax)}<br/>源泉徴収 {yen(invoice.withholding)}<br/><b style={{fontSize:18}}>振込額 {yen(invoice.transferAmount)}</b></div><p>支払期日：{invoice.paymentDue}<br/>振込先：{invoice.profile.bank||"未設定"}</p><ContractorStatus color={invoice.status==="支払済み"?C.green:C.blue}>{invoice.status}</ContractorStatus><button className="no-print" onClick={()=>window.print()} style={{...Btn(C.navy),marginLeft:10}}>印刷・PDF保存</button></div>}</div>
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ADMIN VIEW
 // ═══════════════════════════════════════════════════════════════
 function AdminView(P){
@@ -1565,6 +1636,7 @@ function AdminView(P){
     {id:"items", label:"🧩 項目設定"},
     {id:"mc",    label:"🎤 司会設定"},
     {id:"support",label:"🌱 成長カルテ"},
+    {id:"contractor",label:"🧾 業務委託管理"},
     {id:"library",label:"📚 ナレーションライブラリ"},
     {id:"ai",    label:"Compass AI"},
     {id:"config",label:"⚙️ 設定"},
@@ -1580,6 +1652,7 @@ function AdminView(P){
     {tab==="library"&&<CompassNarrationLibraryView {...P}/>}
     {tab==="ai"    &&<CompassNarrationView {...P}/>}
     {tab==="support"&&<SupportManagerView {...P}/>}
+    {tab==="contractor"&&<ContractorAdminView {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
 }
@@ -2917,12 +2990,14 @@ function StaffView(P){
     {id:"shift",label:"📅 全体シフト"},
     {id:"mine", label:"👤 マイシフト"},
     {id:"rec",  label:"🕐 出勤記録"},
+    {id:"contractor",label:"🧾 業務委託"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="wish" &&<StaffWish  {...P}/>}
     {tab==="shift"&&<PublicShift {...P}/>}
     {tab==="mine" &&<MyShift    {...P}/>}
     {tab==="rec"  &&<MyRecord   {...P}/>}
+    {tab==="contractor"&&<ContractorStaffView {...P}/>}
   </div>;
 }
 
@@ -6486,6 +6561,6 @@ function MCConfigTab({ cfg, sv }) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
 </script>
-<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">本番<br>Sprint 27<br>Build 20260730.82</div>
+<div style="position:fixed;right:12px;bottom:8px;z-index:9999;font-size:12px;line-height:1.35;color:#92400e;background:#fffbeb;border:1px solid #f59e0b;border-radius:6px;padding:4px 8px;text-align:left;font-weight:800;">確認版<br>本番未反映<br>業務委託 Build 20260825.1</div>
 </body>
 </html>
