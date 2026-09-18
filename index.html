@@ -1280,6 +1280,7 @@ function App(){
         {!busy&&role==="staff"  &&<StaffView  {...P}/>}
         {!busy&&role==="venue"  &&<VenueView  {...P}/>}
         {!busy&&role==="office" &&<OfficeView {...P}/>}
+        {!busy&&role==="support"&&<SupportView {...P}/>}
         {!busy&&(role==="mc"||role==="assist")&&<MCStaffView {...P}/>}
       </div>
     </div>
@@ -1296,15 +1297,16 @@ function RoleSelect({cfg,onSelect}){
   const staffPass  =cfg.staffPass  ||DEFAULT_STAFF_PASS;
   const mcPass     =cfg.mcPass     ||DEFAULT_MC_PASS;
   const assistPass =cfg.assistPass ||DEFAULT_ASSIST_PASS;
+  const supportPass=cfg.supportPass||DEFAULT_SUPPORT_PASS;
 
-  const passMap = {admin:adminPass, office:officePass, staff:staffPass, mc:mcPass, assist:assistPass};
-  const nameMap = {admin:"管理者", office:"事務"};
+  const passMap = {admin:adminPass, office:officePass, staff:staffPass, mc:mcPass, assist:assistPass, support:supportPass};
+  const nameMap = {admin:"管理者", office:"事務", support:"業務サポートマネージャー"};
 
   const tryLogin=(role)=>{
     const correct=passMap[role];
     if(pw===correct){
       // 管理者・事務はそのままログイン、他は名前選択へ
-      if(role==="admin"||role==="office"){ onSelect(role, nameMap[role]||""); }
+      if(role==="admin"||role==="office"||role==="support"){ onSelect(role, nameMap[role]||""); }
       else{ setMode(role+"-name"); setPw(""); }
     }
     else{ setPwErr(true); setPw(""); setTimeout(()=>setPwErr(false),2000); }
@@ -1330,7 +1332,7 @@ function RoleSelect({cfg,onSelect}){
           {r:"staff", i:"👤", l:"コンシェルジュ",s:"希望・シフト・出勤打刻",  bg:"#e8784a"},
           {r:"ceremony", i:"🎤", l:"司会・アシ・パントリー",s:"式場スタッフの記録",  bg:"#a0785a"},
           {r:"venue", i:"🏛️", l:"ディレクター",  s:"担当会場の確認・承認",bg:"#d4766a"},
-          {r:"manage",i:"⚙️", l:"管理・事務・サポート",s:"設定・月次計算・研修管理",bg:"#2f855a"},
+          {r:"manage",i:"⚙️", l:"管理・事務・サポート",s:"設定・月次計算・シフト作成",bg:"#2f855a"},
         ].map(({r,i,l,s,bg})=>(
           <button key={r} onClick={()=>setMode(r)}
             style={{background:bg,border:"none",color:"#fff",borderRadius:12,padding:"18px 20px",
@@ -1344,10 +1346,11 @@ function RoleSelect({cfg,onSelect}){
     </div>
   );
 
-  // パスワード画面（管理者・事務・コンシェルジュ・司会・アシスタント）
-  const needsPw = ["admin","office","staff","mc","assist"];
+  // パスワード画面（管理者・事務・業務サポート・コンシェルジュ・司会・アシスタント）
+  const needsPw = ["admin","office","support","staff","mc","assist"];
   const pwTitleMap = {
     admin:"⚙️ 管理者ログイン", office:"📊 事務ログイン",
+    support:"🧭 業務サポートマネージャー",
     staff:"👤 コンシェルジュ", mc:"🎤 司会", assist:"🤝 アシスタント",
   };
   if(needsPw.includes(mode)) return (
@@ -1386,10 +1389,11 @@ function RoleSelect({cfg,onSelect}){
     },
     manage:{
       title:"管理・確認メニュー",
-      desc:"管理者、事務だけを表示しています。",
+      desc:"管理者、事務、業務サポートマネージャーを選べます。",
       items:[
         {r:"admin", i:"⚙️", l:"管理者", s:"シフト調整・確定・設定"},
         {r:"office", i:"📊", l:"事務", s:"月次計算・CSV出力"},
+        {r:"support", i:"🧭", l:"業務サポートマネージャー", s:"シフト作成・勤怠確認"},
       ],
     },
   };
@@ -1461,7 +1465,7 @@ function RoleSelect({cfg,onSelect}){
 
 
 function TopBar({role,uname,onBack,year,month}){
-  const lbl={admin:"⚙️ 管理者",staff:`👤 ${uname}`,venue:`🏛️ ${uname}`,office:"📊 事務",mc:`🎤 ${uname}`,assist:`🤝 ${uname}`};
+  const lbl={admin:"⚙️ 管理者",staff:`👤 ${uname}`,venue:`🏛️ ${uname}`,office:"📊 事務",support:"🧭 業務サポート",mc:`🎤 ${uname}`,assist:`🤝 ${uname}`};
   return (
     <div style={{background:"linear-gradient(90deg,#c2613a,#d4785a)",color:"#fff",padding:"12px 20px",display:"flex",alignItems:"center",
       gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(180,80,20,.25)",flexWrap:"wrap"}}>
@@ -2206,6 +2210,7 @@ function AdminConfig({cfg,sv}){
   const [newStaffPass,setNewStaffPass]=useState(cfg.staffPass||DEFAULT_STAFF_PASS);
   const [newMcPass,setNewMcPass]=useState(cfg.mcPass||DEFAULT_MC_PASS);
   const [newAssistPass,setNewAssistPass]=useState(cfg.assistPass||DEFAULT_ASSIST_PASS);
+  const [newSupportPass,setNewSupportPass]=useState(cfg.supportPass||DEFAULT_SUPPORT_PASS);
   const [managedStaff,setManagedStaff]=useState(()=>normalizeStaffManagement(cfg));
   const [staffRates,setStaffRates]=useState(()=>{
     const r={};
@@ -2254,6 +2259,7 @@ function AdminConfig({cfg,sv}){
       staffPass:newStaffPass.trim()||DEFAULT_STAFF_PASS,
       mcPass:newMcPass.trim()||DEFAULT_MC_PASS,
       assistPass:newAssistPass.trim()||DEFAULT_ASSIST_PASS,
+      supportPass:newSupportPass.trim()||DEFAULT_SUPPORT_PASS,
     };
     try{
       const cleanSettings=sanitizeSettingsForSave(newSettings);
@@ -2330,6 +2336,7 @@ function AdminConfig({cfg,sv}){
         {label:"🎤 司会",      val:newMcPass,    set:setNewMcPass},
         {label:"🤝 アシスタント", val:newAssistPass,set:setNewAssistPass},
         {label:"📊 事務",      val:newPass,      set:setNewPass},
+        {label:"🧭 業務サポート", val:newSupportPass,set:setNewSupportPass},
       ].map(({label,val,set})=>(
         <div key={label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <span style={{fontSize:13,fontWeight:600,minWidth:110}}>{label}</span>
@@ -2982,6 +2989,34 @@ function OfficeView(P){
     {tab==="study"  &&<StudySessionView {...P}/>}
     {tab==="items"  &&<ItemSettingsTab {...P}/>}
     {tab==="rates"  &&<MCConfigTab {...P}/>}
+  </div>;
+}
+
+function SupportView(P){
+  const [tab,setTab]=useState("shift");
+  const tabs=[
+    {id:"shift",   label:"シフト作成"},
+    {id:"pref",    label:"希望"},
+    {id:"att",     label:"勤怠承認"},
+    {id:"monthly", label:"月次勤怠"},
+    {id:"payroll", label:"月次給与"},
+    {id:"invoice", label:"月次請求"},
+    {id:"attend",  label:"出勤一覧"},
+  ];
+  return <div>
+    <div style={{...GC,background:"linear-gradient(135deg,#2f855a,#0f766e)",color:"#fff",padding:"16px 20px"}}>
+      <div style={{fontSize:13,opacity:.85,marginBottom:2}}>業務サポートマネージャー</div>
+      <div style={{fontSize:18,fontWeight:800}}>{P.year}年{P.month}月　シフト作成・勤怠確認</div>
+    </div>
+    <MonthSel {...P}/>
+    <Tabs tabs={tabs} active={tab} onChange={setTab}/>
+    {tab==="shift"  &&<AdminShiftView {...P}/>}
+    {tab==="pref"   &&<AdminPrefView {...P}/>}
+    {tab==="att"    &&<AdminAttView {...P}/>}
+    {tab==="monthly"&&<MonthlyAttendanceList {...P}/>}
+    {tab==="payroll"&&<MonthlyPayrollList {...P}/>}
+    {tab==="invoice"&&<MonthlyInvoiceList {...P}/>}
+    {tab==="attend" &&<AttendanceSummaryView {...P}/>}
   </div>;
 }
 
