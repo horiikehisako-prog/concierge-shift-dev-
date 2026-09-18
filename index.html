@@ -4003,6 +4003,31 @@ const compassFormatDraft=response=>{
   };
 };
 const compassFirstFilled=(sheet,keys)=>keys.map(k=>clean(sheet?.[k]||"")).find(Boolean)||"";
+const compassNarrationReadiness = sheet => {
+  const s=sheet||{};
+  const required=[];
+  if(!clean(s.deceasedName)) required.push("故人様のお名前");
+  if(!clean(s.age)) required.push("享年");
+  const concreteFields=[
+    ["personality","お人柄・性格"],
+    ["hobbies","趣味・好きだったこと"],
+    ["memorableEvents","印象的な出来事・エピソード"],
+    ["familyMemories","ご家族との思い出"],
+    ["familyFeelings","ご家族のお気持ち"],
+    ["favoritePhrases","口癖・よく言っていたこと"],
+    ["valuedThings","大切にしていたこと・物"],
+  ];
+  const filled=concreteFields.filter(([key])=>clean(s[key]).length>=8);
+  if(filled.length<2) required.push("具体的な記憶やエピソードを2項目以上");
+  return {
+    ok:required.length===0,
+    required,
+    filledCount:filled.length,
+    message:required.length
+      ? `AI生成の前に、${required.join("、")}を入力してください。情報が少ない状態では、料金がかかっても良い文章になりにくいため、生成を止めています。`
+      : "",
+  };
+};
 const compassTrimSentence=(text,max=72)=>{
   const value=clean(text).replace(/\s+/g," ");
   if(value.length<=max)return value;
@@ -4331,7 +4356,13 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const selectedTheme=theme||compassDetectTheme(sheet,cfg);
   const selectedSamples=selectedLibraryReferences;
   const aiControl=normalizeAISettings(cfg.aiSettings);
+  const readiness=compassNarrationReadiness(sheet);
   const makeDraft=async()=>{
+    if(!readiness.ok){
+      setAiError(readiness.message);
+      flash?.(readiness.message);
+      return;
+    }
     const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,6);
     setSelectedLibraryReferences(libraryRefs);
     const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme,libraryRefs,compassKb);
@@ -4429,6 +4460,9 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
         <div style={{fontSize:12,color:C.muted,fontWeight:800,marginBottom:4}}>ナレーションライブラリ自動参照</div>
         <div style={{fontSize:13,color:C.text}}>Compass AI first searches the Compass Official Library and selects the best matching 3 narrations. They are used only for writing style, tone, rhythm, flow, warmth, and sentence length. Do not copy.</div>
       </div>
+      {!readiness.ok&&<div style={{border:`1px solid ${C.amber}`,borderRadius:8,padding:10,background:"#fffbeb",color:"#92400e",fontSize:13,fontWeight:800,lineHeight:1.6,marginBottom:12}}>
+        良い文章にするため、AI生成前に不足している情報があります：{readiness.required.join("、")}
+      </div>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
         {[["deceasedName","故人様のお名前","text"],["age","享年","number"],["gender","性別","radio"],["familyRelation","ご遺族から見た故人様","relation"],["deceasedDate","亡くなられた日","date"],["ceremonyType","式種別","select"],["personality","お人柄・性格","textarea"],["hobbies","趣味・好きだったこと","textarea"],["memorableEvents","印象的な出来事・エピソード","textarea"],["familyMemories","ご家族との思い出","textarea"],["familyFeelings","ご家族のお気持ち","textarea"],["travelAnniversaryEffort","旅行・記念日・頑張っていたこと","textarea"],["favoritePhrases","口癖・よく言っていたこと","textarea"],["valuedThings","大切にしていたこと・物","textarea"],["notes","備考","textarea"]].map(([key,label,type])=><div key={key} style={{gridColumn:type==="textarea"?"1 / -1":"span 1"}}>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4,fontWeight:700}}>{label}</label>
@@ -4439,7 +4473,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
       </div>
-      <button onClick={makeDraft} disabled={generating||aiControl.enabled===false} style={{...Btn((generating||aiControl.enabled===false)?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
+      <button onClick={makeDraft} disabled={generating||aiControl.enabled===false||!readiness.ok} style={{...Btn((generating||aiControl.enabled===false||!readiness.ok)?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
       {generating&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.border}`,borderRadius:8,background:"#f8fafc",fontSize:13,fontWeight:800,color:C.navy}}>{loadingStep}</div>}
       {aiError&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.red}`,borderRadius:8,background:C.redL,fontSize:13,fontWeight:800,color:C.red}}>{aiError}</div>}
     </div>
