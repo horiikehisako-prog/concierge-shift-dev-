@@ -872,7 +872,7 @@ const compassSelectLibraryReferences=(sheet,cfg,theme,limit=6)=>{
 const mergeForbiddenWords=v=>Array.from(new Set([...ensureArray(v),...DEFAULT_FORBIDDEN_WORDS])).filter(Boolean);
 const DEFAULT_AI_SETTINGS = {
   provider:"openai",
-  model:"gpt-5.5",
+  model:"gpt-5.1",
   temperature:0.7,
   maxTokens:2600,
   apiStatus:"server_required",
@@ -884,7 +884,7 @@ const DEFAULT_AI_SETTINGS = {
   apiProxyPath:"/api/generate-narration",
 };
 const OPENAI_MODEL_OPTIONS=[
-  {id:"gpt-5.5",label:"GPT-5.5",inputPricePer1MUsd:5,outputPricePer1MUsd:30},
+  {id:"gpt-5.1",label:"GPT-5.1（高品質）",inputPricePer1MUsd:5,outputPricePer1MUsd:30},
   {id:"gpt-4.1-mini",label:"GPT-4.1 mini",inputPricePer1MUsd:0.15,outputPricePer1MUsd:0.60},
   {id:"gpt-4.1",label:"GPT-4.1",inputPricePer1MUsd:2,outputPricePer1MUsd:8},
 ];
@@ -901,7 +901,7 @@ const normalizeAISettings=s=>{
   const pricing=aiModelPricingFor(model);
   let inputPrice=numberOr(n.inputPricePer1MUsd,pricing.inputPricePer1MUsd);
   let outputPrice=numberOr(n.outputPricePer1MUsd,pricing.outputPricePer1MUsd);
-  if(model==="gpt-5.5"&&inputPrice===0.15&&outputPrice===0.60){
+  if((model==="gpt-5.5"||model==="gpt-5.1")&&inputPrice===0.15&&outputPrice===0.60){
     inputPrice=pricing.inputPricePer1MUsd;
     outputPrice=pricing.outputPricePer1MUsd;
   }
@@ -965,7 +965,7 @@ const saveAIUsageLog=async log=>{
 };
 const DEFAULT_COMPASS_FUTURE = {
   providers:{
-    openai:{enabled:true,model:"gpt-5.5",apiKeyRef:"OPENAI_API_KEY",status:"server_env_required"},
+    openai:{enabled:true,model:"gpt-5.1",apiKeyRef:"OPENAI_API_KEY",status:"server_env_required"},
     gemini:{enabled:false,model:"",apiKeyRef:"",status:"future"},
     claude:{enabled:false,model:"",apiKeyRef:"",status:"future"},
     localTemplate:{enabled:false,model:"",apiKeyRef:"",status:"disabled"},

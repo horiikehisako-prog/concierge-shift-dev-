@@ -318,7 +318,8 @@ const applyNameRule = (draft, prompt) => ({
   ),
 });
 
-const shouldUseResponsesApi = model => String(model || "").trim().startsWith("gpt-5.5");
+const DEFAULT_NARRATION_MODEL = "gpt-5.1";
+const shouldUseResponsesApi = model => String(model || "").trim().startsWith("gpt-5");
 
 const collectResponsesText = json => {
   if (typeof json?.output_text === "string" && json.output_text.trim()) return json.output_text;
@@ -724,7 +725,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
 };
 
 const runOpenAiProbe = async apiKey => {
-  const model = "gpt-5.5";
+  const model = DEFAULT_NARRATION_MODEL;
   const startedAt = Date.now();
   const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
     method: "POST",
@@ -851,7 +852,7 @@ module.exports = async (req, res) => {
     }
     const prompt = compactNarrationPrompt(rawPrompt);
 
-    const model = "gpt-5.5";
+    const model = String(body.model || DEFAULT_NARRATION_MODEL).trim() || DEFAULT_NARRATION_MODEL;
     const temperature = clampNumber(body.temperature, 0.7, 0, 2);
     const maxTokens = Math.round(clampNumber(body.maxTokens || body.max_tokens, 5200, 100, 7000));
     let parsed = null;
