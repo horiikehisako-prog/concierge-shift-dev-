@@ -2998,8 +2998,6 @@ function SupportView(P){
     {id:"shift",   label:"シフト作成"},
     {id:"pref",    label:"希望"},
     {id:"att",     label:"勤怠承認"},
-    {id:"monthly", label:"月次勤怠"},
-    {id:"invoice", label:"月次請求"},
     {id:"attend",  label:"出勤一覧"},
   ];
   return <div>
@@ -3012,8 +3010,6 @@ function SupportView(P){
     {tab==="shift"  &&<AdminShiftView {...P}/>}
     {tab==="pref"   &&<AdminPrefView {...P}/>}
     {tab==="att"    &&<AdminAttView {...P}/>}
-    {tab==="monthly"&&<MonthlyAttendanceList {...P}/>}
-    {tab==="invoice"&&<MonthlyInvoiceList {...P}/>}
     {tab==="attend" &&<AttendanceSummaryView {...P}/>}
   </div>;
 }
