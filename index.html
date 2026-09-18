@@ -16,6 +16,28 @@ firebase.initializeApp({apiKey:"AIzaSyAsr14o8ftu-9E-x1ZT89TUFThqK1FKUnc",authDom
 </head>
 <body>
 <div id="root"></div>
+<div id="dev-error-overlay" style="display:none;position:fixed;inset:12px;z-index:99999;background:#fff5f5;border:2px solid #dc2626;color:#7f1d1d;padding:14px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;overflow:auto;"></div>
+<script>
+window.addEventListener("error",function(e){
+  var box=document.getElementById("dev-error-overlay");
+  if(!box) return;
+  box.style.display="block";
+  box.textContent="Compass startup error\n"+(e.message||"")+"\n"+(e.filename||"")+":"+(e.lineno||"")+":"+(e.colno||"");
+});
+window.addEventListener("unhandledrejection",function(e){
+  var box=document.getElementById("dev-error-overlay");
+  if(!box) return;
+  box.style.display="block";
+  box.textContent="Compass async error\n"+((e.reason&&e.reason.stack)||e.reason||"");
+});
+setTimeout(function(){
+  if(window.React&&window.ReactDOM&&window.Babel) return;
+  var box=document.getElementById("dev-error-overlay");
+  if(!box) return;
+  box.style.display="block";
+  box.textContent="Compass library load error\nReact / ReactDOM / Babel のどれかが読み込めていません。インターネット接続かCDN読み込みを確認してください。";
+},3000);
+</script>
 <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
 
@@ -299,12 +321,63 @@ const normalizeCeremonyTypes = types => {
 };
 const yen  = n => n.toLocaleString("ja-JP")+"円";
 
+const roundToQuarterMinutes = minutes => Math.round(minutes / 15) * 15;
+const roundTimeToQuarter = date => {
+  const total = roundToQuarterMinutes(date.getHours() * 60 + date.getMinutes());
+  const mins = ((total % 1440) + 1440) % 1440;
+  return `${p2(Math.floor(mins / 60))}:${p2(mins % 60)}`;
+};
 const parseHours = (s="09:00",e="16:00",breakMin=60) => {
   const [sh,sm]=s.split(":").map(Number);
   const [eh,em]=e.split(":").map(Number);
   const total=(eh*60+em)-(sh*60+sm);
-  return Math.round((total-breakMin)/60*100)/100;
+  return Math.max(0, roundToQuarterMinutes(total-breakMin)/60);
 };
+const payrollStaffNames = cfg => Array.from(new Set([
+  ...ensureArray(cfg.staff),
+  ...ensureArray(cfg.mcStaff),
+  ...ensureArray(cfg.assistStaff),
+].filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b),"ja"));
+const normalizePayrollTaxSettings = cfg => {
+  const src=cfg.payrollTaxSettings||{};
+  const out={};
+  payrollStaffNames(cfg).forEach(name=>{
+    const s=src[name]||{};
+    out[name]={
+      enabled:s.enabled!==false,
+      table:s.table==="乙"?"乙":"甲",
+      dependents:Math.max(0,Number(s.dependents)||0),
+      monthlyTax:Math.max(0,Math.round(Number(s.monthlyTax)||0)),
+      memo:String(s.memo||""),
+    };
+  });
+  return out;
+};
+const payrollWithholdingFor = (amount, staff, cfg) => {
+  const s=(cfg.payrollTaxSettings||{})[staff];
+  if(!s||s.enabled===false) return 0;
+  return Math.min(Math.max(0,Math.round(Number(s.monthlyTax)||0)), Math.max(0,Math.round(amount||0)));
+};
+const defaultShiftSegments = staff => staff ? [{id:"full",label:"終日",start:"09:00",end:"16:00",staff}] : [];
+const normalizeShiftSegments = cell => {
+  if(!cell) return [];
+  if(typeof cell==="string") return defaultShiftSegments(cell);
+  if(Array.isArray(cell)) return cell.filter(s=>s?.staff).map((s,i)=>({
+    id:s.id||`part${i+1}`,label:s.label||`分割${i+1}`,start:s.start||"",end:s.end||"",staff:s.staff
+  }));
+  if(cell.segments) return normalizeShiftSegments(cell.segments);
+  return defaultShiftSegments(cell.staff||cell.name||"");
+};
+const shiftPrimaryStaff = cell => normalizeShiftSegments(cell)[0]?.staff || "";
+const shiftStaffNames = cell => normalizeShiftSegments(cell).map(s=>s.staff).filter(Boolean);
+const shiftHasStaff = (cell,name) => shiftStaffNames(cell).includes(name);
+const shiftDisplayText = cell => {
+  const segs=normalizeShiftSegments(cell);
+  if(!segs.length) return "";
+  return segs.map(s=>`${s.label&&s.label!=="終日"?`${s.label}: `:""}${s.staff}`).join(" / ");
+};
+const shiftTimeText = seg => seg?.start&&seg?.end ? `${seg.start}〜${seg.end}` : "9:00〜16:00";
+const shiftAttKey = (d,venue,seg) => `${d}-${venue}${seg?.id&&seg.id!=="full"?`-${seg.id}`:""}`;
 
 const downloadCSV = (filename, rows) => {
   const bom="\uFEFF";
@@ -337,15 +410,86 @@ const prefLabel = s => s || "未";
 const calcConciergePayroll = ({year,month,att,shifts,vconf,cfg,approvedOnly=false}) => {
   const days=getDays(year,month), rows=[];
   for(let d=1;d<=days;d++) for(const v of cfg.venues){
-    const staff=shifts[d]?.[v.name];
-    if(!staff) continue;
-    const key=`${d}-${v.name}`, rec=att[key];
-    if(approvedOnly && !rec?.verified) continue;
-    const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
-    const rate=cfg.staffRates?.[staff]||RATE_STAFF;
-    rows.push({staff,d,venue:v.name,hours:h,amount:Math.round(h*rate),approved:!!rec?.verified,recorded:!!rec});
+    const segs=normalizeShiftSegments(shifts[d]?.[v.name]);
+    for(const seg of segs){
+      const staff=seg.staff;
+      if(!staff) continue;
+      const key=shiftAttKey(d,v.name,seg), rec=att[key]||att[`${d}-${v.name}`];
+      if(approvedOnly && !rec?.verified) continue;
+      const defaultBreak=seg.id&&seg.id!=="full"?0:60;
+      const h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,rec.breakMin??defaultBreak):parseHours(seg.start||"09:00",seg.end||"16:00",defaultBreak);
+      const rate=cfg.staffRates?.[staff]||RATE_STAFF;
+      rows.push({staff,d,venue:v.name,hours:h,amount:Math.round(h*rate),approved:!!rec?.verified,recorded:!!rec});
+    }
   }
   return rows;
+};
+const CLOCK_GEOFENCE_RADIUS_M = 120;
+const CLOCK_MAX_ACCURACY_M = 150;
+const clockTime = date => roundTimeToQuarter(date);
+const clockStamp = iso => iso ? new Date(iso).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+const geoDistanceMeters = (a,b) => {
+  if(!a||!b||!Number.isFinite(a.lat)||!Number.isFinite(a.lng)||!Number.isFinite(b.lat)||!Number.isFinite(b.lng)) return null;
+  const R=6371000, toRad=n=>n*Math.PI/180;
+  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
+  const lat1=toRad(a.lat), lat2=toRad(b.lat);
+  const h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return Math.round(R*2*Math.atan2(Math.sqrt(h),Math.sqrt(1-h)));
+};
+const attendanceVenueNames = cfg => Array.from(new Set(ensureArray(cfg.venues).flatMap(v =>
+  ensureArray(v.options).length ? ensureArray(v.options) : [v.name]
+).filter(Boolean)));
+const attendanceSiteFor = (cfg, venue) => {
+  const raw=(cfg.attendanceSites||{})[venue]||{};
+  const latRaw=String(raw.lat??"").trim(), lngRaw=String(raw.lng??"").trim();
+  const lat=latRaw===""?NaN:Number(latRaw), lng=lngRaw===""?NaN:Number(lngRaw);
+  const radius=Number(raw.radiusM||raw.radius||CLOCK_GEOFENCE_RADIUS_M);
+  return {
+    venue,
+    lat:Number.isFinite(lat)?lat:null,
+    lng:Number.isFinite(lng)?lng:null,
+    radiusM:Number.isFinite(radius)&&radius>0?radius:CLOCK_GEOFENCE_RADIUS_M,
+    code:String(raw.code||"").trim(),
+  };
+};
+const makeClockProof = (kind, venue, pos, site, code) => {
+  const coords=pos?.coords||{};
+  const point={lat:Number(coords.latitude),lng:Number(coords.longitude)};
+  const distance=geoDistanceMeters(point,site);
+  const accuracy=Number(coords.accuracy);
+  const hasFence=Number.isFinite(site.lat)&&Number.isFinite(site.lng);
+  const codeOk=!site.code||String(code||"").trim()===site.code;
+  const nearOk=!hasFence||distance<=site.radiusM;
+  const accuracyOk=!Number.isFinite(accuracy)||accuracy<=CLOCK_MAX_ACCURACY_M;
+  return {
+    kind, venue, at:new Date().toISOString(),
+    lat:point.lat, lng:point.lng,
+    accuracyM:Number.isFinite(accuracy)?Math.round(accuracy):null,
+    distanceM:distance,
+    radiusM:site.radiusM,
+    geofenceConfigured:hasFence,
+    geofenceOk:nearOk,
+    accuracyOk,
+    codeRequired:!!site.code,
+    codeOk,
+    userAgent:navigator.userAgent,
+  };
+};
+const clockProofStatus = proof => {
+  if(!proof) return {label:"未打刻",color:C.muted,bg:"#f8f9fb"};
+  if(proof.geofenceConfigured && !proof.geofenceOk) return {label:"範囲外",color:C.red,bg:C.redL};
+  if(!proof.codeOk) return {label:"現地コード不一致",color:C.red,bg:C.redL};
+  if(!proof.accuracyOk) return {label:"精度注意",color:C.amber,bg:C.amberL};
+  return {label:proof.geofenceConfigured?"現地確認OK":"位置取得OK",color:C.green,bg:C.greenL};
+};
+const clockProofLine = proof => {
+  if(!proof) return "打刻なし";
+  const parts=[clockStamp(proof.at)];
+  if(Number.isFinite(proof.distanceM)) parts.push(`距離 ${proof.distanceM}m / 半径 ${proof.radiusM}m`);
+  if(Number.isFinite(proof.accuracyM)) parts.push(`精度 ${proof.accuracyM}m`);
+  if(proof.codeRequired) parts.push(proof.codeOk?"現地コードOK":"現地コードNG");
+  if(!proof.geofenceConfigured) parts.push("会場GPS未設定");
+  return parts.join(" / ");
 };
 const buildShortageAlerts = ({year,month,prefs,shifts,cfg}) => {
   const days=getDays(year,month), alerts=[];
@@ -353,13 +497,14 @@ const buildShortageAlerts = ({year,month,prefs,shifts,cfg}) => {
     const used=new Set();
     cfg.venues.forEach(v=>{
       const assigned=shifts[d]?.[v.name]||"";
-      const assignedStatus=assigned?prefStatus(prefs,assigned,d):"";
-      if(assigned && isAvailableStatus(assignedStatus)) used.add(assigned);
+      shiftStaffNames(assigned).forEach(name=>{
+        const assignedStatus=prefStatus(prefs,name,d);
+        if(isAvailableStatus(assignedStatus)) used.add(name);
+      });
     });
     cfg.venues.forEach(v=>{
       const assigned=shifts[d]?.[v.name]||"";
-      const assignedStatus=assigned?prefStatus(prefs,assigned,d):"";
-      if(assigned && isAvailableStatus(assignedStatus)) return;
+      if(shiftStaffNames(assigned).some(name=>isAvailableStatus(prefStatus(prefs,name,d)))) return;
       const available=cfg.staff.filter(s=>isAvailableStatus(prefStatus(prefs,s,d))&&!used.has(s));
       const required=1, availableCount=available.length, shortage=Math.max(0,required-availableCount);
       if(shortage>0) alerts.push({
@@ -774,7 +919,18 @@ const resolveCompassApiProxyPath=value=>{
     return fallback;
   }
 };
-const sanitizeSettingsForSave=v=>v?{...v,aiSettings:normalizeAISettings(v.aiSettings)}:v;
+const sanitizeSettingsForSave=v=>{
+  if(!v) return v;
+  const {
+    outsourceBillToName,
+    outsourceBillToAddress,
+    outsourceBillToPhone,
+    outsourceBillToFax,
+    outsourceBillToEmail,
+    ...rest
+  }=v;
+  return {...rest,aiSettings:normalizeAISettings(rest.aiSettings)};
+};
 const aiMonthKey=(d=new Date())=>`${d.getFullYear()}-${p2(d.getMonth()+1)}`;
 const estimateAITokens=txt=>Math.max(1,Math.ceil(String(txt||"").length/2));
 const estimateAICostJpy=(settings,inputTokens,outputTokens)=>{
@@ -956,11 +1112,13 @@ function App(){
   const assistStaffData = rawAssistStaff.length ? rawAssistStaff : parsePipe(D.assistStaff, []);
   const cfg={...raw,
     venues:normalizeConciergeVenues(raw.venues),
+    attendanceSites:raw.attendanceSites||{},
     staff:ensureArray(raw.staff).length>0?ensureArray(raw.staff):DEFAULT_STAFF,
     mcStaff:mcStaffData.length>0?mcStaffData:DEFAULT_MC_STAFF,
     assistStaff:assistStaffData.length>0?assistStaffData:DEFAULT_ASSIST_STAFF,
     staffManagement:normalizeStaffManagement(raw),
     staffRates:raw.staffRates||{}, // コンシェルジュ個人別時給
+    payrollTaxSettings:normalizePayrollTaxSettings(raw),
     ashibeRates:raw.ashibeRates||{}, // あしべの杜単価
     itemSettings:normalizeItemSettings(raw.itemSettings),
     mcRatesV2:raw.mcRatesV2||{},
@@ -1105,7 +1263,6 @@ function App(){
         {!busy&&role==="staff"  &&<StaffView  {...P}/>}
         {!busy&&role==="venue"  &&<VenueView  {...P}/>}
         {!busy&&role==="office" &&<OfficeView {...P}/>}
-        {!busy&&role==="support"&&<SupportManagerView {...P}/>}
         {!busy&&(role==="mc"||role==="assist")&&<MCStaffView {...P}/>}
       </div>
     </div>
@@ -1122,16 +1279,15 @@ function RoleSelect({cfg,onSelect}){
   const staffPass  =cfg.staffPass  ||DEFAULT_STAFF_PASS;
   const mcPass     =cfg.mcPass     ||DEFAULT_MC_PASS;
   const assistPass =cfg.assistPass ||DEFAULT_ASSIST_PASS;
-  const supportPass=cfg.supportPass||DEFAULT_SUPPORT_PASS;
 
-  const passMap = {admin:adminPass, office:officePass, staff:staffPass, mc:mcPass, assist:assistPass, support:supportPass};
-  const nameMap = {admin:"管理者", office:"事務", support:"業務サポートマネージャー"};
+  const passMap = {admin:adminPass, office:officePass, staff:staffPass, mc:mcPass, assist:assistPass};
+  const nameMap = {admin:"管理者", office:"事務"};
 
   const tryLogin=(role)=>{
     const correct=passMap[role];
     if(pw===correct){
       // 管理者・事務はそのままログイン、他は名前選択へ
-      if(role==="admin"||role==="office"||role==="support"){ onSelect(role, nameMap[role]||""); }
+      if(role==="admin"||role==="office"){ onSelect(role, nameMap[role]||""); }
       else{ setMode(role+"-name"); setPw(""); }
     }
     else{ setPwErr(true); setPw(""); setTimeout(()=>setPwErr(false),2000); }
@@ -1152,18 +1308,15 @@ function RoleSelect({cfg,onSelect}){
           DEV · {DEV_BUILD_LABEL}
         </div>
       </div>
-      <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:300}}>
+      <div style={{display:"flex",flexDirection:"column",gap:12,width:"100%",maxWidth:340}}>
         {[
-          {r:"admin", i:"⚙️", l:"管理者",       s:"シフト調整・確定",    bg:"#e8784a"},
-          {r:"staff", i:"👤", l:"コンシェルジュ",s:"出勤希望・記録入力",  bg:"#e8a050"},
-          {r:"venue", i:"🏛️", l:"ディレクター",  s:"会場確定・シフト確認",bg:"#d4766a"},
-          {r:"mc",    i:"🎤", l:"司会",          s:"出勤記録・履歴確認",  bg:"#a0785a"},
-          {r:"assist",i:"🤝", l:"アシ・パントリー",  s:"出勤記録・履歴確認",  bg:"#b08060"},
-          {r:"support",i:"🌱", l:"業務サポートマネージャー",s:"成長カルテ・研修フォロー",bg:"#2f855a"},
-          {r:"office",i:"📊", l:"事務",          s:"月次計算・CSV出力",   bg:"#c4855a"},
+          {r:"staff", i:"👤", l:"コンシェルジュ",s:"希望・シフト・出勤打刻",  bg:"#e8784a"},
+          {r:"ceremony", i:"🎤", l:"司会・アシ・パントリー",s:"式場スタッフの記録",  bg:"#a0785a"},
+          {r:"venue", i:"🏛️", l:"ディレクター",  s:"担当会場の確認・承認",bg:"#d4766a"},
+          {r:"manage",i:"⚙️", l:"管理・事務・サポート",s:"設定・月次計算・研修管理",bg:"#2f855a"},
         ].map(({r,i,l,s,bg})=>(
           <button key={r} onClick={()=>setMode(r)}
-            style={{background:bg,border:"none",color:"#fff",borderRadius:14,padding:"16px 20px",
+            style={{background:bg,border:"none",color:"#fff",borderRadius:12,padding:"18px 20px",
               cursor:"pointer",display:"flex",alignItems:"center",gap:14,textAlign:"left",
               boxShadow:`0 4px 20px ${bg}88`}}>
             <span style={{fontSize:26}}>{i}</span>
@@ -1175,11 +1328,10 @@ function RoleSelect({cfg,onSelect}){
   );
 
   // パスワード画面（管理者・事務・コンシェルジュ・司会・アシスタント）
-  const needsPw = ["admin","office","staff","mc","assist","support"];
+  const needsPw = ["admin","office","staff","mc","assist"];
   const pwTitleMap = {
     admin:"⚙️ 管理者ログイン", office:"📊 事務ログイン",
     staff:"👤 コンシェルジュ", mc:"🎤 司会", assist:"🤝 アシスタント",
-    support:"🌱 業務サポートマネージャー"
   };
   if(needsPw.includes(mode)) return (
     <div style={{minHeight:"100vh",background:bgWarm,
@@ -1205,6 +1357,51 @@ function RoleSelect({cfg,onSelect}){
       </div>
     </div>
   );
+
+  const groupedEntrances = {
+    ceremony:{
+      title:"式場スタッフを選択",
+      desc:"司会、アシスタント、パントリーの記録だけに進みます。",
+      items:[
+        {r:"mc", i:"🎤", l:"司会", s:"出勤記録・履歴・Compass AI"},
+        {r:"assist", i:"🤝", l:"アシスタント・パントリー", s:"出勤記録・履歴確認"},
+      ],
+    },
+    manage:{
+      title:"管理・確認メニュー",
+      desc:"管理者、事務だけを表示しています。",
+      items:[
+        {r:"admin", i:"⚙️", l:"管理者", s:"シフト調整・確定・設定"},
+        {r:"office", i:"📊", l:"事務", s:"月次計算・CSV出力"},
+      ],
+    },
+  };
+  if(groupedEntrances[mode]) {
+    const group=groupedEntrances[mode];
+    return (
+      <div style={{minHeight:"100vh",background:bgWarm,
+        display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+        <div style={{background:"#fff",borderRadius:16,padding:28,width:"100%",maxWidth:340,
+          boxShadow:"0 8px 40px rgba(180,80,20,.2)"}}>
+          <h3 style={{margin:"0 0 6px",color:"#7c2d0a"}}>{group.title}</h3>
+          <p style={{fontSize:13,color:C.muted,margin:"0 0 18px",lineHeight:1.6}}>{group.desc}</p>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {group.items.map(item=>(
+              <button key={item.r} onClick={()=>setMode(item.r)}
+                style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,
+                  padding:"13px 14px",cursor:"pointer",textAlign:"left",display:"flex",gap:12,alignItems:"center"}}>
+                <span style={{fontSize:24}}>{item.i}</span>
+                <span><span style={{display:"block",fontWeight:800,fontSize:14}}>{item.l}</span>
+                <span style={{display:"block",fontSize:12,color:C.muted,marginTop:2}}>{item.s}</span></span>
+              </button>
+            ))}
+          </div>
+          <button onClick={()=>setMode(null)}
+            style={{marginTop:16,color:C.muted,background:"none",border:"none",cursor:"pointer",fontSize:13}}>← 戻る</button>
+        </div>
+      </div>
+    );
+  }
 
   // 名前選択画面（コンシェルジュ・ディレクター・司会・アシスタント）
   const titleMap={
@@ -1247,7 +1444,7 @@ function RoleSelect({cfg,onSelect}){
 
 
 function TopBar({role,uname,onBack,year,month}){
-  const lbl={admin:"⚙️ 管理者",staff:`👤 ${uname}`,venue:`🏛️ ${uname}`,office:"📊 事務",support:"🌱 業務サポートマネージャー",mc:`🎤 ${uname}`,assist:`🤝 ${uname}`};
+  const lbl={admin:"⚙️ 管理者",staff:`👤 ${uname}`,venue:`🏛️ ${uname}`,office:"📊 事務",mc:`🎤 ${uname}`,assist:`🤝 ${uname}`};
   return (
     <div style={{background:"linear-gradient(90deg,#c2613a,#d4785a)",color:"#fff",padding:"12px 20px",display:"flex",alignItems:"center",
       gap:12,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(180,80,20,.25)",flexWrap:"wrap"}}>
@@ -1302,17 +1499,16 @@ function Tabs({tabs,active,onChange}){
 function AdminView(P){
   const [tab,setTab]=useState("dashboard");
   const tabs=[
-    {id:"dashboard", label:"Dashboard"},
-    {id:"aiInbox",label:"📥 AI受信箱"},
-    {id:"pref",  label:"📋 希望一覧"},
-    {id:"shift", label:"📅 シフト確定"},
-    {id:"att",   label:"🕐 出勤記録"},
-    {id:"items", label:"🧩 項目設定"},
-    {id:"mc",    label:"🎤 司会設定"},
-    {id:"support",label:"🌱 成長カルテ"},
-    {id:"library",label:"📚 ナレーションライブラリ"},
+    {id:"dashboard", label:"概要"},
+    {id:"shift", label:"シフト"},
+    {id:"att",   label:"勤怠承認"},
+    {id:"pref",  label:"希望"},
+    {id:"mc",    label:"司会設定"},
+    {id:"items", label:"項目設定"},
+    {id:"config",label:"設定"},
+    {id:"aiInbox",label:"AI受信箱"},
+    {id:"library",label:"ナレーション"},
     {id:"ai",    label:"Compass AI"},
-    {id:"config",label:"⚙️ 設定"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="dashboard"&&<AdminDashboard {...P}/>}
@@ -1324,7 +1520,6 @@ function AdminView(P){
     {tab==="mc"    &&<MCConfigTab    {...P}/>}
     {tab==="library"&&<CompassNarrationLibraryView {...P}/>}
     {tab==="ai"    &&<CompassNarrationView {...P}/>}
-    {tab==="support"&&<SupportManagerView {...P}/>}
     {tab==="config"&&<AdminConfig    {...P}/>}
   </div>;
 }
@@ -1647,7 +1842,7 @@ function AdminPrefView({year,month,prefs,shifts,cfg}){
   const dayInfo=Array.from({length:days},(_,i)=>{
     const d=i+1;
     const applicants=staff.filter(s=>isAvailableStatus(prefStatus(prefs,s,d)));
-    const assigned=venues.map(v=>shifts[d]?.[v.name]).filter(Boolean);
+    const assigned=venues.flatMap(v=>shiftStaffNames(shifts[d]?.[v.name])).filter(Boolean);
     return {d,applicants,assigned};
   });
   const over =dayInfo.filter(x=>x.applicants.length>need);
@@ -1750,7 +1945,7 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
   const vCnt={};
   staff.forEach(s=>{vCnt[s]={};venues.forEach(v=>{vCnt[s][v.name]=0;});});
   Object.values(local).forEach(dd=>Object.entries(dd).forEach(([vn,sn])=>{
-    if(vCnt[sn]?.[vn]!==undefined)vCnt[sn][vn]++;
+    shiftStaffNames(sn).forEach(name=>{ if(vCnt[name]?.[vn]!==undefined)vCnt[name][vn]++; });
   }));
   const totalCnt={};
   staff.forEach(s=>totalCnt[s]=venues.reduce((a,v)=>a+(vCnt[s]?.[v.name]||0),0));
@@ -1758,6 +1953,18 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
   const setCell=(d,vn,v)=>{
     setLocal(prev=>({...prev,[d]:{...(prev[d]||{}),[vn]:v}}));
     setDirty(true);
+  };
+  const setSplit=(d,vn,enabled)=>{
+    const current=local[d]?.[vn]||"";
+    const first=shiftPrimaryStaff(current);
+    setCell(d,vn,enabled?{mode:"split",segments:[
+      {id:"first",label:"前半",start:"09:00",end:"12:00",staff:first},
+      {id:"second",label:"後半",start:"12:00",end:"16:00",staff:""},
+    ]}:first);
+  };
+  const updateSegment=(d,vn,id,patch)=>{
+    const segs=normalizeShiftSegments(local[d]?.[vn]);
+    setCell(d,vn,{mode:"split",segments:segs.map(s=>s.id===id?{...s,...patch}:s)});
   };
   const saveNow=()=>{ sv.shifts(local); setDirty(false); };
   const onGenerate=()=>{ generate(); setDirty(false); };
@@ -1803,10 +2010,13 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
             <td style={{...TD,textAlign:"center",fontWeight:700}}>{d}</td>
             <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
             {venues.map(v=>{
-              const val=local[d]?.[v.name]||"";
-              const notOpted=val&&!isAvailableStatus(prefStatus(prefs,val,d));
+              const cell=local[d]?.[v.name]||"";
+              const segs=normalizeShiftSegments(cell);
+              const isSplit=typeof cell==="object"&&normalizeShiftSegments(cell).length>1;
+              const val=shiftPrimaryStaff(cell);
+              const notOpted=segs.some(seg=>seg.staff&&!isAvailableStatus(prefStatus(prefs,seg.staff,d)));
               return <td key={v.name} style={TD}>
-                <select value={val} onChange={e=>setCell(d,v.name,e.target.value)}
+                {!isSplit&&<select value={val} onChange={e=>setCell(d,v.name,e.target.value)}
                   style={{width:"100%",border:`1px solid ${notOpted?C.amber:!val?"#fca5a5":C.border}`,
                     borderRadius:6,padding:"4px 6px",fontSize:13,background:"#fff"}}>
                   <option value="">-- 未定 --</option>
@@ -1816,7 +2026,24 @@ function AdminShiftView({year,month,shifts,prefs,cfg,sv,generate}){
                       {s} {prefLabel(st)}
                     </option>;
                   })}
-                </select>
+                </select>}
+                {isSplit&&<div style={{display:"flex",flexDirection:"column",gap:5}}>
+                  {segs.map(seg=><div key={seg.id} style={{display:"grid",gridTemplateColumns:"42px 1fr 64px 64px",gap:4,alignItems:"center"}}>
+                    <span style={{fontSize:11,fontWeight:800,color:C.muted}}>{seg.label}</span>
+                    <select value={seg.staff||""} onChange={e=>updateSegment(d,v.name,seg.id,{staff:e.target.value})}
+                      style={{width:"100%",border:`1px solid ${seg.staff&&!isAvailableStatus(prefStatus(prefs,seg.staff,d))?C.amber:C.border}`,borderRadius:6,padding:"4px 6px",fontSize:12,background:"#fff"}}>
+                      <option value="">-- 未定 --</option>
+                      {staff.map(s=><option key={s} value={s}>{s} {prefLabel(prefStatus(prefs,s,d))}</option>)}
+                    </select>
+                    <input type="time" step="900" value={seg.start||""} onChange={e=>updateSegment(d,v.name,seg.id,{start:e.target.value})}
+                      style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 5px",fontSize:11}}/>
+                    <input type="time" step="900" value={seg.end||""} onChange={e=>updateSegment(d,v.name,seg.id,{end:e.target.value})}
+                      style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 5px",fontSize:11}}/>
+                  </div>)}
+                </div>}
+                <button onClick={()=>setSplit(d,v.name,!isSplit)} style={{...Btn(isSplit?C.muted:C.blue),fontSize:10,padding:"3px 7px",marginTop:5}}>
+                  {isSplit?"終日に戻す":"前半/後半に分ける"}
+                </button>
                 {notOpted&&<div style={{fontSize:10,color:C.amber}}>⚡ 希望外</div>}
               </td>;
             })}
@@ -1844,8 +2071,15 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
   };
   const allRows=[];
   for(let d=1;d<=days;d++) for(const v of venues){
-    const key=`${d}-${v.name}`,rec=att[key],sched=shifts[d]?.[v.name]||"";
-    if(rec||sched)allRows.push({d,venue:actualVenue(d,v.name),venueKey:v.name,sched,rec,key});
+    const segs=normalizeShiftSegments(shifts[d]?.[v.name]);
+    if(!segs.length){
+      const key=`${d}-${v.name}`,rec=att[key];
+      if(rec) allRows.push({d,venue:actualVenue(d,v.name),venueKey:v.name,sched:"",rec,key});
+    }
+    segs.forEach(seg=>{
+      const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
+      allRows.push({d,venue:actualVenue(d,v.name),venueKey:v.name,sched:seg.staff,seg,rec,key});
+    });
   }
   const rows=venueFilter==="all"?allRows:allRows.filter(r=>r.venueKey===venueFilter);
   const verify=key=>sv.att({...att,[key]:{...att[key],verified:true,verifiedAt:new Date().toISOString()}});
@@ -1884,25 +2118,26 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
           <th style={TH}>日付</th><th style={TH}>曜</th><th style={TH}>会場</th>
           <th style={TH}>予定</th><th style={TH}>実際</th><th style={TH}>時間</th><th style={TH}>状態</th>
         </tr></thead>
-        <tbody>{rows.map(({d,venue,sched,rec,key})=>{
-          const wdi=getWdayI(year,month,d),h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):null;
+        <tbody>{rows.map(({d,venue,sched,seg,rec,key})=>{
+          const wdi=getWdayI(year,month,d),h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,rec.breakMin??60):null;
           const isEd=ed?.key===key;
+          const defStart=seg?.start||"09:00",defEnd=seg?.end||"16:00",defBreak=seg?.id&&seg.id!=="full"?0:60;
           return <React.Fragment key={key}>
             <tr style={{background:rec?.verified?"#f0fdf4":"#fff",cursor:rec?"pointer":"default"}}
-              onClick={()=>rec&&!isEd&&setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue})}>
+              onClick={()=>rec&&!isEd&&setEd({key,s:rec.start||defStart,e:rec.end||defEnd,b:rec.breakMin??defBreak,venue:venue})}>
               <td style={{...TD,textAlign:"center",fontWeight:700}}>{month}/{d}</td>
               <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
               <td style={TD}>{venue}</td><td style={TD}>{sched||"-"}</td>
               <td style={{...TD,fontWeight:600}}>{rec?.staff||<span style={{color:C.muted,fontWeight:400}}>未入力</span>}</td>
-              <td style={{...TD,color:C.muted}}>{rec?`${rec.start}〜${rec.end} 休憩${rec.breakMin??60}分（実働${h}h)`:"−"}</td>
+              <td style={{...TD,color:C.muted}}>{rec?`${rec.start||"未打刻"}〜${rec.end||"未退勤"} 休憩${rec.breakMin??60}分${h?`（実働${h}h）`:""}`:"−"}</td>
               <td style={{...TD,textAlign:"center"}}>
-                {!rec&&<button onClick={e=>{e.stopPropagation();setEd({key,s:"09:00",e:"16:00",b:60,newStaff:sched,venue:venue});}} style={{...Btn(C.amber),fontSize:11,padding:"4px 8px"}}>入力</button>}
+                {!rec&&<button onClick={e=>{e.stopPropagation();setEd({key,s:defStart,e:defEnd,b:defBreak,newStaff:sched,venue:venue});}} style={{...Btn(C.amber),fontSize:11,padding:"4px 8px"}}>入力</button>}
                 {rec&&!rec.verified&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue});}} style={{...Btn(C.blue),fontSize:11,padding:"4px 8px"}}>修正</button>
-                  <button onClick={e=>{e.stopPropagation();verify(key);}} style={{...Btn(C.purple),fontSize:11,padding:"4px 8px"}}>承認</button>
+                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start||defStart,e:rec.end||defEnd,b:rec.breakMin??defBreak,venue:venue});}} style={{...Btn(C.blue),fontSize:11,padding:"4px 8px"}}>修正</button>
+                  {rec.end?<button onClick={e=>{e.stopPropagation();verify(key);}} style={{...Btn(C.purple),fontSize:11,padding:"4px 8px"}}>承認</button>:<span style={{color:C.amber,fontSize:11,fontWeight:700,padding:"4px 0"}}>退勤待ち</span>}
                 </div>}
                 {rec?.verified&&<div style={{display:"flex",gap:4,justifyContent:"center",flexWrap:"wrap"}}>
-                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start,e:rec.end,b:rec.breakMin??60,venue:venue});}} style={{...Btn(C.muted),fontSize:11,padding:"4px 8px"}}>修正</button>
+                  <button onClick={e=>{e.stopPropagation();setEd({key,s:rec.start||defStart,e:rec.end||defEnd,b:rec.breakMin??defBreak,venue:venue});}} style={{...Btn(C.muted),fontSize:11,padding:"4px 8px"}}>修正</button>
                   <span style={{color:C.green,fontSize:12,fontWeight:700}}>✅</span>
                 </div>}
               </td>
@@ -1918,10 +2153,10 @@ function AdminAttView({year,month,att:attProp,shifts,vconf,cfg,sv}){
   ))}
 </select>
 <label style={{fontSize:12}}>開始</label>
-                <input type="time" value={ed.s} onChange={e=>setEd({...ed,s:e.target.value})}
+                <input type="time" step="900" value={ed.s} onChange={e=>setEd({...ed,s:e.target.value})}
                   style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:13}}/>
                 <label style={{fontSize:12}}>終了</label>
-                <input type="time" value={ed.e} onChange={e=>setEd({...ed,e:e.target.value})}
+                <input type="time" step="900" value={ed.e} onChange={e=>setEd({...ed,e:e.target.value})}
                   style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"4px 8px",fontSize:13}}/>
                 <label style={{fontSize:12}}>休憩</label>
                 <select value={ed.b} onChange={e=>setEd({...ed,b:Number(e.target.value)})}
@@ -1954,16 +2189,21 @@ function AdminConfig({cfg,sv}){
   const [newStaffPass,setNewStaffPass]=useState(cfg.staffPass||DEFAULT_STAFF_PASS);
   const [newMcPass,setNewMcPass]=useState(cfg.mcPass||DEFAULT_MC_PASS);
   const [newAssistPass,setNewAssistPass]=useState(cfg.assistPass||DEFAULT_ASSIST_PASS);
-  const [newSupportPass,setNewSupportPass]=useState(cfg.supportPass||DEFAULT_SUPPORT_PASS);
   const [managedStaff,setManagedStaff]=useState(()=>normalizeStaffManagement(cfg));
   const [staffRates,setStaffRates]=useState(()=>{
     const r={};
     (cfg.staff||DEFAULT_STAFF).forEach(n=>{r[n]=cfg.staffRates?.[n]||RATE_STAFF;});
     return r;
   });
+  const [payrollTaxSettings,setPayrollTaxSettings]=useState(()=>normalizePayrollTaxSettings(cfg));
+  const [attendanceSites,setAttendanceSites]=useState(()=>({...cfg.attendanceSites}));
   const [saved,setSaved]=useState(false);
   const [errMsg,setErrMsg]=useState("");
   const toList = txt => txt.split("\n").map(s=>s.trim()).filter(Boolean);
+  const siteNames=Array.from(new Set([v1n.trim()||"春日",v2n.trim()||"花園"].filter(Boolean)));
+  const updateSite=(name,patch)=>setAttendanceSites(s=>({...s,[name]:{...(s[name]||{}),...patch}}));
+  const payrollNames=payrollStaffNames({staff:toList(staffTxt),mcStaff:toList(mcStaffTxt),assistStaff:toList(assistStaffTxt)});
+  const updatePayrollTax=(name,patch)=>setPayrollTaxSettings(s=>({...s,[name]:{...(s[name]||{enabled:true,table:"甲",dependents:0,monthlyTax:0,memo:""}),...patch}}));
   const save=async()=>{
     setErrMsg("");
     const textLists={
@@ -1972,6 +2212,16 @@ function AdminConfig({cfg,sv}){
       assistStaff:toList(assistStaffTxt),
     };
     const managed=mergeStaffManagementWithLists(managedStaff,textLists);
+    const cleanSites={};
+    siteNames.forEach(name=>{
+      const s=attendanceSites[name]||{};
+      cleanSites[name]={
+        lat:String(s.lat||"").trim(),
+        lng:String(s.lng||"").trim(),
+        radiusM:Number(s.radiusM||s.radius||CLOCK_GEOFENCE_RADIUS_M)||CLOCK_GEOFENCE_RADIUS_M,
+        code:String(s.code||"").trim(),
+      };
+    });
     const newSettings={
       ...cfg,
       staff:textLists.staff,
@@ -1979,21 +2229,23 @@ function AdminConfig({cfg,sv}){
       assistStaff:textLists.assistStaff,
       staffManagement:managed,
       venues:normalizeConciergeVenues([{name:v1n.trim()||"春日",options:[]},{name:v2n.trim()||"花園",options:[]}]),
+      attendanceSites:cleanSites,
       staffRates,
+      payrollTaxSettings:normalizePayrollTaxSettings({staff:textLists.staff,mcStaff:textLists.mcStaff,assistStaff:textLists.assistStaff,payrollTaxSettings}),
       officePass:newPass.trim()||DEFAULT_OFFICE_PASS,
       adminPass:newAdminPass.trim()||DEFAULT_OFFICE_PASS,
       staffPass:newStaffPass.trim()||DEFAULT_STAFF_PASS,
       mcPass:newMcPass.trim()||DEFAULT_MC_PASS,
       assistPass:newAssistPass.trim()||DEFAULT_ASSIST_PASS,
-      supportPass:newSupportPass.trim()||DEFAULT_SUPPORT_PASS,
     };
     try{
-      await stSave("settings", newSettings);
+      const cleanSettings=sanitizeSettingsForSave(newSettings);
+      await stSave("settings", cleanSettings);
       await Promise.all([
         stSave("mcStaff_str", newSettings.mcStaff.join("|")),
         stSave("assistStaff_str", newSettings.assistStaff.join("|")),
       ]);
-      sv.updateSettings(newSettings);
+      sv.updateSettings(cleanSettings);
       setManagedStaff(managed);
       setSaved(true);
       setTimeout(()=>setSaved(false),2500);
@@ -2030,7 +2282,28 @@ function AdminConfig({cfg,sv}){
         現在のコンシェルジュ勤務地は春日・花園のみです。多治米、蔵王、小さな蔵王、小さな多治米は選択肢に表示しません。
       </div>
     </div>
-    <StaffManagementPanel staffList={managedStaff} onChange={setManagedStaff}/>
+    <div style={{...GC,background:"#f0f9ff",border:`1px solid ${C.blue}`,marginBottom:16}}>
+      <div style={{fontWeight:800,fontSize:13,color:C.blue,marginBottom:6}}>コンシェルジュ出勤打刻の現地確認設定</div>
+      <p style={{fontSize:12,color:C.muted,lineHeight:1.6,margin:"0 0 12px"}}>
+        毎日9:00〜16:00勤務のコンシェルジュのみ対象です。緯度・経度を設定すると、その半径内でだけ出勤打刻できます。現地コードはQRや掲示物にして、スタッフが現地で入力する確認用です。
+      </p>
+      {siteNames.map(name=>{
+        const site=attendanceSites[name]||{};
+        return <div key={name} style={{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:10}}>
+          <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>{name}</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8}}>
+            <input value={site.lat||""} onChange={e=>updateSite(name,{lat:e.target.value})} placeholder="緯度"
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}/>
+            <input value={site.lng||""} onChange={e=>updateSite(name,{lng:e.target.value})} placeholder="経度"
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}/>
+            <input type="number" value={site.radiusM||CLOCK_GEOFENCE_RADIUS_M} onChange={e=>updateSite(name,{radiusM:e.target.value})} placeholder="半径m"
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}/>
+            <input value={site.code||""} onChange={e=>updateSite(name,{code:e.target.value})} placeholder="現地コード（任意）"
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}/>
+          </div>
+        </div>;
+      })}
+    </div>
     {/* パスワード設定 */}
     <div style={{...GC,background:"#fffaf5",border:`1px solid #e8784a`,marginBottom:16}}>
       <div style={{fontWeight:700,fontSize:13,color:"#e8784a",marginBottom:14}}>🔒 ログインパスワード設定</div>
@@ -2039,7 +2312,6 @@ function AdminConfig({cfg,sv}){
         {label:"👤 コンシェルジュ", val:newStaffPass, set:setNewStaffPass},
         {label:"🎤 司会",      val:newMcPass,    set:setNewMcPass},
         {label:"🤝 アシスタント", val:newAssistPass,set:setNewAssistPass},
-        {label:"🌱 業務サポート", val:newSupportPass,set:setNewSupportPass},
         {label:"📊 事務",      val:newPass,      set:setNewPass},
       ].map(({label,val,set})=>(
         <div key={label} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -2063,6 +2335,36 @@ function AdminConfig({cfg,sv}){
           <span style={{fontSize:12,color:C.muted}}>円/h</span>
         </div>
       ))}
+    </div>
+    <div style={{...GC,background:"#f8fafc",border:`1px solid ${C.border}`,marginBottom:16}}>
+      <div style={{fontWeight:800,fontSize:13,color:C.navy,marginBottom:6}}>源泉所得税設定（アルバイト給与用）</div>
+      <p style={{fontSize:12,color:C.muted,lineHeight:1.6,margin:"0 0 12px"}}>
+        スタッフごとに甲/乙、扶養人数、毎月差し引く源泉額を保存します。税額表で確認した金額を入れておくと、月次給与一覧で自動的に差し引きます。
+      </p>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {payrollNames.map(name=>{
+          const t=payrollTaxSettings[name]||{enabled:true,table:"甲",dependents:0,monthlyTax:0,memo:""};
+          return <div key={name} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8,alignItems:"center",background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:800}}>
+              <input type="checkbox" checked={t.enabled!==false} onChange={e=>updatePayrollTax(name,{enabled:e.target.checked})}/>
+              {name}
+            </label>
+            <select value={t.table||"甲"} onChange={e=>updatePayrollTax(name,{table:e.target.value})}
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 8px",fontSize:13}}>
+              <option value="甲">甲欄</option>
+              <option value="乙">乙欄</option>
+            </select>
+            <input type="number" min="0" value={t.dependents||0} onChange={e=>updatePayrollTax(name,{dependents:Number(e.target.value)||0})}
+              title="扶養人数" placeholder="扶養"
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 8px",fontSize:13,textAlign:"right"}}/>
+            <input type="number" min="0" value={t.monthlyTax||0} onChange={e=>updatePayrollTax(name,{monthlyTax:Number(e.target.value)||0})}
+              title="月額の源泉所得税" placeholder="源泉額"
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 8px",fontSize:13,textAlign:"right"}}/>
+            <input value={t.memo||""} onChange={e=>updatePayrollTax(name,{memo:e.target.value})} placeholder="メモ"
+              style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 8px",fontSize:13,minWidth:0}}/>
+          </div>;
+        })}
+      </div>
     </div>
     <button style={{...Btn(saved?C.green:C.navy),width:"100%",padding:"12px"}} onClick={save}>
       {saved?"保存しました":"保存する"}
@@ -2095,9 +2397,10 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
   const staffRows=staff.map(name=>{
     let totalDays=0,totalHours=0,totalOT=0;
     for(let d=1;d<=days;d++) for(const v of venues){
-      if(shifts[d]?.[v.name]===name){
-        const key=`${d}-${v.name}`,rec=att[key];
-        const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
+      for(const seg of normalizeShiftSegments(shifts[d]?.[v.name]).filter(seg=>seg.staff===name)){
+        const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
+        const defaultBreak=seg.id&&seg.id!=="full"?0:60;
+        const h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,rec.breakMin??defaultBreak):parseHours(seg.start||"09:00",seg.end||"16:00",defaultBreak);
         const ot=Math.max(0,Math.round((h-OVERTIME_HOURS)*100)/100);
         totalDays++;totalHours+=h;totalOT+=ot;
       }
@@ -2109,18 +2412,31 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
     return {name,totalDays,totalHours,totalOT,pay,rate};
   }).filter(r=>r.totalDays>0);
 
-  const venueMap={};
+  const dayVenueMap={};
   for(let d=1;d<=days;d++) for(const v of venues){
-    const sn=shifts[d]?.[v.name];if(!sn)continue;
-    const aVenue=actualVenue(d,v.name);
-    const billingVenue=normalizeBillingVenue(aVenue);
-    const key=`${d}-${v.name}`,rec=att[key];
-    const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
-    if(!venueMap[billingVenue]) venueMap[billingVenue]={name:billingVenue,days:0,hours:0};
-    venueMap[billingVenue].days++;venueMap[billingVenue].hours+=h;
+    for(const seg of normalizeShiftSegments(shifts[d]?.[v.name])){
+      if(!seg.staff) continue;
+      const aVenue=actualVenue(d,v.name);
+      const billingVenue=normalizeBillingVenue(aVenue);
+      const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
+      const defaultBreak=seg.id&&seg.id!=="full"?0:60;
+      const h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,rec.breakMin??defaultBreak):parseHours(seg.start||"09:00",seg.end||"16:00",defaultBreak);
+      const dayKey=`${d}-${billingVenue}`;
+      if(!dayVenueMap[dayKey]) dayVenueMap[dayKey]={name:billingVenue,hours:0,segments:0};
+      dayVenueMap[dayKey].hours+=h;
+      dayVenueMap[dayKey].segments++;
+    }
   }
+  const venueMap={};
+  Object.values(dayVenueMap).forEach(day=>{
+    if(!venueMap[day.name]) venueMap[day.name]={name:day.name,days:0,hours:0,actualHours:0};
+    venueMap[day.name].days++;
+    venueMap[day.name].actualHours+=day.hours;
+    venueMap[day.name].hours+=day.segments>1?Math.max(0,day.hours-1):day.hours;
+  });
   const venueRows=Object.values(venueMap).map(r=>{
     r.hours=Math.round(r.hours*100)/100;
+    r.actualHours=Math.round((r.actualHours||r.hours)*100)/100;
     r.sub=Math.round(r.hours*RATE_BILL);
     r.tax=Math.round(r.sub*TAX_RATE);
     r.total=r.sub+r.tax;
@@ -2151,12 +2467,15 @@ function AccountingView({year,month,att,shifts,vconf,cfg}){
     const rows=[[`${year}年${month}月 出勤詳細`],[""],
       ["名前","日付","曜日","会場","開始","終了","休憩(分)","実働(h)","残業(h)","時給","支払額","承認"]];
     for(let d=1;d<=days;d++) for(const v of venues){
-      const sn=shifts[d]?.[v.name];if(!sn)continue;
-      const key=`${d}-${v.name}`,rec=att[key];
-      const s=rec?.start||"09:00",e=rec?.end||"16:00",bm=rec?.breakMin??60,h=parseHours(s,e,bm);
-      const ot=Math.max(0,Math.round((h-OVERTIME_HOURS)*100)/100);
-      const rate=staffRates[sn]||RATE_STAFF;
-      rows.push([sn,`${year}/${month}/${d}`,getWday(year,month,d),actualVenue(d,v.name),s,e,bm,h,ot,rate,Math.round(h*rate),rec?.verified?"承認済":"未承認"]);
+      for(const seg of normalizeShiftSegments(shifts[d]?.[v.name])){
+        const sn=seg.staff;if(!sn)continue;
+        const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
+        const defaultBreak=seg.id&&seg.id!=="full"?0:60;
+        const s=rec?.start||seg.start||"09:00",e=rec?.end||seg.end||"16:00",bm=rec?.breakMin??defaultBreak,h=parseHours(s,e,bm);
+        const ot=Math.max(0,Math.round((h-OVERTIME_HOURS)*100)/100);
+        const rate=staffRates[sn]||RATE_STAFF;
+        rows.push([sn,`${year}/${month}/${d}`,getWday(year,month,d),actualVenue(d,v.name),s,e,bm,h,ot,rate,Math.round(h*rate),rec?.verified?"承認済":"未承認"]);
+      }
     }
     downloadCSV(`出勤詳細_${year}年${month}月.csv`,rows);
   };
@@ -2285,22 +2604,27 @@ function buildConciergeMonthlyRows({year,month,att,shifts,vconf,cfg,approvedOnly
   const days=getDays(year,month);
   const rows=[];
   for(let d=1;d<=days;d++) for(const v of cfg.venues){
-    const staff=shifts[d]?.[v.name];
-    if(!staff) continue;
-    const key=`${d}-${v.name}`;
-    const rec=att[key];
-    if(approvedOnly && !rec?.verified) continue;
-    const start=rec?.start||"09:00";
-    const end=rec?.end||"16:00";
-    const breakMin=rec?.breakMin??60;
-    const hours=rec?parseHours(start,end,breakMin):DEFAULT_HOURS;
-    const rate=(cfg.staffRates||{})[staff]||RATE_STAFF;
-    rows.push({
-      source:"concierge",date:`${year}/${month}/${d}`,d,staff,role:"Concierge",
-      client:"コンシェルジュ",location:actualMonthlyVenue(cfg,vconf,d,v.name),
-      start,end,breakMin,hours,dailyCount:0,rate,amount:Math.round(hours*rate),
-      status:rec?.verified?"承認済":rec?"未承認":"未入力",approved:!!rec?.verified
-    });
+    const segs=normalizeShiftSegments(shifts[d]?.[v.name]);
+    for(const seg of segs){
+      const staff=seg.staff;
+      if(!staff) continue;
+      const key=shiftAttKey(d,v.name,seg);
+      const rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
+      if(approvedOnly && !rec?.verified) continue;
+      const start=rec?.start||seg.start||"09:00";
+      const end=rec?.end||seg.end||"16:00";
+      const defaultBreak=seg.id&&seg.id!=="full"?0:60;
+      const breakMin=rec?.breakMin??defaultBreak;
+      const hours=rec?parseHours(start,end,breakMin):parseHours(start,end,breakMin);
+      const rate=(cfg.staffRates||{})[staff]||RATE_STAFF;
+      rows.push({
+        source:"concierge",date:`${year}/${month}/${d}`,d,staff,role:"Concierge",
+        client:"コンシェルジュ",location:actualMonthlyVenue(cfg,vconf,d,v.name),
+        start,end,breakMin,hours,dailyCount:0,rate,amount:Math.round(hours*rate),
+        status:rec?.verified?"承認済":rec?"未承認":"未入力",approved:!!rec?.verified,
+        note:seg.label&&seg.label!=="終日"?seg.label:""
+      });
+    }
   }
   return rows;
 }
@@ -2317,14 +2641,26 @@ function inferBillingCompanyFromVenue(cfg, venue){
 }
 
 function buildConciergeBillingRows({year,month,att,shifts,vconf,cfg,approvedOnly=false}){
-  return buildConciergeMonthlyRows({year,month,att,shifts,vconf,cfg,approvedOnly}).map(r=>{
-    const sub=Math.round((r.hours||0)*RATE_BILL);
-    const tax=Math.round(sub*TAX_RATE);
-    return {
-      source:"concierge",date:r.date,d:r.d,staff:r.staff,company:inferBillingCompanyFromVenue(cfg,r.location),
+  const rows=buildConciergeMonthlyRows({year,month,att,shifts,vconf,cfg,approvedOnly});
+  const grouped={};
+  rows.forEach(r=>{
+    const key=`${r.date}__${r.location}`;
+    if(!grouped[key]) grouped[key]={
+      source:"concierge",date:r.date,d:r.d,staff:[],company:inferBillingCompanyFromVenue(cfg,r.location),
       venue:r.location,role:"コンシェルジュ",workType:"コンシェルジュ",type:"時間",
-      hours:r.hours||0,count:0,unit:RATE_BILL,sub,tax,total:sub+tax,status:r.status
+      hours:0,count:0,segmentCount:0,unit:RATE_BILL,sub:0,tax:0,total:0,status:r.status
     };
+    grouped[key].hours+=r.hours||0;
+    grouped[key].segmentCount++;
+    if(r.staff&&!grouped[key].staff.includes(r.staff)) grouped[key].staff.push(r.staff);
+    if(r.status==="未承認") grouped[key].status="未承認";
+  });
+  return Object.values(grouped).map(r=>{
+    const actualHours=Math.round((r.hours||0)*100)/100;
+    const billedHours=r.segmentCount>1?Math.max(0,Math.round((actualHours-1)*100)/100):actualHours;
+    const sub=Math.round(billedHours*RATE_BILL);
+    const tax=Math.round(sub*TAX_RATE);
+    return {...r,staff:r.staff.join(" / "),hours:billedHours,actualHours,sub,tax,total:sub+tax};
   });
 }
 
@@ -2441,19 +2777,26 @@ function MonthlyPayrollList(P){
     map[key].dailyCount+=r.dailyCount||0;
     map[key].amount+=r.amount||0;
     return map;
-  },{})).map(r=>({...r,hours:Math.round(r.hours*100)/100}))
+  },{})).map(r=>{
+    const amount=Math.round(r.amount||0);
+    const withholding=payrollWithholdingFor(amount,r.staff,cfg);
+    return {...r,hours:Math.round(r.hours*100)/100,amount,withholding,net:amount-withholding};
+  })
     .sort((a,b)=>String(a.staff).localeCompare(String(b.staff),"ja")||String(a.role).localeCompare(String(b.role),"ja"));
   const total=summary.reduce((a,r)=>a+r.amount,0);
+  const totalWithholding=summary.reduce((a,r)=>a+r.withholding,0);
+  const totalNet=summary.reduce((a,r)=>a+r.net,0);
 
   const exportCSV=()=>{
     const rows=[
-      ["支払先","勤務年月","区分","役割","勤務日数","実働時間","日数","単価","支払額","freee用メモ"],
+      ["支払先","勤務年月","区分","役割","勤務日数","実働時間","日数","単価","総支給額","源泉所得税","差引支給額","税区分","扶養人数","freee用メモ"],
       ...summary.map(r=>[
         r.staff,`${year}-${p2(month)}`,r.source==="concierge"?"時給":"日給",r.role,
-        r.days,r.hours,r.dailyCount,r.rate,r.amount,
+        r.days,r.hours,r.dailyCount,r.rate,r.amount,r.withholding,r.net,
+        cfg.payrollTaxSettings?.[r.staff]?.table||"",cfg.payrollTaxSettings?.[r.staff]?.dependents??"",
         r.source==="concierge"?"承認済み勤怠のみ":"MC/アシスタント/パントリー登録実績"
       ]),
-      ["合計",`${year}-${p2(month)}`,"","","","","","",total,""]
+      ["合計",`${year}-${p2(month)}`,"","","","","","",total,totalWithholding,totalNet,"","",""]
     ];
     downloadCSV(`monthly_payroll_${year}-${p2(month)}.csv`,rows);
   };
@@ -2469,15 +2812,15 @@ function MonthlyPayrollList(P){
     <div className="print-card" style={GC}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,marginBottom:12,flexWrap:"wrap"}}>
         <h3 className="print-title" style={{margin:0,fontSize:16}}>月次給与一覧 {year}年{month}月</h3>
-        <div style={{fontWeight:800,color:C.blue,fontSize:17}}>合計 {yen(total)}</div>
+        <div style={{fontWeight:800,color:C.blue,fontSize:17}}>差引支給 {yen(totalNet)}</div>
       </div>
       {loading&&<p style={{color:C.muted,fontSize:13}}>読み込み中...</p>}
       {!loading&&summary.length===0&&<p style={{color:C.muted,fontSize:13}}>対象の給与データはありません。</p>}
       {summary.length>0&&<div style={{overflowX:"auto"}}>
-        <table className="print-table" style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
+        <table className="print-table" style={{width:"100%",borderCollapse:"collapse",minWidth:900}}>
           <thead><tr style={{background:"#f8f9fb"}}>
             <th style={TH}>スタッフ</th><th style={TH}>区分</th><th style={TH}>役割</th><th style={TH}>勤務日数</th>
-            <th style={TH}>実働時間</th><th style={TH}>日数</th><th style={TH}>単価</th><th style={TH}>支払額</th>
+            <th style={TH}>実働時間</th><th style={TH}>日数</th><th style={TH}>単価</th><th style={TH}>総支給</th><th style={TH}>源泉</th><th style={TH}>差引支給</th>
           </tr></thead>
           <tbody>
             {summary.map(r=>(
@@ -2490,6 +2833,8 @@ function MonthlyPayrollList(P){
                 <td style={{...TD,textAlign:"center"}}>{r.dailyCount||"-"}</td>
                 <td style={{...TD,textAlign:"right"}}>{yen(r.rate)}</td>
                 <td style={{...TD,textAlign:"right",fontWeight:800,color:C.blue}}>{yen(r.amount)}</td>
+                <td style={{...TD,textAlign:"right",color:r.withholding?C.red:C.muted}}>{yen(r.withholding)}</td>
+                <td style={{...TD,textAlign:"right",fontWeight:900,color:C.green}}>{yen(r.net)}</td>
               </tr>
             ))}
             <tr style={{background:"#f8f9fb",fontWeight:800}}>
@@ -2498,6 +2843,8 @@ function MonthlyPayrollList(P){
               <td style={{...TD,textAlign:"center"}}>{Math.round(summary.reduce((a,r)=>a+r.hours,0)*100)/100}h</td>
               <td style={{...TD,textAlign:"center"}}>{summary.reduce((a,r)=>a+r.dailyCount,0)||"-"}</td>
               <td style={TD}></td><td style={{...TD,textAlign:"right",color:C.blue,fontSize:15}}>{yen(total)}</td>
+              <td style={{...TD,textAlign:"right",color:C.red,fontSize:15}}>{yen(totalWithholding)}</td>
+              <td style={{...TD,textAlign:"right",color:C.green,fontSize:15}}>{yen(totalNet)}</td>
             </tr>
           </tbody>
         </table>
@@ -2584,25 +2931,25 @@ function MonthlyAttendanceList(P){
 }
 
 function OfficeView(P){
-  const [tab,setTab]=useState("invoice");
+  const [tab,setTab]=useState("payroll");
   const tabs=[
-    {id:"invoice", label:"月次請求"},
     {id:"payroll", label:"月次給与"},
+    {id:"invoice", label:"月次請求"},
     {id:"monthly", label:"月次勤怠"},
-    {id:"calc",    label:"💴 コンシェル"},
-    {id:"attend",  label:"📋 出勤一覧"},
-    {id:"pref",    label:"🙋 希望管理"},
-    {id:"shift",   label:"📅 シフト管理"},
-    {id:"att",     label:"✅ 勤怠承認"},
-    {id:"mc",      label:"🎤 司会・記録"},
-    {id:"study",   label:"📚 勉強会"},
-    {id:"items",   label:"🧩 項目設定"},
-    {id:"rates",   label:"💰 単価設定"},
+    {id:"attend",  label:"出勤一覧"},
+    {id:"att",     label:"勤怠承認"},
+    {id:"shift",   label:"シフト"},
+    {id:"pref",    label:"希望"},
+    {id:"mc",      label:"司会・記録"},
+    {id:"calc",    label:"コンシェル計算"},
+    {id:"study",   label:"勉強会"},
+    {id:"rates",   label:"単価設定"},
+    {id:"items",   label:"項目設定"},
   ];
   return <div>
     <div style={{...GC,background:`linear-gradient(135deg,${C.office},#0c4a6e)`,color:"#fff",padding:"16px 20px"}}>
-      <div style={{fontSize:13,opacity:.8,marginBottom:2}}>事務ダッシュボード</div>
-      <div style={{fontSize:18,fontWeight:800}}>{P.year}年{P.month}月　月次計算レポート</div>
+      <div style={{fontSize:13,opacity:.8,marginBottom:2}}>事務</div>
+      <div style={{fontSize:18,fontWeight:800}}>{P.year}年{P.month}月　給与・請求・勤怠</div>
     </div>
     <MonthSel {...P}/>
     <Tabs tabs={tabs} active={tab} onChange={setTab}/>
@@ -2631,14 +2978,12 @@ function StaffView(P){
     {id:"shift",label:"📅 全体シフト"},
     {id:"mine", label:"👤 マイシフト"},
     {id:"rec",  label:"🕐 出勤記録"},
-    {id:"mc",   label:"🎤 司会・記録"},
   ];
   return <div><MonthSel {...P}/><Tabs tabs={tabs} active={tab} onChange={setTab}/>
     {tab==="wish" &&<StaffWish  {...P}/>}
     {tab==="shift"&&<PublicShift {...P}/>}
     {tab==="mine" &&<MyShift    {...P}/>}
     {tab==="rec"  &&<MyRecord   {...P}/>}
-    {tab==="mc"   &&<MCRecordTab {...P}/>}
   </div>;
 }
 
@@ -2785,15 +3130,19 @@ function PublicShift({year,month,shifts,vconf,cfg,uname=""}){
                 color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
               {venues.map(v=>{
                 const assigned=shifts[d]?.[v.name]||"";
-                const isMe=uname&&assigned===uname;
+                const segs=normalizeShiftSegments(assigned);
+                const isMe=uname&&shiftHasStaff(assigned,uname);
                 const needConf=v.options.length>0;
                 const confirmed=needConf?vconf[d]:null;
                 return <td key={v.name} style={{...TD,padding:"4px 6px"}}>
-                  {!assigned?<span style={{color:"#ccc",fontSize:12}}>−</span>:
+                  {!segs.length?<span style={{color:"#ccc",fontSize:12}}>−</span>:
                   <div style={{background:isMe?C.greenL:"transparent",
                     border:isMe?`1px solid ${C.green}`:"1px solid transparent",
                     borderRadius:7,padding:"4px 7px"}}>
-                    <div style={{fontWeight:700,fontSize:13,color:isMe?C.green:C.text}}>{assigned}{isMe?" 👤":""}</div>
+                    {segs.map(seg=><div key={seg.id} style={{fontWeight:700,fontSize:13,color:uname&&seg.staff===uname?C.green:C.text}}>
+                      {seg.label&&seg.label!=="終日"?`${seg.label} `:""}{seg.staff}{uname&&seg.staff===uname?" 👤":""}
+                      <span style={{fontSize:11,color:C.muted,fontWeight:600,marginLeft:4}}>{shiftTimeText(seg)}</span>
+                    </div>)}
                     {needConf&&<div style={{fontSize:11,marginTop:1,fontWeight:600,
                       color:confirmed?C.teal:C.amber}}>
                       {confirmed?`📍 ${confirmed}`:"⏳ 確定待ち"}</div>}
@@ -2812,9 +3161,10 @@ function MyShift({year,month,shifts,vconf,uname,cfg}){
   const days=getDays(year,month);
   const myDays=[];
   for(let d=1;d<=days;d++) for(const v of cfg.venues){
-    if(shifts[d]?.[v.name]===uname){
+    const segs=normalizeShiftSegments(shifts[d]?.[v.name]).filter(seg=>seg.staff===uname);
+    for(const seg of segs){
       const confirmed=v.options.length>0?vconf[d]:null;
-      myDays.push({d,isPending:v.options.length>0&&!confirmed,display:confirmed||v.name});
+      myDays.push({d,isPending:v.options.length>0&&!confirmed,display:confirmed||v.name,seg});
     }
   }
   return <div style={GC}>
@@ -2827,7 +3177,7 @@ function MyShift({year,month,shifts,vconf,uname,cfg}){
         <thead><tr style={{background:"#f8f9fb"}}>
           <th style={TH}>日付</th><th style={TH}>曜</th><th style={TH}>勤務場所</th><th style={TH}>時間</th>
         </tr></thead>
-        <tbody>{myDays.map(({d,display,isPending})=>{
+        <tbody>{myDays.map(({d,display,isPending,seg})=>{
           const wdi=getWdayI(year,month,d);
           return <tr key={d}>
             <td style={{...TD,textAlign:"center",fontWeight:700}}>{month}/{d}</td>
@@ -2835,50 +3185,121 @@ function MyShift({year,month,shifts,vconf,uname,cfg}){
             <td style={TD}>{isPending
               ?<span style={{color:C.amber,fontWeight:700}}>⏳ {display}（前日確定待ち）</span>
               :<span style={{fontWeight:600}}>{display}</span>}</td>
-            <td style={{...TD,color:C.muted}}>9:00〜16:00</td>
+            <td style={{...TD,color:C.muted}}>{seg.label&&seg.label!=="終日"?`${seg.label} `:""}{shiftTimeText(seg)}</td>
           </tr>;
         })}</tbody>
       </table>}
   </div>;
 }
 
-function MyRecord({year,month,shifts,att,sv,uname,cfg}){
+function MyRecord({year,month,shifts,att,sv,uname,cfg,flash}){
   const days=getDays(year,month),today=new Date();
   const [ed,setEd]=useState(null);
+  const [clocking,setClocking]=useState("");
+  const [siteCodes,setSiteCodes]=useState({});
   const myS=[];
   for(let d=1;d<=days;d++){
     if(year===today.getFullYear()&&month===today.getMonth()+1&&d>today.getDate())continue;
     for(const v of cfg.venues){
-      if(shifts[d]?.[v.name]===uname){const key=`${d}-${v.name}`;myS.push({d,venue:v.name,key,rec:att[key]});}
+      normalizeShiftSegments(shifts[d]?.[v.name]).filter(seg=>seg.staff===uname).forEach(seg=>{
+        const key=shiftAttKey(d,v.name,seg);
+        myS.push({d,venue:v.name,key,seg,rec:att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null)});
+      });
     }
   }
   const submit=()=>{
     if(!ed)return;
-    sv.att({...att,[ed.key]:{staff:uname,start:ed.s,end:ed.e,breakMin:ed.b,submittedAt:new Date().toISOString(),verified:false}});
+    const prev=att[ed.key]||{};
+    sv.att({...att,[ed.key]:{...prev,staff:uname,start:ed.s,end:ed.e,breakMin:ed.b,submittedAt:new Date().toISOString(),verified:false}});
     setEd(null);
   };
+  const clock=(kind,item)=>{
+    const {key,venue,rec}=item;
+    const site=attendanceSiteFor(cfg,venue);
+    const code=siteCodes[key]||"";
+    if(site.code && code.trim()!==site.code){flash?.("現地コードが違います");return;}
+    if(!navigator.geolocation){flash?.("この端末では位置情報が使えません");return;}
+    setClocking(`${key}-${kind}`);
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const proof=makeClockProof(kind,venue,pos,site,code);
+      if(site.lat!==null && !proof.geofenceOk){
+        flash?.(`会場から離れています（${proof.distanceM}m / ${proof.radiusM}m）`);
+        setClocking("");
+        return;
+      }
+      const now=new Date();
+      const prev=rec||att[key]||{};
+      const fallbackStart=item.seg?.start||"09:00";
+      const next={
+        ...prev,
+        staff:uname,
+        start:kind==="in"?clockTime(now):(prev.start||fallbackStart),
+        end:kind==="out"?clockTime(now):(prev.end||""),
+        breakMin:prev.breakMin??60,
+        submittedAt:new Date().toISOString(),
+        verified:false,
+        clockMode:"gps",
+        clockIn:kind==="in"?proof:prev.clockIn,
+        clockOut:kind==="out"?proof:prev.clockOut,
+      };
+      sv.att({...att,[key]:next});
+      setClocking("");
+      flash?.(kind==="in"?"出勤を打刻しました":"退勤を打刻しました");
+    },err=>{
+      setClocking("");
+      flash?.("位置情報を取得できませんでした。端末の位置情報許可を確認してください");
+      console.warn("geolocation failed",err);
+    },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
+  };
   return <div style={GC}>
-    <h3 style={{margin:"0 0 4px",fontSize:15}}>出勤記録の入力</h3>
-    <p style={{color:C.muted,fontSize:12,margin:"0 0 16px"}}>出勤した日の実際の時間を入力してください</p>
+    <h3 style={{margin:"0 0 4px",fontSize:15}}>コンシェルジュ出勤・退勤の打刻</h3>
+    <p style={{color:C.muted,fontSize:12,margin:"0 0 16px"}}>毎日9:00〜16:00勤務のコンシェルジュ用です。現地で出勤・退勤を押すと、時刻、位置情報、精度、現地コード確認が記録されます。</p>
     {myS.length===0&&<p style={{color:C.muted,fontSize:13}}>入力できる記録がありません</p>}
-    {myS.map(({d,venue,key,rec})=>{
+    {myS.map(({d,venue,key,seg,rec})=>{
       const wdi=getWdayI(year,month,d),isE=ed?.key===key;
-      const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):null;
-      return <div key={key} style={{borderBottom:`1px solid ${C.border}`,padding:"12px 0"}}>
+      const h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,rec.breakMin??60):null;
+      const site=attendanceSiteFor(cfg,venue);
+      const inStatus=clockProofStatus(rec?.clockIn),outStatus=clockProofStatus(rec?.clockOut);
+      const canClockToday=year===today.getFullYear()&&month===today.getMonth()+1&&d===today.getDate();
+      return <div key={key} style={{borderBottom:`1px solid ${C.border}`,padding:"14px 0"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <span style={{fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.text}}>{month}/{d}({getWday(year,month,d)})</span>
+          <span style={{fontWeight:800,color:wdi===0?C.sun:wdi===6?C.sat:C.text}}>{month}/{d}({getWday(year,month,d)})</span>
           <span style={{color:C.muted,fontSize:13}}>{venue}</span>
-          {rec?.verified&&<span style={{color:C.green,fontSize:12,fontWeight:700}}>✅ 承認済</span>}
-          {rec&&!rec.verified&&<span style={{color:C.blue,fontSize:12}}>{rec.start}〜{rec.end}（休憩{rec.breakMin??60}分・実働{h}h）</span>}
-          {!rec?.verified&&<button onClick={()=>setEd({key,s:rec?.start||"09:00",e:rec?.end||"16:00",b:rec?.breakMin??60})}
-            style={{...Btn(isE?C.muted:C.blue),marginLeft:"auto",fontSize:12,padding:"5px 12px"}}>{rec?"修正":"入力"}</button>}
+          {seg?.label&&seg.label!=="終日"&&<span style={{fontSize:12,fontWeight:800,color:C.navy,background:"#eef2ff",borderRadius:999,padding:"3px 8px"}}>{seg.label} {shiftTimeText(seg)}</span>}
+          {rec?.verified&&<span style={{color:C.green,fontSize:12,fontWeight:800}}>承認済み</span>}
+          {rec?.start&&<span style={{color:C.blue,fontSize:12}}>{rec.start}{rec.end?` - ${rec.end}`:""}{h?` / ${h}h`:""}</span>}
+          {!rec?.verified&&<button onClick={()=>setEd({key,s:rec?.start||seg?.start||"09:00",e:rec?.end||seg?.end||"16:00",b:rec?.breakMin??(seg?.id&&seg.id!=="full"?0:60)})}
+            style={{...Btn(isE?C.muted:C.blue),marginLeft:"auto",fontSize:12,padding:"5px 12px"}}>{rec?"時間修正":"手入力"}</button>}
         </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:8,marginTop:10}}>
+          <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:inStatus.bg}}>
+            <div style={{fontSize:12,color:inStatus.color,fontWeight:800,marginBottom:6}}>出勤: {inStatus.label}</div>
+            <div style={{fontSize:11,color:C.muted,lineHeight:1.5}}>{clockProofLine(rec?.clockIn)}</div>
+            <button disabled={!canClockToday||!!rec?.verified||clocking===`${key}-in`} onClick={()=>clock("in",{key,venue,seg,rec})}
+              style={{...Btn(canClockToday&&!rec?.verified?C.green:C.muted),width:"100%",marginTop:8,padding:"10px 12px",opacity:canClockToday&&!rec?.verified?1:.55}}>
+              {clocking===`${key}-in`?"位置確認中...":"出勤"}
+            </button>
+          </div>
+          <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:outStatus.bg}}>
+            <div style={{fontSize:12,color:outStatus.color,fontWeight:800,marginBottom:6}}>退勤: {outStatus.label}</div>
+            <div style={{fontSize:11,color:C.muted,lineHeight:1.5}}>{clockProofLine(rec?.clockOut)}</div>
+            <button disabled={!canClockToday||!!rec?.verified||clocking===`${key}-out`} onClick={()=>clock("out",{key,venue,seg,rec})}
+              style={{...Btn(canClockToday&&!rec?.verified?C.navy:C.muted),width:"100%",marginTop:8,padding:"10px 12px",opacity:canClockToday&&!rec?.verified?1:.55}}>
+              {clocking===`${key}-out`?"位置確認中...":"退勤"}
+            </button>
+          </div>
+        </div>
+        {site.code&&<div style={{marginTop:8}}>
+          <input value={siteCodes[key]||""} onChange={e=>setSiteCodes({...siteCodes,[key]:e.target.value})}
+            placeholder="現地コードを入力" style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13}}/>
+        </div>}
+        {!site.lat&&<div style={{fontSize:11,color:C.amber,marginTop:8}}>この会場はGPS座標が未設定です。位置情報は保存されますが、距離判定は行いません。</div>}
         {isE&&<div style={{display:"flex",gap:8,alignItems:"center",marginTop:10,flexWrap:"wrap"}}>
           <label style={{fontSize:12,fontWeight:600}}>開始</label>
-          <input type="time" value={ed.s} onChange={e=>setEd({...ed,s:e.target.value})}
+          <input type="time" step="900" value={ed.s} onChange={e=>setEd({...ed,s:e.target.value})}
             style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 8px",fontSize:14}}/>
           <label style={{fontSize:12,fontWeight:600}}>終了</label>
-          <input type="time" value={ed.e} onChange={e=>setEd({...ed,e:e.target.value})}
+          <input type="time" step="900" value={ed.e} onChange={e=>setEd({...ed,e:e.target.value})}
             style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 8px",fontSize:14}}/>
           <label style={{fontSize:12,fontWeight:600}}>休憩</label>
           <select value={ed.b} onChange={e=>setEd({...ed,b:Number(e.target.value)})}
@@ -2928,7 +3349,7 @@ function VenueConfirm({year,month,shifts,vconf,sv,cfg,flash}){
   const rows=[];
   for(let d=1;d<=days;d++) for(const v of flex){
     const s=shifts[d]?.[v.name];
-    if(s)rows.push({d,v,s,du:isTM?d-todayD:null,confirmed:vconf[d]||null});
+    if(s)rows.push({d,v,s:shiftDisplayText(s),du:isTM?d-todayD:null,confirmed:vconf[d]||null});
   }
   const pending=rows.filter(r=>!r.confirmed);
   const done   =rows.filter(r=> r.confirmed);
@@ -2999,8 +3420,15 @@ function VenueAtt({year,month,att,shifts,cfg,sv,flash}){
   const {venues}=cfg,days=getDays(year,month);
   const rows=[];
   for(let d=1;d<=days;d++) for(const v of venues){
-    const key=`${d}-${v.name}`,rec=att[key],sched=shifts[d]?.[v.name]||"";
-    if(rec||sched)rows.push({d,venue:v.name,sched,rec,key});
+    const segs=normalizeShiftSegments(shifts[d]?.[v.name]);
+    if(!segs.length){
+      const key=`${d}-${v.name}`,rec=att[key];
+      if(rec) rows.push({d,venue:v.name,sched:"",rec,key});
+    }
+    segs.forEach(seg=>{
+      const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
+      rows.push({d,venue:v.name,sched:seg.staff,seg,rec,key});
+    });
   }
   const [showAll,setShowAll]=useState(false);
   const display=showAll?rows:rows.filter(r=>r.rec&&!r.rec.verified);
@@ -3015,22 +3443,32 @@ function VenueAtt({year,month,att,shifts,cfg,sv,flash}){
     </div>
     <div style={{...GC,overflowX:"auto",padding:0}}>
       {display.length===0&&<p style={{padding:24,textAlign:"center",color:C.muted,fontSize:13}}>未承認の記録はありません</p>}
-      {display.length>0&&<table style={{width:"100%",borderCollapse:"collapse",minWidth:440}}>
+      {display.length>0&&<table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
         <thead><tr style={{background:"#f8f9fb"}}>
           <th style={TH}>日付</th><th style={TH}>曜</th><th style={TH}>会場</th>
-          <th style={TH}>コンシェルジュ</th><th style={TH}>時間</th><th style={TH}>状態</th>
+          <th style={TH}>コンシェルジュ</th><th style={TH}>時間</th><th style={TH}>現地証跡</th><th style={TH}>状態</th>
         </tr></thead>
         <tbody>{display.map(({d,venue,sched,rec,key})=>{
           const wdi=getWdayI(year,month,d);
+          const inStatus=clockProofStatus(rec?.clockIn),outStatus=clockProofStatus(rec?.clockOut);
           return <tr key={key} style={{background:rec?.verified?"#f0fdf4":"#fff"}}>
             <td style={{...TD,textAlign:"center",fontWeight:700}}>{month}/{d}</td>
             <td style={{...TD,textAlign:"center",fontWeight:700,color:wdi===0?C.sun:wdi===6?C.sat:C.muted}}>{getWday(year,month,d)}</td>
             <td style={TD}>{venue}</td>
             <td style={{...TD,fontWeight:600}}>{rec?.staff||sched||"−"}</td>
-            <td style={{...TD,color:C.muted}}>{rec?`${rec.start}〜${rec.end}`:"未入力"}</td>
+            <td style={{...TD,color:C.muted}}>{rec?`${rec.start||"未打刻"}〜${rec.end||"未退勤"}`:"未入力"}</td>
+            <td style={{...TD,fontSize:11,lineHeight:1.5}}>
+              {!rec&&<span style={{color:C.muted}}>−</span>}
+              {rec&&<div>
+                <div><span style={{color:inStatus.color,fontWeight:800}}>出勤 {inStatus.label}</span>：{clockProofLine(rec.clockIn)}</div>
+                <div><span style={{color:outStatus.color,fontWeight:800}}>退勤 {outStatus.label}</span>：{clockProofLine(rec.clockOut)}</div>
+                {(rec.clockIn?.lat||rec.clockOut?.lat)&&<a href={`https://www.google.com/maps/search/?api=1&query=${rec.clockOut?.lat||rec.clockIn?.lat},${rec.clockOut?.lng||rec.clockIn?.lng}`} target="_blank" style={{color:C.blue,fontWeight:700}}>地図で確認</a>}
+              </div>}
+            </td>
             <td style={{...TD,textAlign:"center"}}>
               {!rec&&<span style={{color:C.amber,fontSize:12,fontWeight:600}}>未入力</span>}
-              {rec&&!rec.verified&&<button onClick={()=>verify(key)} style={{...Btn(C.purple),fontSize:12,padding:"5px 12px"}}>承認する</button>}
+              {rec&&!rec.verified&&!rec.end&&<span style={{color:C.amber,fontSize:12,fontWeight:700}}>退勤待ち</span>}
+              {rec&&!rec.verified&&rec.end&&<button onClick={()=>verify(key)} style={{...Btn(C.purple),fontSize:12,padding:"5px 12px"}}>承認する</button>}
               {rec?.verified&&<span style={{color:C.green,fontSize:12,fontWeight:700}}>✅ 承認済</span>}
             </td>
           </tr>;
@@ -3697,7 +4135,7 @@ function CompassMasterEditor({cfg,sv,flash,role}) {
     await sv.sets(next);
     setSaved(true);setTimeout(()=>setSaved(false),1800);
   };
-  if(!["admin","support"].includes(role)) return null;
+  if(role!=="admin") return null;
   return <div style={GC}>
     <h3 style={{margin:"0 0 12px",fontSize:16,color:C.navy}}>Compass AI 編集マスター</h3>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12}}>
@@ -3922,7 +4360,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const copy=async()=>{try{await navigator.clipboard.writeText(draft.full);flash?.("コピーしました");}catch(e){flash?.("本文を選択してコピーしてください");}};
   return <div>
     {role==="admin"&&<CompassAISettingsEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
-    {["admin","support"].includes(role)&&<CompassMasterEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
+    {role==="admin"&&<CompassMasterEditor cfg={cfg} sv={sv} flash={flash} role={role}/>}
     {aiControl.enabled===false&&<div style={{...GC,background:C.redL,border:`1px solid ${C.red}`,fontWeight:800,color:C.red,lineHeight:1.6}}>{AI_STOPPED_MESSAGE}</div>}
     <div style={{...GC,background:"#fff7ed",border:`1px solid ${C.amber}`,fontWeight:800,color:"#92400e",lineHeight:1.6}}>{AI_NARRATION_WARNING}</div>
     <div style={GC}>
@@ -3983,7 +4421,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
     </div>
   </div>;
 }
-const AI_NARRATION_WARNING = "Compass AIが作成した文章は下書きです。必ず司会者または業務サポートマネージャーが確認・修正してから使用してください。";
+const AI_NARRATION_WARNING = "Compass AIが作成した文章は下書きです。必ず司会者が確認・修正してから使用してください。";
 
 
 const MC_COMPANIES = {
@@ -4180,15 +4618,16 @@ function AttendanceSummaryView({year,month,att,shifts,vconf,cfg}){
   const staffData=staff.map(name=>{
     const records=[];
     for(let d=1;d<=days;d++) for(const v of venues){
-      if(shifts[d]?.[v.name]===name){
-        const key=`${d}-${v.name}`,rec=att[key];
+      for(const seg of normalizeShiftSegments(shifts[d]?.[v.name]).filter(seg=>seg.staff===name)){
+        const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
         const aVenue=actualVenue(d,v.name);
-        const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
+        const defaultBreak=seg.id&&seg.id!=="full"?0:60;
+        const h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,rec.breakMin??defaultBreak):parseHours(seg.start||"09:00",seg.end||"16:00",defaultBreak);
         const ot=Math.max(0,Math.round((h-OVERTIME_HOURS)*100)/100);
         records.push({
-          d,venue:aVenue,
-          start:rec?.start||"09:00",end:rec?.end||"16:00",
-          break:rec?.breakMin??60,hours:h,ot,
+          d,venue:aVenue,label:seg.label&&seg.label!=="終日"?seg.label:"",
+          start:rec?.start||seg.start||"09:00",end:rec?.end||seg.end||"16:00",
+          break:rec?.breakMin??(seg.id&&seg.id!=="full"?0:60),hours:h,ot,
           verified:!!rec?.verified,input:!!rec
         });
       }
@@ -4200,12 +4639,15 @@ function AttendanceSummaryView({year,month,att,shifts,vconf,cfg}){
   // 会場別データ
   const venueData={};
   for(let d=1;d<=days;d++) for(const v of venues){
-    const sn=shifts[d]?.[v.name];if(!sn)continue;
-    const aVenue=actualVenue(d,v.name);
-    const key=`${d}-${v.name}`,rec=att[key];
-    const h=rec?parseHours(rec.start,rec.end,rec.breakMin??60):DEFAULT_HOURS;
-    const billingVenue=normalizeBillingVenue(aVenue);if(!venueData[billingVenue]) venueData[billingVenue]=[];
-    venueData[billingVenue].push({d,staff:sn,start:rec?.start||"09:00",end:rec?.end||"16:00",hours:h,verified:!!rec?.verified,input:!!rec});
+    for(const seg of normalizeShiftSegments(shifts[d]?.[v.name])){
+      const sn=seg.staff;if(!sn)continue;
+      const aVenue=actualVenue(d,v.name);
+      const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
+      const defaultBreak=seg.id&&seg.id!=="full"?0:60;
+      const h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,rec.breakMin??defaultBreak):parseHours(seg.start||"09:00",seg.end||"16:00",defaultBreak);
+      const billingVenue=normalizeBillingVenue(aVenue);if(!venueData[billingVenue]) venueData[billingVenue]=[];
+      venueData[billingVenue].push({d,staff:sn,label:seg.label&&seg.label!=="終日"?seg.label:"",start:rec?.start||seg.start||"09:00",end:rec?.end||seg.end||"16:00",hours:h,verified:!!rec?.verified,input:!!rec});
+    }
   }
 
   const allVenues=Object.keys(venueData).sort();
@@ -4342,13 +4784,14 @@ function PrintableSheet({year,month,shifts,att,vconf,cfg}){
   for(let d=1;d<=days;d++){
     const slots=[];
     for(const v of venues){
-      const sn=shifts[d]?.[v.name];
-      if(sn){
-        const key=`${d}-${v.name}`,rec=att[key];
+      for(const seg of normalizeShiftSegments(shifts[d]?.[v.name])){
+        const sn=seg.staff;
+        if(!sn) continue;
+        const key=shiftAttKey(d,v.name,seg),rec=att[key]||(seg.id==="full"?att[`${d}-${v.name}`]:null);
         const av=actualVenue(d,v.name);
-        const breakMin=rec?.breakMin??60;
-        const h=rec?parseHours(rec.start,rec.end,breakMin):DEFAULT_HOURS;
-        slots.push({staff:sn,venue:av,start:rec?.start||"9:00",end:rec?.end||"16:00",breakMin,hours:h,verified:!!rec?.verified});
+        const breakMin=rec?.breakMin??(seg.id&&seg.id!=="full"?0:60);
+        const h=rec?.start&&rec?.end?parseHours(rec.start,rec.end,breakMin):parseHours(seg.start||"09:00",seg.end||"16:00",breakMin);
+        slots.push({staff:sn,label:seg.label&&seg.label!=="終日"?seg.label:"",venue:av,start:rec?.start||seg.start||"9:00",end:rec?.end||seg.end||"16:00",breakMin,hours:h,verified:!!rec?.verified});
       }
     }
     rows.push({d,wday:getWday(year,month,d),wdayI:getWdayI(year,month,d),slots});
@@ -4505,530 +4948,7 @@ const PS={
   td:{border:"1px solid #ccc",padding:"2px 4px",fontSize:11,height:18},
 };
 
-// ─── SUPPORT MANAGER / 成長カルテ ──────────────────────────────
-const SUPPORT_WORKPLACES = ["飛鳥","あしべ","ふかしな"];
-const SUPPORT_ROLES = ["コンシェルジュ","アシスタント","司会"];
-const supportId=()=>`staff-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-const supportNormalizeRole=role=>SUPPORT_ROLES.includes(role)?role:"コンシェルジュ";
-const supportDefaultWorkplace=role=>role==="コンシェルジュ"?"飛鳥":"飛鳥";
-const normalizeStaffManagement=cfg=>{
-  const hasManaged=ensureArray(cfg.staffManagement).length>0;
-  const existing=ensureArray(cfg.staffManagement).filter(Boolean).map((s,i)=>({
-    id:s.id||supportId(),
-    name:String(s.name||"").trim(),
-    role:supportNormalizeRole(s.role),
-    workplace:s.workplace||supportDefaultWorkplace(s.role),
-    location:s.location||s.workplace||supportDefaultWorkplace(s.role),
-    trainingTarget:!!s.trainingTarget,
-    trainer:!!s.trainer,
-  })).filter(s=>s.name);
-  const byName=new Map(existing.map(s=>[s.name,s]));
-  const addLegacy=(names,role)=>ensureArray(names).forEach(name=>{
-    const clean=String(name||"").trim();
-    if(clean&&!byName.has(clean)) byName.set(clean,{
-      id:supportId(),name:clean,role,workplace:supportDefaultWorkplace(role),location:supportDefaultWorkplace(role),
-      trainingTarget:false,trainer:false,
-    });
-  });
-  addLegacy(cfg.staff||(!hasManaged?DEFAULT_STAFF:[]),"コンシェルジュ");
-  addLegacy(cfg.assistStaff||(!hasManaged?DEFAULT_ASSIST_STAFF:[]),"アシスタント");
-  addLegacy(cfg.mcStaff||(!hasManaged?DEFAULT_MC_STAFF:[]),"司会");
-  return [...byName.values()];
-};
-const supportListsFromStaff=staffList=>{
-  const list=normalizeStaffManagement({staffManagement:staffList});
-  return {
-    staff:list.filter(s=>s.role==="コンシェルジュ").map(s=>s.name),
-    assistStaff:list.filter(s=>s.role==="アシスタント").map(s=>s.name),
-    mcStaff:list.filter(s=>s.role==="司会").map(s=>s.name),
-  };
-};
-const supportGroupLabel=staff=>`${staff.workplace||"未設定"}${staff.role||""}`;
-const mergeStaffManagementWithLists=(staffList,lists)=>{
-  const current=normalizeStaffManagement({staffManagement:staffList});
-  const byName=new Map(current.map(s=>[s.name,s]));
-  const next=[];
-  const seen=new Set();
-  const add=(names,role)=>{
-    ensureArray(names).forEach(name=>{
-      const clean=String(name||"").trim();
-      if(!clean||seen.has(clean)) return;
-      seen.add(clean);
-      const existing=byName.get(clean)||{};
-      next.push({
-        id:existing.id||supportId(),
-        name:clean,
-        role,
-        workplace:existing.workplace||supportDefaultWorkplace(role),
-        location:existing.location||existing.workplace||supportDefaultWorkplace(role),
-        trainingTarget:!!existing.trainingTarget,
-        trainer:!!existing.trainer,
-      });
-    });
-  };
-  add(lists.staff,SUPPORT_ROLES[0]);
-  add(lists.assistStaff,SUPPORT_ROLES[1]);
-  add(lists.mcStaff,SUPPORT_ROLES[2]);
-  return next;
-};
-const supportTrainers=staffList=>normalizeStaffManagement({staffManagement:staffList}).filter(s=>s.trainer);
-const supportMakeId=(prefix="id")=>`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
-const emptyTrainingMaterial=()=>({
-  manual:"",
-  importantPoints:"",
-  commonMistakes:"",
-  tips:"",
-  timing:"",
-  emotionalGuidance:"",
-  readingPractice:"",
-  aiNarration:"",
-  futureCompatibility:"",
-  memo:"",
-  media:{pdf:[],images:[],video:[],audio:[],readingPractice:[],aiNarration:[]}
-});
-const normalizeTrainingMaterial=material=>{
-  const base=emptyTrainingMaterial();
-  const src=material||{};
-  return {
-    ...base,
-    manual:src.manual||"",
-    importantPoints:src.importantPoints||"",
-    commonMistakes:src.commonMistakes||"",
-    tips:src.tips||"",
-    timing:src.timing||"",
-    emotionalGuidance:src.emotionalGuidance||"",
-    readingPractice:src.readingPractice||"",
-    aiNarration:src.aiNarration||"",
-    futureCompatibility:src.futureCompatibility||"",
-    memo:src.memo||"",
-    media:{
-      pdf:ensureArray(src.media?.pdf),
-      images:ensureArray(src.media?.images),
-      video:ensureArray(src.media?.video),
-      audio:ensureArray(src.media?.audio),
-      readingPractice:ensureArray(src.media?.readingPractice),
-      aiNarration:ensureArray(src.media?.aiNarration),
-    }
-  };
-};
-const normalizeTrainingItem=(it,ci,ii)=>{
-  if(typeof it==="string") return {id:`item-${ci}-${ii}-${String(it).slice(0,12)}`,label:it,material:emptyTrainingMaterial()};
-  return {
-    id:it.id||supportMakeId("item"),
-    label:it.label||it.title||`チェック項目${ii+1}`,
-    material:normalizeTrainingMaterial(it.material),
-  };
-};
-const normalizeTrainingTemplates=templates=>{
-  const src=defaultTemplateLooksLegacy(templates)?DEFAULT_TRAINING_TEMPLATES:mergeTrainingTemplateDefaults(templates);
-  return src.filter(Boolean).map((t,i)=>({
-    id:t.id||supportMakeId("tpl"),
-    workplace:t.workplace||SUPPORT_WORKPLACES[0],
-    role:supportNormalizeRole(t.role),
-    title:t.title||`${t.workplace||SUPPORT_WORKPLACES[0]} × ${supportNormalizeRole(t.role)}`,
-    categories:ensureArray(t.categories).map((c,ci)=>({
-      id:c.id||supportMakeId("cat"),
-      title:c.title||`カテゴリ${ci+1}`,
-      items:ensureArray(c.items).map((it,ii)=>normalizeTrainingItem(it,ci,ii)).filter(it=>String(it.label||"").trim())
-    })).filter(c=>c.items.length)
-  })).filter(t=>t.categories.length);
-};
-const supportFindTemplate=(templates,staff)=>{
-  const list=normalizeTrainingTemplates(templates);
-  return list.find(t=>t.workplace===(staff.workplace||staff.location)&&t.role===staff.role)
-    || list.find(t=>t.role===staff.role)
-    || list.find(t=>t.workplace===staff.workplace)
-    || list[0];
-};
-const supportTemplateSkillGroups=template=>{
-  if(!template) return SUPPORT_SKILL_GROUPS.map(g=>({...g,items:g.items.map(label=>({key:`${g.id}:${label}`,label}))}));
-  return template.categories.map(cat=>({
-    id:cat.id,
-    title:cat.title,
-    items:cat.items.map(item=>({key:`tmpl:${template.id}:${cat.id}:${item.id}`,label:item.label,material:normalizeTrainingMaterial(item.material)}))
-  }));
-};
-const supportAllSkillKeys=(template=null)=>supportTemplateSkillGroups(template).flatMap(g=>g.items.map(item=>item.key));
-const supportRatingScore=mark=>{
-  const stage=TRAINING_STAGES.find(s=>s.id===mark||s.label===mark);
-  if(stage) return stage.score;
-  return SUPPORT_RATINGS.find(r=>r.mark===mark)?.score ?? SUPPORT_LEGACY_RATING_SCORES[mark] ?? 0;
-};
-const supportStageFromValue=value=>{
-  const stage=TRAINING_STAGES.find(s=>s.id===value||s.label===value);
-  if(stage) return stage;
-  const score=supportRatingScore(value);
-  return TRAINING_STAGES.find(s=>s.score===score)||TRAINING_STAGES[0];
-};
-const supportCategoryProgress=(card,group)=>{
-  const keys=group.items.map(item=>item.key);
-  const total=keys.length*3;
-  const got=keys.reduce((sum,k)=>sum+supportRatingScore(card.skills?.[k]||"observe"),0);
-  return total?Math.round(got/total*100):0;
-};
-const supportProgress=(card,templates=null)=>{
-  const template=templates?supportFindTemplate(templates,card):null;
-  const keys=supportAllSkillKeys(template);
-  const total=keys.length*3;
-  const got=keys.reduce((sum,k)=>sum+supportRatingScore(card.skills?.[k]||"observe"),0);
-  return total?Math.round(got/total*100):0;
-};
-const supportProgressColor=p=>p>=80?C.green:p>=60?C.amber:C.red;
-const supportStatus=(card,templates=null)=>{
-  const p=supportProgress(card,templates);
-  if(p>=85) return "ベテラン";
-  if(p>=75) return "独り立ちOK";
-  if(p<60) return "要フォロー";
-  return "研修中";
-};
-const supportDefaultCard=(staff,index,templates=null)=>{
-  const template=templates?supportFindTemplate(templates,staff):null;
-  const skills={};
-  supportAllSkillKeys(template).forEach(k=>{skills[k]="observe";});
-  return {id:staff.id,name:staff.name,role:staff.role,workplace:staff.workplace,location:staff.location,trainerId:"",
-    lastTrainingDate:"",nextTarget:"",trainingCompletedDate:"",
-    strengths:"",weaknesses:"",nextGoal:"",goodPoints:"",needsImprovement:"",nextPractice:"",memo:"",debutMonth:false,trainingThisWeek:false,
-    templateId:template?.id||"",updatedAt:new Date().toISOString(),skills,history:[],itemComments:{}};
-};
-const supportMergeCards=(cards,cfg,templates=null)=>{
-  const targets=normalizeStaffManagement(cfg).filter(s=>s.trainingTarget);
-  const existing=Array.isArray(cards)?cards:[];
-  const byId={}; const byName={};
-  existing.forEach(c=>{if(c?.id) byId[c.id]=c;if(c?.name) byName[c.name]=c;});
-  return targets.map((staff,i)=>{
-    const template=templates?supportFindTemplate(templates,staff):null;
-    const base=byId[staff.id]||byName[staff.name]||supportDefaultCard(staff,i,templates);
-    const nextSkills={...(base.skills||{})};
-    supportAllSkillKeys(template).forEach(k=>{if(nextSkills[k]===undefined) nextSkills[k]="observe";});
-    return {
-      ...base,
-      id:staff.id,name:staff.name,role:staff.role,workplace:staff.workplace,location:staff.location,
-      templateId:template?.id||base.templateId||"",skills:nextSkills,
-      lastTrainingDate:base.lastTrainingDate||"",
-      nextTarget:base.nextTarget||base.nextGoal||"",
-      trainingCompletedDate:base.trainingCompletedDate||"",
-      goodPoints:base.goodPoints||base.strengths||"",
-      needsImprovement:base.needsImprovement||base.weaknesses||"",
-      nextPractice:base.nextPractice||base.nextGoal||"",
-    };
-  });
-};
-function StaffManagementPanel({staffList,onChange}){
-  const update=(id,patch)=>onChange(staffList.map(s=>s.id===id?{...s,...patch}:s));
-  const add=()=>onChange([...staffList,{id:supportId(),name:"新しいスタッフ",role:"アシスタント",workplace:"飛鳥",location:"飛鳥",trainingTarget:true,trainer:false}]);
-  const del=id=>onChange(staffList.filter(s=>s.id!==id));
-  return <div style={{...GC,background:"#f8fffb",border:`1px solid ${C.green}`,marginBottom:16}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:12}}>
-      <h3 style={{margin:0,fontSize:15,color:"#14532d"}}>スタッフ管理</h3>
-      <button onClick={add} style={{...Btn(C.green),padding:"8px 12px"}}>追加</button>
-    </div>
-    <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {staffList.map(s=><div key={s.id} style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,alignItems:"center",border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
-        <input value={s.name} onChange={e=>update(s.id,{name:e.target.value})} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13,minWidth:0}}/>
-        <select value={s.role} onChange={e=>update(s.id,{role:e.target.value})} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}>
-          {SUPPORT_ROLES.map(r=><option key={r} value={r}>{r}</option>)}
-        </select>
-        <select value={s.workplace||"飛鳥"} onChange={e=>update(s.id,{workplace:e.target.value,location:e.target.value})} style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13}}>
-          {SUPPORT_WORKPLACES.map(w=><option key={w} value={w}>{w}</option>)}
-        </select>
-        <input value={s.location||""} onChange={e=>update(s.id,{location:e.target.value})} placeholder="勤務場所" style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 9px",fontSize:13,minWidth:0}}/>
-        <label style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><input type="checkbox" checked={!!s.trainingTarget} onChange={e=>update(s.id,{trainingTarget:e.target.checked})}/>研修対象</label>
-        <label style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}><input type="checkbox" checked={!!s.trainer} onChange={e=>update(s.id,{trainer:e.target.checked})}/>教える人</label>
-        <button onClick={()=>del(s.id)} style={{...Btn(C.red),padding:"7px 10px"}}>削除</button>
-      </div>)}
-    </div>
-  </div>;
-}
-function SupportBadge(){
-  return <div style={{display:"inline-flex",alignItems:"center",gap:6,background:"#fffbeb",border:"1px solid #f59e0b",color:"#92400e",
-    borderRadius:999,padding:"5px 10px",fontSize:12,fontWeight:800}}>DEV {DEV_BUILD_LABEL}</div>;
-}
-function SupportManagerView({cfg,sv,flash}){
-  const [cards,setCards]=useState([]);
-  const [templates,setTemplates]=useState(()=>normalizeTrainingTemplates(null));
-  const [tab,setTab]=useState("cards");
-  const [selected,setSelected]=useState(null);
-  const [loading,setLoading]=useState(true);
-  const [managedStaff,setManagedStaff]=useState(()=>normalizeStaffManagement(cfg));
-  useEffect(()=>{
-    let alive=true;
-    Promise.all([stLoad("support-growth-cards"),stLoad("support-training-templates")]).then(([d,t])=>{
-      if(!alive) return;
-      const nextTemplates=normalizeTrainingTemplates(t);
-      const merged=supportMergeCards(d,cfg,nextTemplates);
-      setTemplates(nextTemplates);
-      setCards(merged);
-      setManagedStaff(normalizeStaffManagement(cfg));
-      setSelected(s=>merged.some(c=>c.id===s)?s:(merged[0]?.id||null));
-      setLoading(false);
-    });
-    return()=>{alive=false;};
-  },[cfg.staff,cfg.assistStaff,cfg.mcStaff]);
-  const saveCards=async next=>{setCards(next);await stSave("support-growth-cards",next);flash?.("成長カルテを保存しました");};
-  const saveTemplates=async next=>{
-    const normalized=normalizeTrainingTemplates(next);
-    setTemplates(normalized);
-    await stSave("support-training-templates",normalized);
-    const merged=supportMergeCards(cards,cfg,normalized);
-    setCards(merged);
-    await stSave("support-growth-cards",merged);
-    flash?.("保存しました");
-  };
-  const updateCard=(id,patch)=>saveCards(cards.map(c=>c.id===id?{...c,...patch,updatedAt:new Date().toISOString()}:c));
-  const saveStaffManagement=async next=>{
-    const managed=normalizeStaffManagement({staffManagement:next});
-    const derived=supportListsFromStaff(managed);
-    setManagedStaff(managed);
-    await sv.sets({...cfg,...derived,staffManagement:managed});
-    const merged=supportMergeCards(cards,{...cfg,...derived,staffManagement:managed},templates);
-    setCards(merged);
-    setSelected(s=>merged.some(c=>c.id===s)?s:(merged[0]?.id||null));
-  };
-  const selectedCard=cards.find(c=>c.id===selected)||cards[0];
-  const followCount=cards.filter(c=>supportStatus(c,templates)==="要フォロー"||supportProgress(c,templates)<60).length;
-  const rookieCount=cards.filter(c=>supportStatus(c,templates)==="研修中").length;
-  const debutCount=cards.filter(c=>c.debutMonth).length;
-  const trainingCount=cards.filter(c=>c.trainingThisWeek).length;
-  const recent=[...cards].sort((a,b)=>String(b.updatedAt||"").localeCompare(String(a.updatedAt||""))).slice(0,3);
-  const trainers=supportTrainers(managedStaff);
-  if(loading) return <div style={GC}>読み込み中...</div>;
-  return <div>
-    <div style={{...GC,background:"linear-gradient(135deg,#f0fdf4,#ffffff)",border:"1px solid #bbf7d0"}}>
-      <div style={{display:"flex",alignItems:"flex-start",gap:12,justifyContent:"space-between",flexWrap:"wrap"}}>
-        <div><div style={{fontSize:12,color:C.green,fontWeight:800,marginBottom:4}}>業務サポートマネージャー</div><h2 style={{margin:0,fontSize:24,color:"#14532d"}}>成長カルテ</h2></div>
-        <SupportBadge/>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10,marginTop:16}}>
-        {[["新人スタッフ数",rookieCount,C.blue],["要フォロー人数",followCount,C.red],["今月デビュー予定人数",debutCount,C.green],["今週の研修予定",trainingCount,C.amber]].map(([label,value,color])=>
-          <div key={label} style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:14}}><div style={{fontSize:26,fontWeight:900,color}}>{value}</div><div style={{fontSize:12,color:C.muted,fontWeight:700}}>{label}</div></div>)}
-      </div>
-      <div style={{marginTop:14}}><div style={{fontSize:13,fontWeight:800,marginBottom:8}}>最近更新されたスタッフカルテ</div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{recent.map(c=><button key={c.id} onClick={()=>setSelected(c.id)} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"9px 12px"}}>{c.name} <span style={{color:supportProgressColor(supportProgress(c,templates)),fontWeight:900}}>{supportProgress(c,templates)}%</span></button>)}</div>
-      </div>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8,marginBottom:14}}>
-      {[["cards","カルテ"],["templates","教育テンプレート"],["ai","AIナレーション"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} style={{...Btn(tab===id?C.green:"#fff",tab===id?"#fff":C.text),border:`2px solid ${tab===id?C.green:C.border}`,padding:"13px 12px",fontSize:15}}>{label}</button>)}
-    </div>
-    {tab==="ai"&&<CompassNarrationView cfg={cfg} sv={sv} flash={flash} uname="業務サポートマネージャー" role="support"/>}
-    {tab==="templates"&&<TrainingTemplateManager templates={templates} staffList={managedStaff} onSave={saveTemplates}/>}
-    {tab==="cards"&&<>
-    <StaffManagementPanel staffList={managedStaff} onChange={saveStaffManagement}/>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14,alignItems:"start"}}>
-      <SupportStaffList cards={cards} templates={templates} selected={selectedCard?.id} onSelect={setSelected}/>
-      {selectedCard&&<SupportGrowthChart card={selectedCard} templates={templates} trainers={trainers} onChange={patch=>updateCard(selectedCard.id,patch)}/>}
-    </div>
-    </>}
-  </div>;
-}
-function TrainingTemplateManager({templates,staffList,onSave}){
-  const [draft,setDraft]=useState(()=>normalizeTrainingTemplates(templates));
-  const [selectedId,setSelectedId]=useState(draft[0]?.id||"");
-  useEffect(()=>{
-    const next=normalizeTrainingTemplates(templates);
-    setDraft(next);
-    setSelectedId(id=>next.some(t=>t.id===id)?id:(next[0]?.id||""));
-  },[templates]);
-  const selected=draft.find(t=>t.id===selectedId)||draft[0];
-  const updateTemplate=(id,patch)=>setDraft(draft.map(t=>t.id===id?{...t,...patch}:t));
-  const createTemplate=()=>{
-    const first=normalizeStaffManagement({staffManagement:staffList})[0]||{workplace:"飛鳥",role:"アシスタント"};
-    const tpl={id:supportMakeId("tpl"),workplace:first.workplace||"飛鳥",role:first.role||"アシスタント",title:`${first.workplace||"飛鳥"} × ${first.role||"アシスタント"}`,categories:[
-      {id:supportMakeId("cat"),title:"新しいカテゴリ",items:[{id:supportMakeId("item"),label:"新しいチェック項目"}]}
-    ]};
-    setDraft([...draft,tpl]);
-    setSelectedId(tpl.id);
-  };
-  const copyTemplate=tpl=>{
-    const copied={...tpl,id:supportMakeId("tpl"),title:`${tpl.title} コピー`,categories:tpl.categories.map(c=>({...c,id:supportMakeId("cat"),items:c.items.map(it=>({...it,id:supportMakeId("item")}))}))};
-    setDraft([...draft,copied]);
-    setSelectedId(copied.id);
-  };
-  const deleteTemplate=id=>{
-    const next=draft.filter(t=>t.id!==id);
-    setDraft(next);
-    setSelectedId(next[0]?.id||"");
-  };
-  const updateCategory=(catId,patch)=>updateTemplate(selected.id,{categories:selected.categories.map(c=>c.id===catId?{...c,...patch}:c)});
-  const addCategory=()=>updateTemplate(selected.id,{categories:[...selected.categories,{id:supportMakeId("cat"),title:"新しいカテゴリ",items:[{id:supportMakeId("item"),label:"新しいチェック項目"}]}]});
-  const deleteCategory=catId=>updateTemplate(selected.id,{categories:selected.categories.filter(c=>c.id!==catId)});
-  const moveCategory=(catId,dir)=>{
-    const cats=[...selected.categories],i=cats.findIndex(c=>c.id===catId),j=i+dir;
-    if(i<0||j<0||j>=cats.length) return;
-    [cats[i],cats[j]]=[cats[j],cats[i]];
-    updateTemplate(selected.id,{categories:cats});
-  };
-  const updateItem=(catId,itemId,patch)=>updateCategory(catId,{items:selected.categories.find(c=>c.id===catId).items.map(it=>it.id===itemId?{...it,...patch}:it)});
-  const updateItemMaterial=(catId,itemId,patch)=>{
-    const item=selected.categories.find(c=>c.id===catId).items.find(it=>it.id===itemId);
-    updateItem(catId,itemId,{material:{...normalizeTrainingMaterial(item.material),...patch}});
-  };
-  const addItem=catId=>updateCategory(catId,{items:[...selected.categories.find(c=>c.id===catId).items,{id:supportMakeId("item"),label:"新しいチェック項目"}]});
-  const deleteItem=(catId,itemId)=>updateCategory(catId,{items:selected.categories.find(c=>c.id===catId).items.filter(it=>it.id!==itemId)});
-  const moveItem=(catId,itemId,dir)=>{
-    const cat=selected.categories.find(c=>c.id===catId);
-    const items=[...cat.items],i=items.findIndex(it=>it.id===itemId),j=i+dir;
-    if(i<0||j<0||j>=items.length) return;
-    [items[i],items[j]]=[items[j],items[i]];
-    updateCategory(catId,{items});
-  };
-  const applyStaffChoice=e=>{
-    const staff=normalizeStaffManagement({staffManagement:staffList}).find(s=>s.id===e.target.value);
-    if(!staff||!selected) return;
-    updateTemplate(selected.id,{workplace:staff.workplace,role:staff.role,title:`${staff.workplace} × ${staff.role}`});
-  };
-  return <div style={{...GC,border:"1px solid #bbf7d0",background:"#f8fffb"}}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:12}}>
-      <h3 style={{margin:0,fontSize:18,color:"#14532d"}}>教育テンプレート一覧</h3>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <button onClick={createTemplate} style={{...Btn(C.green),padding:"12px 16px",fontSize:14}}>新規作成</button>
-        <button onClick={()=>onSave(draft)} style={{...Btn(C.navy),padding:"12px 18px",fontSize:14}}>保存</button>
-      </div>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12,alignItems:"start"}}>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {draft.map(t=><button key={t.id} onClick={()=>setSelectedId(t.id)} style={{textAlign:"left",border:`2px solid ${selected?.id===t.id?C.green:C.border}`,background:selected?.id===t.id?"#ecfdf5":"#fff",borderRadius:8,padding:12,cursor:"pointer"}}>
-          <div style={{fontWeight:900,fontSize:14}}>{t.title}</div>
-          <div style={{fontSize:12,color:C.muted,marginTop:4}}>{t.workplace} / {t.role} / {t.categories.reduce((a,c)=>a+c.items.length,0)}項目</div>
-        </button>)}
-      </div>
-      {selected&&<div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:12}}>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:10}}>
-          <label style={{fontSize:12,fontWeight:800,color:C.muted}}>スタッフから選ぶ
-            <select value="" onChange={applyStaffChoice} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}>
-              <option value="">選択してください</option>
-              {normalizeStaffManagement({staffManagement:staffList}).map(s=><option key={s.id} value={s.id}>{s.name}（{s.workplace} / {s.role}）</option>)}
-            </select>
-          </label>
-          <label style={{fontSize:12,fontWeight:800,color:C.muted}}>会場
-            <select value={selected.workplace} onChange={e=>updateTemplate(selected.id,{workplace:e.target.value,title:`${e.target.value} × ${selected.role}`})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}>
-              {SUPPORT_WORKPLACES.map(w=><option key={w} value={w}>{w}</option>)}
-            </select>
-          </label>
-          <label style={{fontSize:12,fontWeight:800,color:C.muted}}>職種
-            <select value={selected.role} onChange={e=>updateTemplate(selected.id,{role:e.target.value,title:`${selected.workplace} × ${e.target.value}`})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}>
-              {SUPPORT_ROLES.map(r=><option key={r} value={r}>{r}</option>)}
-            </select>
-          </label>
-        </div>
-        <input value={selected.title} onChange={e=>updateTemplate(selected.id,{title:e.target.value})} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 12px",fontSize:15,fontWeight:800,marginBottom:10}}/>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-          <button onClick={()=>copyTemplate(selected)} style={{...Btn(C.blue),padding:"11px 16px"}}>テンプレート複製</button>
-          <button onClick={addCategory} style={{...Btn(C.green),padding:"11px 16px"}}>カテゴリ追加</button>
-          <button onClick={()=>deleteTemplate(selected.id)} style={{...Btn(C.red),padding:"11px 16px"}}>削除</button>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {selected.categories.map((cat,ci)=><div key={cat.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
-            <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
-              <input value={cat.title} onChange={e=>updateCategory(cat.id,{title:e.target.value})} style={{flex:1,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,fontWeight:800}}/>
-              <button onClick={()=>moveCategory(cat.id,-1)} disabled={ci===0} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"10px 12px"}}>↑</button>
-              <button onClick={()=>moveCategory(cat.id,1)} disabled={ci===selected.categories.length-1} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"10px 12px"}}>↓</button>
-              <button onClick={()=>deleteCategory(cat.id)} style={{...Btn(C.red),padding:"10px 12px"}}>削除</button>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {cat.items.map((item,ii)=><div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}>
-                <div style={{display:"grid",gridTemplateColumns:"1fr auto auto auto",gap:6,alignItems:"center"}}>
-                  <input value={item.label} onChange={e=>updateItem(cat.id,item.id,{label:e.target.value})} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14,minWidth:0}}/>
-                  <button onClick={()=>moveItem(cat.id,item.id,-1)} disabled={ii===0} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"10px 12px"}}>↑</button>
-                  <button onClick={()=>moveItem(cat.id,item.id,1)} disabled={ii===cat.items.length-1} style={{...Btn("#fff",C.text),border:`1px solid ${C.border}`,padding:"10px 12px"}}>↓</button>
-                  <button onClick={()=>deleteItem(cat.id,item.id)} style={{...Btn(C.red),padding:"10px 12px"}}>削除</button>
-                </div>
-                <div style={{marginTop:10,paddingTop:10,borderTop:`1px dashed ${C.border}`}}>
-                  <div style={{fontSize:13,fontWeight:900,color:"#14532d",marginBottom:8}}>教育内容</div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8}}>
-                    {SUPPORT_MATERIAL_FIELDS.map(f=><label key={f.key} style={{fontSize:12,fontWeight:800,color:C.muted}}>{f.label}
-                      <textarea value={normalizeTrainingMaterial(item.material)[f.key]} onChange={e=>updateItemMaterial(cat.id,item.id,{[f.key]:e.target.value})} rows={f.key==="manual"?5:3} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:13,boxSizing:"border-box"}}/>
-                    </label>)}
-                  </div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
-                    {SUPPORT_MEDIA_TYPES.map(type=><span key={type} style={{border:`1px solid ${C.border}`,borderRadius:999,padding:"5px 9px",fontSize:11,fontWeight:800,color:C.muted,background:"#f9fafb"}}>{type.toUpperCase()} 対応予定</span>)}
-                  </div>
-                </div>
-              </div>)}
-            </div>
-            <button onClick={()=>addItem(cat.id)} style={{...Btn(C.green),marginTop:8,padding:"10px 14px"}}>チェック項目追加</button>
-          </div>)}
-        </div>
-      </div>}
-    </div>
-  </div>;
-}
-function SupportStaffList({cards,templates,selected,onSelect}){
-  return <div style={GC}><h3 style={{margin:"0 0 12px",fontSize:16}}>スタッフ一覧</h3><div style={{display:"flex",flexDirection:"column",gap:8}}>
-    {Object.entries(cards.reduce((acc,c)=>{const key=supportGroupLabel(c);(acc[key]||(acc[key]=[])).push(c);return acc;},{})).map(([group,items])=>
-      <div key={group}>
-        <div style={{fontSize:13,fontWeight:900,color:C.green,margin:"6px 0"}}>{group}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {items.map(c=>{const p=supportProgress(c,templates),color=supportProgressColor(p),active=selected===c.id;return <button key={c.id} onClick={()=>onSelect(c.id)} style={{textAlign:"left",background:active?"#f0fdf4":"#fff",border:`2px solid ${active?C.green:C.border}`,borderRadius:8,padding:12,cursor:"pointer"}}>
-            <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}><div style={{fontWeight:900,fontSize:15}}>{c.name}</div><span style={{fontSize:12,fontWeight:900,color,whiteSpace:"nowrap"}}>{p}%</span></div>
-            <div style={{fontSize:12,color:C.muted,marginTop:4}}>{c.location||c.workplace} / {c.role}</div><div style={{height:8,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"8px 0"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div><span style={{fontSize:12,fontWeight:800,color}}>{supportStatus(c,templates)}</span>
-          </button>;})}
-        </div>
-      </div>)}
-    {cards.length===0&&<div style={{color:C.muted,fontSize:13}}>研修対象にチェックされたスタッフはいません。</div>}
-  </div></div>;
-}
-function SupportGrowthChart({card,templates,trainers,onChange}){
-  const [historyDate,setHistoryDate]=useState(new Date().toISOString().slice(0,10));
-  const [historyComment,setHistoryComment]=useState("");
-  const template=supportFindTemplate(templates,card);
-  const skillGroups=supportTemplateSkillGroups(template);
-  const p=supportProgress(card,templates),color=supportProgressColor(p);
-  const today=new Date().toISOString().slice(0,10);
-  const completedDate=card.trainingCompletedDate||"";
-  const updateComment=(key,patch)=>onChange({itemComments:{...(card.itemComments||{}),[key]:{...((card.itemComments||{})[key]||{}),...patch}}});
-  const setSkill=(key,mark)=>onChange({skills:{...(card.skills||{}),[key]:mark},lastTrainingDate:today});
-  const addHistory=()=>{if(!historyComment.trim())return;onChange({history:[...(card.history||[]),{id:Date.now(),date:historyDate.replace(/-/g,"/"),comment:historyComment.trim()}]});setHistoryComment("");};
-  return <div style={GC}>
-    <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
-      <div><h3 style={{margin:"0 0 4px",fontSize:20}}>{card.name}さんの成長カルテ</h3><div style={{fontSize:13,color:C.muted}}>{card.role} / {supportStatus(card,templates)} / {template?.title||"研修"}</div></div>
-      <div style={{textAlign:"right"}}><div style={{fontSize:28,fontWeight:900,color}}>{p}%</div><div style={{fontSize:11,color:C.muted,fontWeight:700}}>全体進捗</div></div>
-    </div>
-    <div style={{height:12,background:"#f3f4f6",borderRadius:99,overflow:"hidden",margin:"14px 0 14px"}}><div style={{height:"100%",width:`${p}%`,background:color}}/></div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,marginBottom:14}}>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>最終研修日<input type="date" value={card.lastTrainingDate||""} onChange={e=>onChange({lastTrainingDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>教える人<select value={card.trainerId||""} onChange={e=>onChange({trainerId:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}><option value="">未設定</option>{trainers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>次の目標<input value={card.nextTarget||""} onChange={e=>onChange({nextTarget:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
-      <label style={{fontSize:12,color:C.muted,fontWeight:800}}>研修完了日<input type="date" value={completedDate} onChange={e=>onChange({trainingCompletedDate:e.target.value})} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 10px",fontSize:14}}/></label>
-    </div>
-    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
-      <label style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 11px",fontSize:13,fontWeight:900,background:card.trainingThisWeek?"#ecfdf5":"#fff",color:card.trainingThisWeek?C.green:C.text}}>
-        <input type="checkbox" checked={!!card.trainingThisWeek} onChange={e=>onChange({trainingThisWeek:e.target.checked})}/>今週研修予定
-      </label>
-      <label style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 11px",fontSize:13,fontWeight:900,background:card.debutMonth?"#ecfdf5":"#fff",color:card.debutMonth?C.green:C.text}}>
-        <input type="checkbox" checked={!!card.debutMonth} onChange={e=>onChange({debutMonth:e.target.checked})}/>今月デビュー予定
-      </label>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:8,marginBottom:16}}>
-      {skillGroups.map(group=>{const gp=supportCategoryProgress(card,group),gc=supportProgressColor(gp);return <div key={group.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fff"}}><div style={{fontSize:12,fontWeight:900,color:C.muted}}>{group.title}</div><div style={{fontSize:22,fontWeight:900,color:gc}}>{gp}%</div><div style={{height:7,background:"#f3f4f6",borderRadius:99,overflow:"hidden"}}><div style={{height:"100%",width:`${gp}%`,background:gc}}/></div></div>;})}
-    </div>
-    {skillGroups.map(group=><div key={group.id} style={{marginBottom:18}}><h4 style={{margin:"0 0 10px",fontSize:15,color:"#14532d"}}>{group.title}</h4><div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {group.items.map(item=>{const key=item.key,current=supportStageFromValue(card.skills?.[key]||"observe").mark;const material=normalizeTrainingMaterial(item.material);const comments=(card.itemComments||{})[key]||{};return <div key={key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,background:"#fff"}}>
-        <div style={{fontSize:12,color:C.green,fontWeight:900,marginBottom:4}}>研修項目</div>
-        <div style={{fontWeight:900,fontSize:16,marginBottom:10}}>{item.label}</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginBottom:10}}>
-          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>教え方・手順</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.manual||"-"}</div></section>
-          <section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>大事なポイント</div><div style={{whiteSpace:"pre-wrap",lineHeight:1.65,fontSize:14,background:"#f9fafb",borderRadius:8,padding:10}}>{material.importantPoints||"-"}</div></section>
-          {(material.commonMistakes||material.tips||material.timing||material.emotionalGuidance||material.readingPractice||material.aiNarration||material.futureCompatibility||material.memo)&&<section><div style={{fontSize:12,fontWeight:900,color:C.muted,marginBottom:3}}>学習メモ</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8}}>{[["よくあるミス",material.commonMistakes],["教える人へのコツ",material.tips],["タイミング",material.timing],["気持ちの寄り添い方",material.emotionalGuidance],["読み練習",material.readingPractice],["AIナレーション連携",material.aiNarration],["今後増やしたい内容",material.futureCompatibility],["メモ",material.memo]].map(([label,value])=>value?<div key={label} style={{whiteSpace:"pre-wrap",lineHeight:1.55,fontSize:13,background:"#f9fafb",borderRadius:8,padding:9}}><strong>{label}</strong><br/>{value}</div>:null)}</div></section>}
-        </div>
-        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>評価</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(118px,1fr))",gap:6,marginBottom:10}}>
-          {SUPPORT_RATINGS.map(r=><button key={r.mark} onClick={()=>setSkill(key,r.mark)} title={r.label} style={{border:`2px solid ${current===r.mark?C.green:C.border}`,borderRadius:8,padding:"10px 5px",background:current===r.mark?C.greenL:"#fff",color:current===r.mark?C.green:C.text,fontSize:13,fontWeight:900,cursor:"pointer"}}>{r.label}</button>)}
-        </div>
-        <div style={{fontSize:12,fontWeight:900,color:C.muted,margin:"8px 0 6px"}}>項目別メモ</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:8}}>
-          {[["良かったところ","goodPoints"],["次に直すところ","needsImprovement"],["次回練習","nextPractice"]].map(([label,field])=><label key={field} style={{fontSize:12,fontWeight:800,color:C.muted}}>{label}<textarea value={comments[field]||""} onChange={e=>updateComment(key,{[field]:e.target.value})} rows={3} style={{display:"block",width:"100%",marginTop:5,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}
-        </div>
-      </div>;})}
-    </div></div>)}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:18}}>{[["良かったところ","goodPoints"],["次に直すところ","needsImprovement"],["次回練習","nextPractice"],["メモ","memo"]].map(([label,key])=><label key={key} style={{fontSize:12,color:C.muted,fontWeight:800}}>{label}<textarea value={card[key]||""} onChange={e=>onChange({[key]:e.target.value})} rows={4} style={{width:"100%",marginTop:6,border:`1px solid ${C.border}`,borderRadius:8,padding:9,fontSize:13,boxSizing:"border-box"}}/></label>)}</div>
-    <div style={{borderTop:`1px solid ${C.border}`,paddingTop:14}}><h4 style={{margin:"0 0 10px",fontSize:15}}>研修履歴</h4><div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}><input type="date" value={historyDate} onChange={e=>setHistoryDate(e.target.value)} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><input value={historyComment} onChange={e=>setHistoryComment(e.target.value)} placeholder="記録メモ" style={{flex:"1 1 220px",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/><button onClick={addHistory} style={{...Btn(C.green),padding:"11px 16px"}}>追加</button></div>
-      {[...(card.history||[])].sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(h=><div key={h.id} style={{borderBottom:`1px solid ${C.border}`,padding:"8px 0",fontSize:13}}><strong>{h.date}</strong> {h.comment}</div>)}</div>
-  </div>;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 勉強会管理
-// ═══════════════════════════════════════════════════════════════
+// ─── STUDY SESSION ─────────────────────────────────────────────
 function StudySessionView({year,month,cfg}){
   const [sessions,setSessions]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -5088,12 +5008,12 @@ function StudySessionView({year,month,cfg}){
         </div>
         <div>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>開始</label>
-          <input type="time" value={form.start} onChange={e=>setForm({...form,start:e.target.value})}
+          <input type="time" step="900" value={form.start} onChange={e=>setForm({...form,start:e.target.value})}
             style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14}}/>
         </div>
         <div>
           <label style={{fontSize:12,color:C.muted,display:"block",marginBottom:4}}>終了</label>
-          <input type="time" value={form.end} onChange={e=>setForm({...form,end:e.target.value})}
+          <input type="time" step="900" value={form.end} onChange={e=>setForm({...form,end:e.target.value})}
             style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",fontSize:14}}/>
         </div>
         <div style={{flex:"1 1 160px"}}>
