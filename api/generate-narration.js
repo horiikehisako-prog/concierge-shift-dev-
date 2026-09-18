@@ -166,12 +166,16 @@ const stripFixedClosingOpening = value => {
 const ensureClosingFinalLine = (value, prompt) => {
   let text = String(value || "").trim();
   if (!text) return "";
-  const { givenName } = nameRuleFromPrompt(prompt);
-  const name = givenName || "故人";
-  const finalLine = `これをもちまして、${name}様のご葬儀を閉式いたします。`;
-  const closingFinalPattern = /これをもちまして、?[^。]{0,30}様のご葬儀を閉式いたします。?$/u;
-  text = text.replace(closingFinalPattern, "").trim();
-  return `${text}\n\n${finalLine}`.trim();
+  const { fullName, givenName } = nameRuleFromPrompt(prompt);
+  const name = fullName || givenName || "故人";
+  const closingFinalPatterns = [
+    /(?:①\s*葬儀のみ\s*)?これをもちまして、?[^。]{0,40}様のご葬儀を閉式いたします。?/gu,
+    /(?:②\s*葬儀[＋+・]初七日\s*)?これをもちまして、?[^。]{0,40}様のご葬儀並びに初七日法要を執り納めさせていただきます。?/gu,
+  ];
+  for (const pattern of closingFinalPatterns) text = text.replace(pattern, "").trim();
+  const funeralOnly = `① 葬儀のみ\nこれをもちまして、\n${name}様のご葬儀を閉式いたします。`;
+  const withSeventhDay = `② 葬儀＋初七日\nこれをもちまして、\n${name}様のご葬儀並びに初七日法要を執り納めさせていただきます。`;
+  return `${text}\n\n${funeralOnly}\n\n${withSeventhDay}`.trim();
 };
 
 const parseNarrationResponse = content => {
@@ -401,7 +405,10 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const failures = [];
   if (!opening.trim() || !closing.trim()) failures.push("missing narration");
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
-  if (fullName && givenName && fullName !== givenName && full.includes(fullName)) failures.push("full name");
+  const bodyWithoutRequiredClosings = full
+    .replace(/①\s*葬儀のみ[\s\S]*?ご葬儀を閉式いたします。?/u, "")
+    .replace(/②\s*葬儀[＋+・]初七日[\s\S]*?初七日法要を執り納めさせていただきます。?/u, "");
+  if (fullName && givenName && fullName !== givenName && bodyWithoutRequiredClosings.includes(fullName)) failures.push("full name");
   if (hasVenueName(full, venueNames)) failures.push("venue name");
   if (hasForbiddenExpression(opening)) failures.push("attendee greeting");
   if (hasRepeatedExpressions(full)) failures.push("repeated expression");
