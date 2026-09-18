@@ -338,6 +338,23 @@ const payrollStaffNames = cfg => Array.from(new Set([
   ...ensureArray(cfg.mcStaff),
   ...ensureArray(cfg.assistStaff),
 ].filter(Boolean))).sort((a,b)=>String(a).localeCompare(String(b),"ja"));
+const normalizeStaffManagement = cfg => {
+  const src=cfg.staffManagement||{};
+  const names=payrollStaffNames(cfg);
+  const out={};
+  names.forEach(name=>{
+    const s=src[name]||{};
+    out[name]={
+      address:String(s.address||""),
+      phone:String(s.phone||""),
+      fax:String(s.fax||""),
+      notes:String(s.notes||""),
+    };
+  });
+  return out;
+};
+const mergeStaffManagementWithLists = (managedStaff, lists) =>
+  normalizeStaffManagement({...lists,staffManagement:managedStaff||{}});
 const normalizePayrollTaxSettings = cfg => {
   const src=cfg.payrollTaxSettings||{};
   const out={};
