@@ -2,7 +2,15 @@ const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
 const FAMILY_PERSPECTIVE_RULES = `最優先：開式前は本文全体の30〜40%、閉式後は60〜70%。開式前は導入と人柄を示す一つの話に絞り、家族の具体的な思い出は閉式後に厚く配する。書く前に各エピソードを前後どちらか片方に割り当て、旅行・口癖・趣味・出来事を言い換えて再使用しない。閉式後に開式前の要約をしない。本人・ご本人という呼称は禁止。下の名前＋様を使う。家族が見てきた姿と聞き取りにある思いを家族目線で綴る。司会者の評価や「伺いました」「お話しくださいました」「ではないでしょうか」という報告・推測にしない。家族の発言・感情・一人称の台詞を創作しない。氏名は冒頭の一回と締めのみ故＋フルネーム＋様。`;
-const API_BUILD_ID = "sprint27-openai-diagnostics-20260712.3";
+const API_BUILD_ID = "sprint27-family-narration-20260919.1";
+const MEMORY_STYLE_RULES = `文体：人物紹介や司会者の取材報告ではなく、家族が覚えている時間を言葉にする。「伺っています」「伺っております」「伺いました」「だったそうです」「とのことです」「お話しくださいました」は使わない。「何々をしました。何々でした。」と事実を列挙し、その後で意味を解説する段落構成を避ける。具体的な思い出を一つ置き、短い文と自然な余白でつなぐ。体言止めは必要な箇所だけ使い、全ての文を断片にしない。「その積み重ねが大切な記憶になりました」「そんな生き方につながっています」などの解説・教訓を足さない。「思い起こしていただければ」「お分かりになるのでは」など参列者への指導をしない。です・ました自体は禁止ではなく、読み上げて自然な文を優先する。家族目線とは家族が実際に覚えている姿を中心にすることであり、司会者が家族になりすましたり、未確認の喜び・誓い・会話を作ることではない。前後に使う思い出を別々に選び、締めで全エピソードを振り返らない。季節、氏名、享年、開閉式の定型案内は必要なまま残す。`;
+const narrationStyleFailures = (opening, closing) => {
+  const text = `${opening || ""}\n${closing || ""}`;
+  const failures = [];
+  if (/伺って(?:います|おります)|伺いました|だったそうです|とのことです|お話しくださいました/u.test(text)) failures.push("narration style: third-person report");
+  if (/(?:ご)?本人/u.test(text)) failures.push("narration style: impersonal reference");
+  return failures;
+};
 const NATURAL_JAPANESE_RULES = `優先事項：聞き取りに記載された事実を、自然で簡潔な日本語で伝える。情景を描くために、会話、移動手段、仕草、表情、贈り物、家族の誓いや現在の気持ちを補わない。手芸という入力から編み物や作品を渡す場面を想像しない。旅行という入力から車窓や駅の場面を想像しない。参考原稿は文体の参考であり故人の事実ではない。情報が少なければ短く書く。人格を説明する普通の文を許容し、無理に場面へ変換しない。「困った顔よりも嬉しそうな表情の方が多かった人生」「振り返ればよくお分かりになるのではないでしょうか」のような比較・説教・推測は使わない。「ご家族の皆様が思い浮かべる」のように敬語を重ねず、主語と述語を対応させる。体言止めを連続させない。開式前の話を閉式後に列挙し直さない。HTML文字参照は出力しない。出力前に各文の文法と聞き取りに根拠があるかを点検する。これらは情景描写や文章量の指定より優先する。`;
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
@@ -414,7 +422,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const closing = String(closingNarration || "");
   const full = `${opening}\n${closing}`;
   const venueNames = buildVenueNames(prompt);
-  const failures = [];
+  const failures = narrationStyleFailures(opening, closing);
   if (!opening.trim() || !closing.trim()) failures.push("missing narration");
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
   const bodyWithoutRequiredClosings = full.replace(`故 ${fullName}様`, "")
@@ -607,7 +615,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         model,
         input: [
           { role: "system", content: systemPrompt },
-          { role: "system", content: NATURAL_JAPANESE_RULES + "\n" + FAMILY_PERSPECTIVE_RULES },
+          { role: "system", content: NATURAL_JAPANESE_RULES + "\n" + FAMILY_PERSPECTIVE_RULES + "\n" + MEMORY_STYLE_RULES },
           { role: "user", content: prompt },
         ],
         max_output_tokens: outputTokenLimit,
@@ -712,7 +720,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
       max_tokens: maxTokens,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: buildSystemPrompt(extraInstruction) + "\n" + NATURAL_JAPANESE_RULES + "\n" + FAMILY_PERSPECTIVE_RULES },
+        { role: "system", content: buildSystemPrompt(extraInstruction) + "\n" + NATURAL_JAPANESE_RULES + "\n" + FAMILY_PERSPECTIVE_RULES + "\n" + MEMORY_STYLE_RULES },
         { role: "user", content: prompt },
       ],
     }),
@@ -885,7 +893,7 @@ module.exports = async (req, res) => {
         buildId: API_BUILD_ID,
         failures: lastCheck?.failures || [],
       });
-      if (parsed?.openingNarration || parsed?.closingNarration) {
+      if ((parsed?.openingNarration || parsed?.closingNarration) && !lastCheck.failures.some(f => f.startsWith("narration style:"))) {
         res.statusCode = 200;
         res.end(JSON.stringify({
           ...parsed,
