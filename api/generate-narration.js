@@ -674,6 +674,11 @@ module.exports = async (req, res) => {
     return;
   }
 
+  if (new URL(req.url, "http://localhost").searchParams.get("workflow") === "materials") {
+    const { handleStages } = require('./narration-stages');
+    return handleStages(req, res, await readJsonBody(req));
+  }
+
   if (new URL(req.url, "http://localhost").searchParams.get("previewPrompt") === "1") {
     res.setHeader("Cache-Control", "no-store");
     const development = process.env.VERCEL_ENV === "preview" || (!process.env.VERCEL_ENV && process.env.COMPASS_DEV_PROMPT_PREVIEW === "1");

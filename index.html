@@ -4239,6 +4239,63 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const [withoutReferences,setWithoutReferences]=useState(false);
   const [requestPreview,setRequestPreview]=useState(null);
   const [previewBusy,setPreviewBusy]=useState(false);
+  const stagedDevelopment=/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)||window.location.hostname.includes("-git-");
+  const [materials,setMaterials]=useState(null);
+  const [materialsBusy,setMaterialsBusy]=useState(false);
+  const [confirmedMaterials,setConfirmedMaterials]=useState(null);
+  const [sectionResults,setSectionResults]=useState({});
+  const materialSheetRef=useRef("");
+  materialSheetRef.current=JSON.stringify(sheet);
+  useEffect(()=>{setMaterials(null);setConfirmedMaterials(null);setSectionResults({});},[JSON.stringify(sheet)]);
+  const materialApi=async(body)=>{
+    const ai=normalizeAISettings(cfg.aiSettings);
+    const paid=body.action!=="confirm";
+    if(paid){
+      if(ai.enabled===false) throw new Error(AI_STOPPED_MESSAGE);
+      const logs=ensureArray(await stLoad(AI_USAGE_LOG_KEY));
+      if(aiMonthlyCost(logs)+estimateAICostJpy(ai,estimateAITokens(JSON.stringify(body))+2000,5000)>ai.monthlyBudgetJpy) throw new Error(AI_BUDGET_LIMIT_MESSAGE);
+    }
+    const url=new URL(resolveCompassApiProxyPath(ai.apiProxyPath),window.location.href);
+    url.searchParams.set("workflow","materials");
+    const response=await fetch(url.toString(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const data=await response.json();
+    if(paid) await saveAIUsageLog({id:`materials-${Date.now()}-${Math.random()}`,date:new Date().toISOString(),monthKey:aiMonthKey(),featureName:`Narration ${body.action} ${body.section||""}`,model:data.model||DEFAULT_AI_SETTINGS.model,status:response.ok?"success":"failed",estimatedInputTokens:data.usage?.input_tokens||0,estimatedOutputTokens:data.usage?.output_tokens||0,estimatedCostJpy:data.usage?estimateAICostJpy(ai,data.usage.input_tokens||0,data.usage.output_tokens||0):0,billingSource:"OpenAI"});
+    if(!response.ok) throw new Error(data.error||"材料処理に失敗しました。");
+    return data;
+  };
+  const extractMaterials=async()=>{
+    const snapshot=materialSheetRef.current;
+    setMaterialsBusy(true);setAiError("");setConfirmedMaterials(null);setSectionResults({});
+    try{
+      const data=await materialApi({action:"extract",hearingSheet:compassSanitizeHearingSheet(sheet),narrationName:compassNarrationGivenName(sheet.deceasedName),season:SEASON_LABELS[selectedSeason]});
+      if(snapshot!==materialSheetRef.current) throw new Error("アンケートが変更されたため、材料を再抽出してください。");
+      setMaterials(data);
+    }catch(e){setAiError(e.message);}finally{setMaterialsBusy(false);}
+  };
+  const confirmMaterials=async()=>{
+    const snapshot=materialSheetRef.current;
+    setMaterialsBusy(true);setAiError("");
+    try{const result=await materialApi({action:"confirm",token:materials.token,assignments:materials.facts.map(f=>({id:f.id,destination:f.destination}))});if(snapshot!==materialSheetRef.current) throw new Error("アンケートが変更されています。");setConfirmedMaterials(result);}
+    catch(e){setAiError(e.message);}finally{setMaterialsBusy(false);}
+  };
+  const generateMaterialSections=async()=>{
+    if(!confirmedMaterials) return;
+    const snapshot=materialSheetRef.current;
+    setMaterialsBusy(true);setAiError("");
+    const results={...sectionResults};
+    try{
+      for(const section of ["opening","closing"]){
+        if(snapshot!==materialSheetRef.current) throw new Error("アンケートが変更されたため停止しました。");
+        if(!results[section]){
+          results[section]=(await materialApi({action:"generate",token:confirmedMaterials.token,section})).text;
+          if(snapshot!==materialSheetRef.current) throw new Error("アンケートが変更されたため停止しました。");
+          setSectionResults({...results});
+        }
+      }
+      const name=`故 ${materials.common.deceasedName}様`;
+      setDraft(compassFormatDraft({openingNarration:results.opening,closingNarration:results.closing+`\n\n① 葬儀のみ\nこれをもちまして、\n${name}のご葬儀を閉式いたします。\n\n② 葬儀＋初七日\nこれをもちまして、\n${name}のご葬儀並びに初七日法要を執り納めさせていただきます。`}));
+    }catch(e){setAiError(e.message);}finally{setMaterialsBusy(false);}
+  };
   const previewRequest=async()=>{
     setPreviewBusy(true);setRequestPreview(null);
     try{
@@ -4376,7 +4433,24 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
           <input type={type} value={sheet[key]} onChange={e=>update(key,e.target.value)} style={{width:"100%",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:14}}/>}
         </div>)}
       </div>
-      <button onClick={makeDraft} disabled={generating||aiControl.enabled===false||!readiness.ok} style={{...Btn((generating||aiControl.enabled===false||!readiness.ok)?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>
+      {stagedDevelopment?<section style={{marginTop:16}}>
+        <h3>材料の抽出・振り分け</h3>
+        <button onClick={extractMaterials} disabled={materialsBusy||aiControl.enabled===false||!readiness.ok} style={Btn(C.navy)}>{materialsBusy?"処理中…":"事実を抽出・振り分け"}</button>
+        {materials&&<div>
+          <h3>材料確認</h3>
+          <div>{materials.common.deceasedName} / {materials.common.age}歳 / 開式前の季節：{materials.season} / 参考原稿なし</div>
+          {materials.facts.map(f=><div key={f.id} style={{padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{fontWeight:700}}>{f.id}</div>
+            {f.quotes.map((q,i)=><div key={i} style={{whiteSpace:"pre-wrap",margin:"6px 0"}}><span style={{fontSize:12,color:C.muted}}>{({personality:"お人柄・性格",hobbies:"趣味",memorableEvents:"エピソード",familyMemories:"ご家族との思い出",familyFeelings:"ご家族のお気持ち",travelAnniversaryEffort:"旅行・記念日",favoritePhrases:"口癖",valuedThings:"大切にしていたこと"})[q.field]}</span><div>{q.text}</div></div>)}
+            <select aria-label={`${f.id}の振り分け`} value={f.destination} disabled={materialsBusy} onChange={e=>{const destination=e.target.value;setMaterials(m=>({...m,facts:m.facts.map(x=>x.id===f.id?{...x,destination}:x)}));setConfirmedMaterials(null);setSectionResults({});}}><option value="opening">開式前</option><option value="closing">閉式後</option><option value="unused">使わない</option></select>
+          </div>)}
+          <button style={{...Btn(C.navy),marginTop:12}} disabled={materialsBusy||!!confirmedMaterials} onClick={confirmMaterials}>{confirmedMaterials?"材料確定済み":"この振り分けで材料を確定"}</button>
+          {confirmedMaterials&&<div>
+            {["opening","closing"].map(section=><details key={section}><summary>{section==="opening"?"開式前":"閉式後"}の送信予定全文</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{JSON.stringify(confirmedMaterials.previews[section],null,2)}</pre></details>)}
+            <button style={Btn(C.navy)} disabled={materialsBusy||!!(sectionResults.opening&&sectionResults.closing)} onClick={generateMaterialSections}>確定した材料から前後を別々に生成</button>
+          </div>}
+        </div>}
+      </section>:<button onClick={makeDraft} disabled={generating||aiControl.enabled===false||!readiness.ok} style={{...Btn((generating||aiControl.enabled===false||!readiness.ok)?C.muted:C.navy),width:"100%",marginTop:16,padding:"14px 18px",fontSize:16}}>Compass AIでナレーション作成</button>}
       {generating&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.border}`,borderRadius:8,background:"#f8fafc",fontSize:13,fontWeight:800,color:C.navy}}>{loadingStep}</div>}
       {aiError&&<div style={{marginTop:10,padding:"10px 12px",border:`1px solid ${C.red}`,borderRadius:8,background:C.redL,fontSize:13,fontWeight:800,color:C.red}}>{aiError}</div>}
     </div>
