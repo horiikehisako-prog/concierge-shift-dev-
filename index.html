@@ -4096,15 +4096,17 @@ const compassGenerateNarration=async({prompt,cfg,sheet,theme,compassKb=[]})=>{
     });
     let data=null;
     try{data=await res.json();}catch(e){}
-    if(res.status===503 || data?.code==="OPENAI_API_KEY_MISSING") return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:`OPENAI_API_KEY missing at ${apiPath}`});
+    if(data?.code==="OPENAI_API_KEY_MISSING") throw new Error("AI生成サーバーのAPIキーが設定されていません。原稿は変更していません。");
+    if(res.status===501) throw new Error("この確認用サーバーはAI生成に対応していません。AI生成に対応した開発環境への接続が必要です。原稿は変更していません。");
     if(!res.ok){
-      const openAiMsg=data?.openAiError?.message?` / ${data.openAiError.message}`:"";
       const failures=Array.isArray(data?.qualityFailures)&&data.qualityFailures.length?` / ${data.qualityFailures.join(", ")}`:"";
-      return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:`${data?.code||data?.error||"API_ERROR"} ${res.status} at ${apiPath}${openAiMsg}${failures}`});
+      throw new Error(`AI生成に失敗しました（${res.status}）。原稿は変更していません。${failures}`);
     }
-    return compassFormatDraft({...data,generationSource:"openai"});
+    const result=compassFormatDraft({...data,generationSource:"openai"});
+    if(!clean(result.openingNarration)||!clean(result.closingNarration)) throw new Error("AIから完全な原稿が返りませんでした。原稿は変更していません。");
+    return result;
   }catch(e){
-    return compassLocalNarrationDraft({sheet,cfg,theme,compassKb,reason:e?.message||"network error"});
+    throw new Error(e?.message||"AIに接続できませんでした。原稿は変更していません。");
   }
 };
 
@@ -4402,25 +4404,15 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       setDraft(generated);
       if(generated.detectedTheme) setTheme(generated.detectedTheme);
       const actualOutputTokens=estimateAITokens(generated.full||"");
-      const usedOpenAI=generated.generationSource==="openai";
-      if(!usedOpenAI){
-        const reason=generated.fallbackReason||generated.improvementNotes||"理由を取得できませんでした";
-        const keyMissing=String(reason).includes("OPENAI_API_KEY");
-        const fallbackMsg=keyMissing
-          ?"OpenAI APIキーを確認できなかったため、無料下書きで作成しました。VercelのOPENAI_API_KEY設定を確認してください。"
-          :`GPT-5.5 APIのPOST呼び出しで問題が出たため、無料下書きで作成しました。理由: ${reason}`;
-        setAiError(fallbackMsg);
-        flash?.(fallbackMsg);
-      }
       await writeUsage("success",{
         estimatedOutputTokens:actualOutputTokens,
-        estimatedCostJpy:usedOpenAI?estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens):0,
-        billingSource:usedOpenAI?"OpenAI":"無料下書き",
+        estimatedCostJpy:estimateAICostJpy(ai,estimatedInputTokens,actualOutputTokens),
+        billingSource:"OpenAI",
       });
-      if(usedOpenAI) flash?.("GPT-5.5でAIナレーション案を作成しました。内容を確認して保存してください。");
+      flash?.("AIナレーション案を作成しました。内容を確認して保存してください。");
     }catch(e){
       await writeUsage("failed",{error:String(e?.message||e)});
-      const msg=e?.message==="AI_NOT_CONFIGURED"?AI_NOT_CONFIGURED_MESSAGE:(e?.message==="Generation quality check failed."?e.message:AI_FAILED_MESSAGE);
+      const msg=e?.message==="AI_NOT_CONFIGURED"?AI_NOT_CONFIGURED_MESSAGE:(e?.message||AI_FAILED_MESSAGE);
       setAiError(msg);flash?.(msg);
     }finally{
       if(timer) clearInterval(timer);
