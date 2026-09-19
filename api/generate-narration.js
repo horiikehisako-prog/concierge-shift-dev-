@@ -2,6 +2,7 @@ const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const QUALITY_CHECK_FAILED_MESSAGE = "Generation quality check failed.";
 const API_BUILD_ID = "sprint27-openai-diagnostics-20260712.3";
+const NATURAL_JAPANESE_RULES = `優先事項：聞き取りに記載された事実を、自然で簡潔な日本語で伝える。情景を描くために、会話、移動手段、仕草、表情、贈り物、家族の誓いや現在の気持ちを補わない。手芸という入力から編み物や作品を渡す場面を想像しない。旅行という入力から車窓や駅の場面を想像しない。参考原稿は文体の参考であり故人の事実ではない。情報が少なければ短く書く。人格を説明する普通の文を許容し、無理に場面へ変換しない。「困った顔よりも嬉しそうな表情の方が多かった人生」「振り返ればよくお分かりになるのではないでしょうか」のような比較・説教・推測は使わない。「ご家族の皆様が思い浮かべる」のように敬語を重ねず、主語と述語を対応させる。体言止めを連続させない。開式前の話を閉式後に列挙し直さない。HTML文字参照は出力しない。出力前に各文の文法と聞き取りに根拠があるかを点検する。これらは情景描写や文章量の指定より優先する。`;
 
 const STRICT_FORBIDDEN_EXPRESSIONS = [
   "在りし日を",
@@ -137,7 +138,7 @@ const parseNarrationTextFallback = content => {
 };
 
 const stripNonNarrationSections = value => {
-  let text = String(value || "").trim();
+  let text = String(value || "").replace(/&(?:amp;)?#(?:x0*20|0*32);|&(?:amp;)?nbsp;/gi, " ").trim();
   if (!text) return "";
   const noisePatterns = [
     /^\s*(?:\[[^\]]*improvement[^\]]*\]|【[^】]*improvement[^】]*】|improvement\s*notes?|improvement\s*note|notes?|deleted\s*theme|quality\s*notes?|writing\s*notes?)\s*[:：]?[\s\S]*$/im,
@@ -167,7 +168,7 @@ const ensureClosingFinalLine = (value, prompt) => {
   let text = String(value || "").trim();
   if (!text) return "";
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
-  const name = fullName || givenName || "故人";
+  const name = fullName || givenName ? `故 ${fullName || givenName}` : "故人";
   const closingFinalPatterns = [
     /(?:①\s*葬儀のみ\s*)?これをもちまして、?[^。]{0,40}様のご葬儀を閉式いたします。?/gu,
     /(?:②\s*葬儀[＋+・]初七日\s*)?これをもちまして、?[^。]{0,40}様のご葬儀並びに初七日法要を執り納めさせていただきます。?/gu,
@@ -297,21 +298,30 @@ const narrationGivenName = name => {
 
 const nameRuleFromPrompt = prompt => {
   const sheet = extractPromptPayload(prompt)?.hearingSheet || {};
-  const fullName = String(sheet.deceasedName || "").trim().replace(/様$/u, "");
+  const fullName = String(sheet.deceasedName || "").trim().replace(/^故\s*/u, "").replace(/様$/u, "").trim();
   const givenName = String(sheet.narrationName || narrationGivenName(fullName)).trim().replace(/様$/u, "");
   return { fullName, givenName };
 };
 
 const replaceFullName = (text, prompt) => {
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
-  if (!fullName || !givenName || fullName === givenName) return text;
-  const escaped = fullName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return String(text || "").replace(new RegExp(`${escaped}様?`, "g"), `${givenName}様`);
+  if (!fullName || !givenName) return text;
+  const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const names = [...new Set([fullName, fullName.replace(/[\s　]+/gu, ""), givenName])]
+    .sort((a,b)=>b.length-a.length).map(escape).join("|");
+  return String(text || "").replace(new RegExp(`(?:故\\s*)?(?:${names})様?`, "gu"), `${givenName}様`);
+};
+
+const openingNameRule = (text, prompt) => {
+  const body = replaceFullName(text, prompt);
+  const { fullName, givenName } = nameRuleFromPrompt(prompt);
+  if (!fullName || !givenName) return body;
+  return String(body || "").replace(`${givenName}様`, `故 ${fullName}様`);
 };
 
 const applyNameRule = (draft, prompt) => ({
   ...draft,
-  openingNarration: replaceFullName(draft.openingNarration, prompt),
+  openingNarration: openingNameRule(draft.openingNarration, prompt),
   closingNarration: ensureClosingFinalLine(
     stripFixedClosingOpening(replaceFullName(draft.closingNarration, prompt)),
     prompt
@@ -406,7 +416,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   const failures = [];
   if (!opening.trim() || !closing.trim()) failures.push("missing narration");
   const { fullName, givenName } = nameRuleFromPrompt(prompt);
-  const bodyWithoutRequiredClosings = full
+  const bodyWithoutRequiredClosings = full.replace(`故 ${fullName}様`, "")
     .replace(/①\s*葬儀のみ[\s\S]*?ご葬儀を閉式いたします。?/u, "")
     .replace(/②\s*葬儀[＋+・]初七日[\s\S]*?初七日法要を執り納めさせていただきます。?/u, "");
   if (fullName && givenName && fullName !== givenName && bodyWithoutRequiredClosings.includes(fullName)) failures.push("full name");
@@ -596,6 +606,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         model,
         input: [
           { role: "system", content: systemPrompt },
+          { role: "system", content: NATURAL_JAPANESE_RULES },
           { role: "user", content: prompt },
         ],
         max_output_tokens: outputTokenLimit,
@@ -700,7 +711,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
       max_tokens: maxTokens,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: buildSystemPrompt(extraInstruction) },
+        { role: "system", content: buildSystemPrompt(extraInstruction) + "\n" + NATURAL_JAPANESE_RULES },
         { role: "user", content: prompt },
       ],
     }),
