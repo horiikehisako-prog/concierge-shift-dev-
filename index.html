@@ -4244,7 +4244,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const [materialsBusy,setMaterialsBusy]=useState(false);
   const [confirmedMaterials,setConfirmedMaterials]=useState(null);
   const [sectionResults,setSectionResults]=useState({});
-  const materialSheetRef=useRef("");
+  const materialSheetRef=React.useRef("");
   materialSheetRef.current=JSON.stringify(sheet);
   useEffect(()=>{setMaterials(null);setConfirmedMaterials(null);setSectionResults({});},[JSON.stringify(sheet)]);
   const materialApi=async(body)=>{
