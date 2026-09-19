@@ -1,6 +1,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+process.env.COMPASS_DEV_PROMPT_PREVIEW = '1';
 const narration = require('./api/generate-narration');
 
 const port = Number(process.env.COMPASS_DEV_PORT || 8788);

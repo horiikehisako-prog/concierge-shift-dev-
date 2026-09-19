@@ -4237,6 +4237,22 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const [theme,setTheme]=useState("");
   const [selectedLibraryReferences,setSelectedLibraryReferences]=useState([]);
   const [withoutReferences,setWithoutReferences]=useState(false);
+  const [requestPreview,setRequestPreview]=useState(null);
+  const [previewBusy,setPreviewBusy]=useState(false);
+  const previewRequest=async()=>{
+    setPreviewBusy(true);setRequestPreview(null);
+    try{
+      const ai=normalizeAISettings(cfg.aiSettings);
+      const refs=withoutReferences?[]:compassSelectLibraryReferences(sheet,cfg,selectedTheme,6);
+      const url=new URL(resolveCompassApiProxyPath(ai.apiProxyPath),window.location.href);
+      url.searchParams.set("previewPrompt","1");
+      const response=await fetch(url.toString(),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:compassBuildNarrationPrompt(sheet,cfg,selectedTheme,refs,compassKb),model:DEFAULT_AI_SETTINGS.model,temperature:Number(ai.temperature??DEFAULT_AI_SETTINGS.temperature),maxTokens:Number(ai.maxTokens||DEFAULT_AI_SETTINGS.maxTokens)})});
+      const data=await response.json();
+      if(!response.ok||!Array.isArray(data.systemMessages)) throw new Error("送信内容の確認に失敗しました。開発用APIへの接続を確認してください。");
+      setRequestPreview({...data,endpoint:url.origin+url.pathname});
+    }catch(e){setAiError(e.message);}
+    finally{setPreviewBusy(false);}
+  };
   const [records,setRecords]=useState([]);
   const [activeId,setActiveId]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -4344,6 +4360,8 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fffaf7",marginBottom:12,lineHeight:1.6}}>
         <div style={{fontSize:12,color:C.muted,fontWeight:800,marginBottom:4}}>ナレーションライブラリ自動参照</div>
         <label style={{fontSize:13,color:C.text,display:"flex",gap:8,alignItems:"center"}}><input type="checkbox" checked={withoutReferences} disabled={generating} onChange={e=>setWithoutReferences(e.target.checked)}/>参考原稿を使わずに生成する（開発テスト）</label>
+        {(/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)||window.location.hostname.includes("-git-"))&&<button disabled={previewBusy||generating} onClick={previewRequest} style={Btn(C.white,C.navy)}>{previewBusy?"確認中…":"送信予定の基本プロンプトを確認"}</button>}
+        {requestPreview&&<section><h3>送信予定の基本プロンプト全文</h3><div>{requestPreview.endpoint} / {requestPreview.model} / {requestPreview.api}</div><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:13}}>{requestPreview.systemMessages.map(message=>message.content).join("\n\n")}</pre></section>}
       </div>
       {!readiness.ok&&<div style={{border:`1px solid ${C.amber}`,borderRadius:8,padding:10,background:"#fffbeb",color:"#92400e",fontSize:13,fontWeight:800,lineHeight:1.6,marginBottom:12}}>
         良い文章にするため、AI生成前に不足している情報があります：{readiness.required.join("、")}

@@ -437,7 +437,7 @@ const qualityCheckNarration = ({ openingNarration, closingNarration }, prompt) =
   return { ok: failures.length === 0, failures };
 };
 
-const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction }) => {
+const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt, extraInstruction, previewOnly = false }) => {
   if (shouldUseResponsesApi(model)) {
     const outputTokenLimit = Math.min(Math.max(maxTokens, 4200), 7000);
     const callResponses = async forcePlainJson => {
@@ -447,6 +447,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
         max_output_tokens: outputTokenLimit,
       };
       if (forcePlainJson) body.text = { format: { type: "json_object" } };
+      if (previewOnly) return { systemMessages: body.input.filter(message => message.role === "system"), model: body.model, api: "responses" };
 
       const openAiResponse = await fetch(OPENAI_RESPONSES_URL, {
         method: "POST",
@@ -478,6 +479,7 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
     };
 
     const responseJson = await callResponses(false);
+    if (previewOnly) return responseJson;
     const responseContent = collectResponsesText(responseJson);
     let rawOpenAiText = responseContent;
     let responseDiagnostics = responseCompletionDiagnostics(responseJson, responseContent, "responses_text_single_call");
@@ -534,19 +536,19 @@ const requestNarration = async ({ apiKey, model, temperature, maxTokens, prompt,
     };
   }
 
+  const chatBody = {
+    model, temperature, max_tokens: maxTokens,
+    response_format: { type: "json_object" },
+    messages: buildNarrationMessages(prompt),
+  };
+  if (previewOnly) return { systemMessages: chatBody.messages.filter(message => message.role === "system"), model, api: "chat" };
   const openAiResponse = await fetch(OPENAI_CHAT_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      temperature,
-      max_tokens: maxTokens,
-      response_format: { type: "json_object" },
-      messages: buildNarrationMessages(prompt),
-    }),
+    body: JSON.stringify(chatBody),
   });
 
   const openAiJson = await openAiResponse.json().catch(() => null);
@@ -672,6 +674,31 @@ module.exports = async (req, res) => {
     return;
   }
 
+  if (new URL(req.url, "http://localhost").searchParams.get("previewPrompt") === "1") {
+    res.setHeader("Cache-Control", "no-store");
+    const development = process.env.VERCEL_ENV === "preview" || (!process.env.VERCEL_ENV && process.env.COMPASS_DEV_PROMPT_PREVIEW === "1");
+    if (!development) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: "Not found" }));
+      return;
+    }
+    try {
+      const body = await readJsonBody(req);
+      const prompt = compactNarrationPrompt(String(body.prompt || ""));
+      const preview = await requestNarration({
+        prompt, model: String(body.model || DEFAULT_NARRATION_MODEL),
+        temperature: clampNumber(body.temperature, 0.7, 0, 2),
+        maxTokens: Math.round(clampNumber(body.maxTokens || body.max_tokens, 5200, 100, 7000)),
+        previewOnly: true,
+      });
+      res.statusCode = 200;
+      res.end(JSON.stringify({ ...preview, buildId: API_BUILD_ID, generated: false }));
+    } catch (_) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: "Prompt preview could not be assembled" }));
+    }
+    return;
+  }
   console.log("[generate-narration] request", diagnostics);
 
   if (!apiKey) {
