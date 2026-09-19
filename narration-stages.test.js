@@ -16,6 +16,8 @@ test('quotes must exist verbatim in questionnaire, duplicates are rejected',()=>
   assert.equal(validateFacts([fact],{hobbies:'flowers and crafts'}).length,1);
   assert.throws(()=>validateFacts([fact],{hobbies:'crafts'}));
   assert.throws(()=>validateFacts([fact,fact],{hobbies:'flowers'}));
+  assert.equal(validateFacts([fact],{hobbies:'flowers and crafts'})[0].quotes[0].sourceText,'flowers and crafts');
+  assert.throws(()=>validateFacts([{...fact,quotes:[...fact.quotes,...fact.quotes]}],{hobbies:'flowers'}));
 });
 test('confirmation tokens cannot be changed',()=>{
   const token=sign(plan,'test-key');

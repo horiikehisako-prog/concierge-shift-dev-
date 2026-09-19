@@ -4441,7 +4441,8 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
           <div>{materials.common.deceasedName} / {materials.common.age}歳 / 開式前の季節：{materials.season} / 参考原稿なし</div>
           {materials.facts.map(f=><div key={f.id} style={{padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
             <div style={{fontWeight:700}}>{f.id}</div>
-            {f.quotes.map((q,i)=><div key={i} style={{whiteSpace:"pre-wrap",margin:"6px 0"}}><span style={{fontSize:12,color:C.muted}}>{({personality:"お人柄・性格",hobbies:"趣味",memorableEvents:"エピソード",familyMemories:"ご家族との思い出",familyFeelings:"ご家族のお気持ち",travelAnniversaryEffort:"旅行・記念日",favoritePhrases:"口癖",valuedThings:"大切にしていたこと"})[q.field]}</span><div>{q.text}</div></div>)}
+            {f.relatedGroup&&<div style={{fontSize:12,color:C.muted}}>関連項目：{materials.facts.filter(x=>x.id!==f.id&&x.relatedGroup===f.relatedGroup).map(x=>x.id).join("、")||"なし"}</div>}
+            {f.quotes.map((q,i)=><div key={i} style={{whiteSpace:"pre-wrap",margin:"6px 0"}}><span style={{fontSize:12,color:C.muted}}>{({personality:"お人柄・性格",hobbies:"趣味",memorableEvents:"エピソード",familyMemories:"ご家族との思い出",familyFeelings:"ご家族のお気持ち",travelAnniversaryEffort:"旅行・記念日",favoritePhrases:"口癖",valuedThings:"大切にしていたこと"})[q.field]}</span><div>{q.text}</div><details><summary>元の回答全文</summary><div>{q.sourceText}</div></details></div>)}
             <select aria-label={`${f.id}の振り分け`} value={f.destination} disabled={materialsBusy} onChange={e=>{const destination=e.target.value;setMaterials(m=>({...m,facts:m.facts.map(x=>x.id===f.id?{...x,destination}:x)}));setConfirmedMaterials(null);setSectionResults({});}}><option value="opening">開式前</option><option value="closing">閉式後</option><option value="unused">使わない</option></select>
           </div>)}
           <button style={{...Btn(C.navy),marginTop:12}} disabled={materialsBusy||!!confirmedMaterials} onClick={confirmMaterials}>{confirmedMaterials?"材料確定済み":"この振り分けで材料を確定"}</button>
