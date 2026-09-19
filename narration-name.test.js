@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const context = vm.createContext({ module: { exports: {} } });
+const context = vm.createContext({ module: { exports: {} }, require: require('node:module').createRequire(path.join(__dirname, 'api/generate-narration.js')) });
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'api/generate-narration.js'), 'utf8') + '\nthis.applyRule = applyNameRule; this.strip = stripNonNarrationSections; this.styleFailures = narrationStyleFailures;', context);
 const prompt = JSON.stringify({ hearingSheet: { deceasedName: '堀池　チエノ', narrationName: 'チエノ' } });
 
