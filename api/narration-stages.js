@@ -1,5 +1,16 @@
 const crypto = require('node:crypto');
-const { BASIC_NARRATION_PROMPT } = require('./narration-prompt');
+const SECTION_PROMPT = `確定済みの材料を、司会者が声に出して自然に読める文章につないでください。指定された開式前・閉式後の片方だけを作成します。
+
+材料の意味を変えず、選択・順序・接続・文の区切りを整えてください。人物説明への言い換えや、材料にない解釈・情景・気持ち・呼びかけは加えません。短くても構いません。
+
+同じ調子の文を続けず、文の長さと組み立てに変化をつけます。飾った表現や過剰な敬語は使いません。
+
+開式前は「指定季節の簡潔な表現 → 故＋フルネーム＋様 → お別れ」の順で始めます。当日の天候は描写しません。本文中の呼称は下の名前＋様とし、閉式後には季節表現を入れません。
+
+開式前の最後は「尽きることのない感謝の思いを胸に、まもなく開式のお時間でございます。」とします。閉式後の定型案内はシステムが付けるため、独自の締めは作りません。
+
+完成前に材料と照合し、導入・指定の定型文以外に、材料にない内容を加えていないか確認してください。
+JSON {"text":"原稿本文"}だけを返してください。`;
 const FIELDS = ['personality','hobbies','memorableEvents','familyMemories','familyFeelings','travelAnniversaryEffort','favoritePhrases','valuedThings'];
 const DESTINATIONS = ['opening','closing','unused'];
 const MODEL = 'gpt-5.1';
@@ -36,10 +47,10 @@ function sectionMessages(plan, section) {
   if(!['opening','closing'].includes(section)||!plan.confirmed) throw new Error('材料の確定が必要です。');
   const facts=plan.facts.filter(f=>f.destination===section).map(f=>({id:f.id,quotes:f.quotes.map(q=>q.text)}));
   if(!facts.length) throw new Error('この区分の材料がありません。');
-  const data={common:plan.common,facts};
+  const data={section:section==='opening'?'開式前':'閉式後',common:plan.common,facts};
   if(section==='opening') data.season=plan.season;
   return [
-    {role:'system',content:BASIC_NARRATION_PROMPT+'\n\n材料は確認・配分済みです。再配分せず、今回渡された材料だけで'+(section==='opening'?'開式前':'閉式後')+'のみを作成してください。JSON {"text":"原稿本文"}だけを返してください。'},
+    {role:'system',content:SECTION_PROMPT},
     {role:'user',content:JSON.stringify(data)},
   ];
 }
