@@ -4236,6 +4236,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
   const [prompt,setPrompt]=useState("");
   const [theme,setTheme]=useState("");
   const [selectedLibraryReferences,setSelectedLibraryReferences]=useState([]);
+  const [withoutReferences,setWithoutReferences]=useState(false);
   const [records,setRecords]=useState([]);
   const [activeId,setActiveId]=useState(null);
   const [loading,setLoading]=useState(true);
@@ -4257,7 +4258,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       flash?.(readiness.message);
       return;
     }
-    const libraryRefs=compassSelectLibraryReferences(sheet,cfg,selectedTheme,6);
+    const libraryRefs=withoutReferences?[]:compassSelectLibraryReferences(sheet,cfg,selectedTheme,6);
     setSelectedLibraryReferences(libraryRefs);
     const built=compassBuildNarrationPrompt(sheet,cfg,selectedTheme,libraryRefs,compassKb);
     const ai=normalizeAISettings(cfg.aiSettings);
@@ -4342,7 +4343,7 @@ function CompassNarrationView({cfg,sv,uname,role,flash,compassKb=[]}) {
       </div>
       <div style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,background:"#fffaf7",marginBottom:12,lineHeight:1.6}}>
         <div style={{fontSize:12,color:C.muted,fontWeight:800,marginBottom:4}}>ナレーションライブラリ自動参照</div>
-        <div style={{fontSize:13,color:C.text}}>Compass AI first searches the Compass Official Library and selects the best matching 3 narrations. They are used only for writing style, tone, rhythm, flow, warmth, and sentence length. Do not copy.</div>
+        <label style={{fontSize:13,color:C.text,display:"flex",gap:8,alignItems:"center"}}><input type="checkbox" checked={withoutReferences} disabled={generating} onChange={e=>setWithoutReferences(e.target.checked)}/>参考原稿を使わずに生成する（開発テスト）</label>
       </div>
       {!readiness.ok&&<div style={{border:`1px solid ${C.amber}`,borderRadius:8,padding:10,background:"#fffbeb",color:"#92400e",fontSize:13,fontWeight:800,lineHeight:1.6,marginBottom:12}}>
         良い文章にするため、AI生成前に不足している情報があります：{readiness.required.join("、")}
